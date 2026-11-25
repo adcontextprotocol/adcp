@@ -545,8 +545,7 @@ schema_removals_not_checked:
       - "core/creative-assets.json#/patternProperties/^/anyOf/0"
       - "core/creative-manifest.json#/properties/assets/patternProperties/^/oneOf/0"
       - "creative/list-creatives-response.json#/properties/creatives/items/properties/assets/patternProperties/^/oneOf/0"
-      - "core/creative-localization.json#/properties/target_variants/items/properties/assets/patternProperties/^[a-z0-9_]+$/anyOf/0"
-      - "core/creative-localization-readback.json#/definitions/resolvedAssets/patternProperties/^[a-z0-9_]+$/anyOf/0"
+      - "core/localized-creative-assets.json#/patternProperties/^[a-z0-9_]+$/anyOf/0"
       - "media-buy/get-media-buy-delivery-request.json#/properties/status_filter/oneOf/0"
       - "media-buy/get-media-buys-request.json#/properties/status_filter/oneOf/0"
       - "core/audience-characteristic.json#/properties/value/oneOf/0"
@@ -564,7 +563,6 @@ schema_removals_not_checked:
     sites:
       - "content-standards/get-media-buy-artifacts-response.json#/oneOf/0/properties/artifacts/items/properties/local_verdict/enumMetadata/pass"
       - "core/registry-event.json#/$defs/compliancePayload/properties/tracks/additionalProperties/enumMetadata/pass"
-      - "core/signal-definition-enrichment.json#/properties/onboarder/properties/match_keys/items/enumMetadata/name"
-      - "core/signal-definition.json#/properties/onboarder/properties/match_keys/items/enumMetadata/name"
       - "enums/binary-verdict.json#/enumMetadata/pass"
+      - "enums/signal-match-key.json#/enumMetadata/name"
       - "error-details/rate-limited.json#/properties/scope/enumMetadata/global"

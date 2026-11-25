@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/identity-change-impact-reason.json",
+  "title": "Identity Change Impact Reason",
+  "description": "Explanation of how a previewed operator-identity change affects one area such as billing or reporting.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 1000
+}

@@ -1,0 +1,81 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-composition-rules.json",
+  "title": "Brand Composition Rules",
+  "description": "Layout composition rules including overlays, textures, and backgrounds",
+  "type": "object",
+  "properties": {
+    "overlays": {
+      "type": "object",
+      "description": "Graphic overlay rules",
+      "properties": {
+        "gradient_style": {
+          "type": "string",
+          "enum": [
+            "linear",
+            "radial",
+            "conic",
+            "none"
+          ],
+          "description": "Gradient type for overlays"
+        },
+        "gradient_direction": {
+          "type": "string",
+          "description": "Gradient direction (e.g., '45deg', 'to-bottom-right')"
+        },
+        "opacity": {
+          "type": "string",
+          "description": "Overlay opacity (e.g., '70%')"
+        }
+      },
+      "additionalProperties": true
+    },
+    "texture": {
+      "type": "object",
+      "description": "Texture treatment rules",
+      "properties": {
+        "style": {
+          "type": "string",
+          "enum": [
+            "none",
+            "subtle_grain",
+            "noise",
+            "paper",
+            "fabric",
+            "concrete"
+          ],
+          "description": "Texture style applied to creative assets"
+        },
+        "intensity": {
+          "$ref": "/schemas/core/brand-intensity-level.json",
+          "description": "Texture intensity"
+        }
+      },
+      "additionalProperties": true
+    },
+    "backgrounds": {
+      "type": "object",
+      "description": "Background treatment rules",
+      "properties": {
+        "types_allowed": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "solid_color",
+              "gradient",
+              "blurred_photo",
+              "image",
+              "video",
+              "pattern",
+              "transparent"
+            ]
+          },
+          "description": "Permitted background types"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

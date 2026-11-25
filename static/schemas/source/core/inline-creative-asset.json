@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/inline-creative-asset.json",
+  "title": "Inline Package Creative Asset",
+  "description": "A creative asset supplied inline, without localization.",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/creative-asset.json"
+    },
+    {
+      "not": {
+        "required": [
+          "localization"
+        ]
+      }
+    }
+  ]
+}

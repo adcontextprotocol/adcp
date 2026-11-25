@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/us-postal-system.json",
+  "title": "US Postal System",
+  "description": "Postal code system for the United States: zip or zip_plus_four.",
+  "type": "string",
+  "enum": [
+    "zip",
+    "zip_plus_four"
+  ]
+}

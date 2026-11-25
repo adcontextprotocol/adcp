@@ -44,6 +44,7 @@
       "description": "Trim level (e.g., 'EX', 'Limited', 'Sport')."
     },
     "mileage": {
+      "title": "Vehicle Mileage",
       "type": "object",
       "description": "Odometer reading.",
       "properties": {
@@ -85,24 +86,8 @@
       "description": "Interior color."
     },
     "location": {
-      "type": "object",
-      "description": "Dealer or vehicle location.",
-      "properties": {
-        "lat": {
-          "type": "number",
-          "minimum": -90,
-          "maximum": 90,
-          "description": "Latitude in decimal degrees (WGS 84)."
-        },
-        "lng": {
-          "type": "number",
-          "minimum": -180,
-          "maximum": 180,
-          "description": "Longitude in decimal degrees (WGS 84)."
-        }
-      },
-      "required": ["lat", "lng"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/geo-coordinates.json",
+      "description": "Dealer or vehicle location."
     },
     "image_url": {
       "type": "string",

@@ -59,8 +59,7 @@
           "type": "array",
           "description": "Supported standalone cost_per strengths in this profile. Required exactly when modes includes cost_per.",
           "items": {
-            "type": "string",
-            "enum": ["cap", "target"]
+            "$ref": "/schemas/enums/outcome-target-cost-strength.json"
           },
           "minItems": 1,
           "uniqueItems": true
@@ -69,8 +68,7 @@
           "type": "array",
           "description": "Supported standalone roas strengths in this profile. Required exactly when modes includes roas.",
           "items": {
-            "type": "string",
-            "enum": ["floor", "target"]
+            "$ref": "/schemas/enums/roas-strength.json"
           },
           "minItems": 1,
           "uniqueItems": true
@@ -115,11 +113,11 @@
     "max_bid_with_cost_per": {
       "type": "object",
       "properties": {
-        "kind": { "type": "string", "const": "max_bid_with_cost_per" },
+        "kind": { "type": "string", "const": "max_bid_with_cost_per", "default": "max_bid_with_cost_per" },
         "cost_per_strengths": {
           "type": "array",
           "description": "cost_per strengths supported when combined with max_bid.",
-          "items": { "type": "string", "enum": ["cap", "target"] },
+          "items": { "$ref": "/schemas/enums/outcome-target-cost-strength.json" },
           "minItems": 1,
           "uniqueItems": true
         }
@@ -130,11 +128,11 @@
     "max_bid_with_roas": {
       "type": "object",
       "properties": {
-        "kind": { "type": "string", "const": "max_bid_with_roas" },
+        "kind": { "type": "string", "const": "max_bid_with_roas", "default": "max_bid_with_roas" },
         "roas_strengths": {
           "type": "array",
           "description": "roas strengths supported when combined with max_bid.",
-          "items": { "type": "string", "enum": ["floor", "target"] },
+          "items": { "$ref": "/schemas/enums/roas-strength.json" },
           "minItems": 1,
           "uniqueItems": true
         }

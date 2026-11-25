@@ -32,7 +32,7 @@
           {
             "title": "Canonical Format Target",
             "properties": {
-              "kind": { "type": "string", "const": "canonical" },
+              "kind": { "type": "string", "const": "canonical", "default": "canonical" },
               "id": {
                 "type": "string",
                 "description": "Canonical format name from `canonical-format-kind.json` (e.g., `image`, `video_hosted`, `audio_daast`). Validators check the manifest against the canonical's parameter schema."
@@ -43,7 +43,7 @@
           {
             "title": "Product Target",
             "properties": {
-              "kind": { "type": "string", "const": "product" },
+              "kind": { "type": "string", "const": "product", "default": "product" },
               "id": {
                 "type": "string",
                 "description": "Product ID. Validators check the manifest against the product's inline `ProductFormatDeclaration` narrowing of the canonical (parameter constraints, slot requirements, platform extensions)."
@@ -54,7 +54,7 @@
           {
             "title": "Third-Party Format Target",
             "properties": {
-              "kind": { "type": "string", "const": "third_party_format" },
+              "kind": { "type": "string", "const": "third_party_format", "default": "third_party_format" },
               "id": {
                 "type": "string",
                 "format": "uri",
@@ -66,10 +66,9 @@
           {
             "title": "Creative Capability Target",
             "properties": {
-              "kind": { "type": "string", "const": "capability" },
+              "kind": { "type": "string", "const": "capability", "default": "capability" },
               "id": {
-                "type": "string",
-                "pattern": "^[a-zA-Z0-9_-]+$",
+                "$ref": "/schemas/core/creative-capability-id.json",
                 "description": "Agent-local capability_id from get_adcp_capabilities creative.supported_formats. The selected entry MUST include validate in operations; unknown IDs or entries without validate are rejected with FORMAT_NOT_SUPPORTED."
               }
             },

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/canonical-format-params.json",
+  "title": "Canonical Format Params",
+  "description": "Parameters for a canonical format selector. They validate against the schema that `format_kind` selects.",
+  "type": "object",
+  "additionalProperties": true
+}

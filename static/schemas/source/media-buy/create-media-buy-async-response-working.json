@@ -3,38 +3,9 @@
   "$id": "/schemas/media-buy/create-media-buy-async-response-working.json",
   "title": "Create Media Buy - Working",
   "description": "Progress payload for active create_media_buy task.",
-  "type": "object",
   "allOf": [
-    { "$ref": "/schemas/core/protocol-envelope.json" },
-    { "$ref": "/schemas/core/task-working.json" }
-  ],
-  "properties": {
-    "percentage": {
-      "type": "number",
-      "minimum": 0,
-      "maximum": 100,
-      "description": "Completion percentage (0-100)"
-    },
-    "current_step": {
-      "type": "string",
-      "description": "Current step or phase of the operation"
-    },
-    "total_steps": {
-      "type": "integer",
-      "minimum": 1,
-      "description": "Total number of steps in the operation"
-    },
-    "step_number": {
-      "type": "integer",
-      "minimum": 1,
-      "description": "Current step number"
-    },
-    "context": {
-      "$ref": "/schemas/core/context.json"
-    },
-    "ext": {
-      "$ref": "/schemas/core/ext.json"
+    {
+      "$ref": "/schemas/core/compact-task-working.json"
     }
-  },
-  "additionalProperties": true
+  ]
 }

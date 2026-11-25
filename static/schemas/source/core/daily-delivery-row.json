@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/daily-delivery-row.json",
+  "title": "Daily Delivery Row",
+  "description": "Delivery for one day: spend, impressions, conversions, conversion value, and return on ad spend.",
+  "type": "object",
+  "properties": {
+    "date": {
+      "$ref": "/schemas/core/calendar-date.json",
+      "description": "Calendar date (YYYY-MM-DD) in the reporting timezone: reporting_period.timezone when present, otherwise this package's product reporting_capabilities.timezone. The row covers that local day, which can be 23 or 25 hours long across a DST change."
+    },
+    "impressions": {
+      "type": "number",
+      "description": "Daily impressions for this package",
+      "minimum": 0
+    },
+    "spend": {
+      "type": "number",
+      "description": "Daily spend for this package",
+      "minimum": 0
+    },
+    "conversions": {
+      "type": "number",
+      "description": "Daily conversions for this package",
+      "minimum": 0
+    },
+    "conversion_value": {
+      "type": "number",
+      "description": "Daily conversion value for this package",
+      "minimum": 0
+    },
+    "commissionable_value": {
+      "type": "number",
+      "description": "Daily settled conversion value eligible for revenue-share commission for this package",
+      "minimum": 0
+    },
+    "roas": {
+      "type": "number",
+      "description": "Daily return on ad spend (conversion_value / spend)",
+      "minimum": 0
+    },
+    "new_to_brand_rate": {
+      "$ref": "/schemas/core/fraction.json",
+      "description": "Daily fraction of conversions from first-time brand buyers (0 = none, 1 = all)"
+    }
+  },
+  "required": [
+    "date",
+    "spend"
+  ],
+  "additionalProperties": true
+}

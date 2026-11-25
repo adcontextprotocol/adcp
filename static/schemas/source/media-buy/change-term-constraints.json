@@ -11,7 +11,7 @@
       "title": "Budget change constraints",
       "type": "object",
       "properties": {
-        "kind": { "type": "string", "const": "budget" },
+        "kind": { "type": "string", "const": "budget", "default": "budget" },
         "max_delta_amount": {
           "$ref": "#/definitions/money",
           "description": "Maximum absolute amount by which the affected budget may change in the direction named by the action."
@@ -43,7 +43,7 @@
       "title": "Flight change constraints",
       "type": "object",
       "properties": {
-        "kind": { "type": "string", "const": "flight" },
+        "kind": { "type": "string", "const": "flight", "default": "flight" },
         "max_change": {
           "$ref": "/schemas/core/duration.json",
           "description": "Maximum extension, shortening, or shift in the direction named by the action."
@@ -76,7 +76,7 @@
       "title": "Package count constraints",
       "type": "object",
       "properties": {
-        "kind": { "type": "string", "const": "package_count" },
+        "kind": { "type": "string", "const": "package_count", "default": "package_count" },
         "max_additions": {
           "type": "integer",
           "minimum": 0,
@@ -105,7 +105,7 @@
       "title": "Effective timing constraints",
       "type": "object",
       "properties": {
-        "kind": { "type": "string", "const": "effective_timing" },
+        "kind": { "type": "string", "const": "effective_timing", "default": "effective_timing" },
         "minimum_notice": {
           "$ref": "/schemas/core/duration.json",
           "description": "Minimum elapsed notice before pause, resume, cancellation, or another operational action may take effect."
@@ -130,13 +130,7 @@
   ],
   "definitions": {
     "money": {
-      "type": "object",
-      "properties": {
-        "amount": { "type": "number", "minimum": 0 },
-        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
-      },
-      "required": ["amount", "currency"],
-      "additionalProperties": false
+      "$ref": "/schemas/core/closed-money.json"
     }
   }
 }

@@ -9,6 +9,7 @@
     "asset_type": {
       "type": "string",
       "const": "card",
+      "default": "card",
       "description": "Discriminator identifying this as a card asset. See /schemas/creative/asset-types for the registry."
     },
     "media": {

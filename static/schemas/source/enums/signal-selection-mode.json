@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/signal-selection-mode.json",
+  "title": "Signal Selection Mode",
+  "description": "Selection behavior of selectable signals on a product.",
+  "type": "string",
+  "enum": [
+    "optional",
+    "required",
+    "fixed"
+  ]
+}

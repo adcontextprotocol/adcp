@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/opportunity-close-reason.json",
+  "title": "Opportunity Close Reason",
+  "description": "Why an opportunity closed.",
+  "type": "string",
+  "enum": [
+    "accepted_with_seller",
+    "purchased_elsewhere",
+    "selected_alternative",
+    "not_pursued",
+    "budget_changed",
+    "timing_changed",
+    "other"
+  ]
+}

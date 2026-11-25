@@ -36,11 +36,6 @@
       "variants": 2,
       "note": "shared-required=[∅]; 0:string | 1:req=[∅]"
     },
-    "brand.json##/definitions/font_role/oneOf": {
-      "kind": "dangerous",
-      "variants": 2,
-      "note": "shared-required=[∅]; 0:string | 1:req=[family]"
-    },
     "brand.json##/oneOf": {
       "kind": "dangerous",
       "variants": 5,
@@ -60,11 +55,6 @@
       "kind": "narrowable",
       "variants": 2,
       "note": "0:[brand_id,house,names] | 1:[errors]"
-    },
-    "brand/get-brand-identity-response.json##/oneOf/0/properties/fonts/definitions/font_role/oneOf": {
-      "kind": "dangerous",
-      "variants": 2,
-      "note": "shared-required=[∅]; 0:string | 1:req=[family]"
     },
     "brand/get-rights-response.json##/oneOf": {
       "kind": "narrowable",
@@ -106,16 +96,6 @@
       "variants": 2,
       "note": "0:[verdict] | 1:[errors]"
     },
-    "content-standards/create-content-standards-request.json##/properties/calibration_exemplars/properties/fail/items/oneOf": {
-      "kind": "narrowable",
-      "variants": 2,
-      "note": "0:[type,value] | 1:[property_rid,artifact_id,assets]"
-    },
-    "content-standards/create-content-standards-request.json##/properties/calibration_exemplars/properties/pass/items/oneOf": {
-      "kind": "narrowable",
-      "variants": 2,
-      "note": "0:[type,value] | 1:[property_rid,artifact_id,assets]"
-    },
     "content-standards/create-content-standards-response.json##/oneOf": {
       "kind": "narrowable",
       "variants": 2,
@@ -136,16 +116,6 @@
       "variants": 2,
       "note": "0:[standards] | 1:[errors]"
     },
-    "content-standards/update-content-standards-request.json##/properties/calibration_exemplars/properties/fail/items/oneOf": {
-      "kind": "narrowable",
-      "variants": 2,
-      "note": "0:[type,value] | 1:[property_rid,artifact_id,assets]"
-    },
-    "content-standards/update-content-standards-request.json##/properties/calibration_exemplars/properties/pass/items/oneOf": {
-      "kind": "narrowable",
-      "variants": 2,
-      "note": "0:[type,value] | 1:[property_rid,artifact_id,assets]"
-    },
     "content-standards/validate-content-delivery-response.json##/oneOf": {
       "kind": "narrowable",
       "variants": 2,
@@ -160,6 +130,21 @@
       "kind": "dangerous",
       "variants": 4,
       "note": "shared-required=[type]; 0:req=[type,value_type,value] | 1:req=[type,value_type,values] | 2:req=[type,value_type] | 3:req=[type,description]"
+    },
+    "core/brand-font-role.json##/oneOf": {
+      "kind": "dangerous",
+      "variants": 2,
+      "note": "shared-required=[∅]; 0:string | 1:req=[family]"
+    },
+    "core/calibration-exemplars.json##/properties/fail/items/oneOf": {
+      "kind": "narrowable",
+      "variants": 2,
+      "note": "0:[type,value] | 1:[property_rid,artifact_id,assets]"
+    },
+    "core/calibration-exemplars.json##/properties/pass/items/oneOf": {
+      "kind": "narrowable",
+      "variants": 2,
+      "note": "0:[type,value] | 1:[property_rid,artifact_id,assets]"
     },
     "core/catchment.json##/oneOf": {
       "kind": "narrowable",
@@ -211,7 +196,7 @@
       "variants": 2,
       "note": "0:[allowed_intervals] | 1:[minimum_interval,maximum_interval]"
     },
-    "core/product-filters.json##/properties/geo_proximity/items/oneOf": {
+    "core/geo-proximity.json##/oneOf": {
       "kind": "narrowable",
       "variants": 3,
       "note": "0:[travel_time,transport_mode] | 1:[radius] | 2:[geometry]"
@@ -220,11 +205,6 @@
       "kind": "narrowable",
       "variants": 2,
       "note": "0:[uniform] | 1:[top,right,bottom,left]"
-    },
-    "core/targeting.json##/properties/geo_proximity/items/oneOf": {
-      "kind": "narrowable",
-      "variants": 3,
-      "note": "0:[travel_time,transport_mode] | 1:[radius] | 2:[geometry]"
     },
     "creative/get-creative-features-response.json##/oneOf": {
       "kind": "narrowable",
@@ -279,17 +259,7 @@
     "media-buy/create-media-buy-response.json##/oneOf": {
       "kind": "narrowable",
       "variants": 3,
-      "note": "0:[media_buy_id,confirmed_at,revision,packages] | 1:[errors] | 2:[status,task_id]"
-    },
-    "media-buy/get-media-buy-delivery-request.json##/properties/status_filter/oneOf": {
-      "kind": "dangerous",
-      "variants": 2,
-      "note": "shared-required=[∅]; 0:ref-only(/schemas/enums/media-buy-status.json) | 1:array"
-    },
-    "media-buy/get-media-buys-request.json##/properties/status_filter/oneOf": {
-      "kind": "dangerous",
-      "variants": 2,
-      "note": "shared-required=[∅]; 0:ref-only(/schemas/enums/media-buy-status.json) | 1:array"
+      "note": "0:[media_buy_id,confirmed_at,revision,packages] | 1:[errors] | 2:[status]"
     },
     "media-buy/get-products-response.json##/properties/filter_diagnostics/properties/excluded_by/additionalProperties/properties/values/items/oneOf": {
       "kind": "dangerous",
@@ -339,7 +309,7 @@
     "property/property-feature-result.json##/properties/property/oneOf": {
       "kind": "dangerous",
       "variants": 2,
-      "note": "shared-required=[∅]; 0:string | 1:ref-only(/schemas/core/property-id.json)"
+      "note": "shared-required=[∅]; 0:string | 1:string"
     },
     "protocol/get-adcp-capabilities-response.json##/properties/media_buy/properties/execution/properties/targeting/properties/language/oneOf": {
       "kind": "dangerous",

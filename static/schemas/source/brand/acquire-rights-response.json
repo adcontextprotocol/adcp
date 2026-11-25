@@ -22,6 +22,7 @@
         "rights_status": {
           "type": "string",
           "const": "acquired",
+          "default": "acquired",
           "description": "Rights have been cleared and credentials issued. Renamed from `status` in 3.1 to free the top-level `status` key for the envelope task-status (TaskStatus) under MCP flat-on-the-wire serialization (#4878)."
         },
         "brand_id": {
@@ -48,22 +49,8 @@
           }
         },
         "disclosure": {
-          "type": "object",
-          "description": "Required disclosure for creatives using these rights",
-          "properties": {
-            "required": {
-              "type": "boolean",
-              "description": "Whether disclosure is required"
-            },
-            "text": {
-              "type": "string",
-              "description": "Disclosure text to include with the creative"
-            }
-          },
-          "required": [
-            "required"
-          ],
-          "additionalProperties": true
+          "$ref": "/schemas/core/rights-disclosure.json",
+          "description": "Required disclosure for creatives using these rights"
         },
         "approval_webhook": {
           "$ref": "/schemas/core/push-notification-config.json",
@@ -121,6 +108,7 @@
         "rights_status": {
           "type": "string",
           "const": "pending_approval",
+          "default": "pending_approval",
           "description": "Rights require approval from the rights holder"
         },
         "brand_id": {
@@ -164,6 +152,7 @@
         "rights_status": {
           "type": "string",
           "const": "rejected",
+          "default": "rejected",
           "description": "Rights request was rejected"
         },
         "brand_id": {

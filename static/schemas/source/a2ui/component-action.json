@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/a2ui/component-action.json",
+  "title": "A2UI Component Action",
+  "description": "An action a component triggers: an action name plus optional context values bound to data.",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Action identifier"
+    },
+    "context": {
+      "type": "object",
+      "description": "Context data to include with action",
+      "additionalProperties": {
+        "$ref": "/schemas/a2ui/bound-value.json"
+      }
+    }
+  },
+  "required": [
+    "name"
+  ]
+}

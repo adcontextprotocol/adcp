@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-delivery-config-id.json",
+  "title": "Reporting Delivery Config ID",
+  "description": "Caller-selected identifier of a reporting delivery configuration, unique within the authenticated caller and account.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 64,
+  "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+  "x-entity": "reporting_delivery_config"
+}

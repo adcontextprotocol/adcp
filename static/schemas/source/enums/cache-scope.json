@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/cache-scope.json",
+  "title": "Cache Scope",
+  "description": "Cache layer that a wholesale feed version or change applies to.",
+  "type": "string",
+  "enum": [
+    "public",
+    "account"
+  ]
+}

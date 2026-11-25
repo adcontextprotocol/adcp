@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/delivery-reporting-period.json",
+  "title": "Delivery Reporting Period",
+  "description": "A half-open delivery reporting period: `start` is inclusive and `end` is exclusive. Both are instants on the reporting time zone's period boundaries.",
+  "type": "object",
+  "properties": {
+    "start": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Inclusive RFC 3339 start instant. For a date-bounded request, the start of start_date in the reporting timezone, written with that zone's UTC offset or as the equivalent UTC instant (e.g., 2026-04-15T00:00:00-04:00 or 2026-04-15T04:00:00Z for America/New_York; 2026-04-15T00:00:00Z for UTC)."
+    },
+    "end": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Exclusive RFC 3339 end instant. For a date-bounded request, the start of end_date in the reporting timezone (e.g., 2026-04-16T00:00:00-04:00 for a report covering 2026-04-15 in America/New_York)."
+    },
+    "timezone": {
+      "$ref": "/schemas/core/iana-timezone.json",
+      "description": "Reporting timezone applied to this report, as 'UTC' or an IANA timezone identifier. It equals the in-scope products' reporting_capabilities.timezone. start_date, end_date, the reporting_period boundaries, daily_breakdown[].date, and daily, weekly, or monthly windows[] all use it, so a stored report stays interpretable if the product's capability later changes. Sellers SHOULD return it on reads without reporting_revision_id whenever every in-scope media buy shares one reporting timezone. Exact reporting_revision_id reads return the revision period, which carries source_timezone instead.",
+      "examples": [
+        "UTC",
+        "America/New_York"
+      ]
+    }
+  },
+  "required": [
+    "start",
+    "end"
+  ],
+  "additionalProperties": true
+}

@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-logo-placement.json",
+  "title": "Brand Logo Placement",
+  "description": "Logo placement and clear space rules for automated creative production",
+  "type": "object",
+  "properties": {
+    "preferred_position": {
+      "type": "string",
+      "enum": [
+        "top-left",
+        "top-center",
+        "top-right",
+        "bottom-left",
+        "bottom-center",
+        "bottom-right",
+        "center"
+      ],
+      "description": "Preferred logo position in layouts"
+    },
+    "min_clear_space": {
+      "type": "string",
+      "description": "Minimum clear space around the logo, expressed as a multiple of logo height (e.g., '0.5x', '1x') or fixed value (e.g., '16px')"
+    },
+    "min_height": {
+      "type": "string",
+      "description": "Minimum logo height to maintain legibility (e.g., '40px', '24px')"
+    },
+    "background_contrast": {
+      "type": "string",
+      "enum": [
+        "light_only",
+        "dark_only",
+        "any"
+      ],
+      "description": "Permitted background contrast behind logo"
+    }
+  },
+  "additionalProperties": true
+}

@@ -6,12 +6,10 @@
   "type": "object",
   "definitions": {
     "VerificationTokenMode": {
-      "type": "string",
-      "enum": ["spec", "live"]
+      "$ref": "/schemas/enums/verification-token-mode.json"
     },
     "VerificationTokenGradingProfile": {
-      "type": "string",
-      "enum": ["legacy", "spec"]
+      "$ref": "/schemas/enums/verification-grading-profile.json"
     }
   },
   "required": [

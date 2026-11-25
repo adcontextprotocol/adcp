@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/creative-agent-entry.json",
+  "title": "Creative Agent Entry",
+  "description": "A creative agent: its URL, name, and capabilities.",
+  "type": "object",
+  "properties": {
+    "agent_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Base URL for the creative agent (e.g., 'https://reference.example.com', 'https://dco.example.com')."
+    },
+    "agent_name": {
+      "type": "string",
+      "description": "Human-readable name for the creative agent"
+    },
+    "capabilities": {
+      "type": "array",
+      "description": "Capabilities this creative agent provides",
+      "items": {
+        "$ref": "/schemas/enums/creative-agent-capability.json"
+      }
+    }
+  },
+  "required": [
+    "agent_url"
+  ]
+}

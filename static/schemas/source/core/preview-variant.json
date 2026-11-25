@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/preview-variant.json",
+  "title": "Preview Variant",
+  "description": "One preview of a creative: a preview ID, one or more renders, and the input that produced them.",
+  "type": "object",
+  "properties": {
+    "preview_id": {
+      "type": "string",
+      "description": "Unique identifier for this preview variant"
+    },
+    "renders": {
+      "type": "array",
+      "description": "Array of rendered pieces for this preview variant. Most formats render as a single piece. Companion ad formats (video + banner), multi-placement formats, and adaptive formats render as multiple pieces.",
+      "items": {
+        "$ref": "/schemas/creative/preview-render.json"
+      },
+      "minItems": 1
+    },
+    "input": {
+      "$ref": "/schemas/core/preview-input.json",
+      "description": "The input parameters that generated this preview variant. Echoes back the request input or shows defaults used."
+    }
+  },
+  "required": [
+    "preview_id",
+    "renders",
+    "input"
+  ]
+}

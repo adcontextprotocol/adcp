@@ -17,27 +17,8 @@
       "x-entity": "si_session"
     },
     "response": {
-      "type": "object",
-      "description": "Brand agent's response",
-      "properties": {
-        "message": {
-          "type": "string",
-          "description": "Conversational message from brand agent"
-        },
-        "surface": {
-          "$ref": "/schemas/a2ui/surface.json",
-          "description": "A2UI surface with interactive components"
-        },
-        "ui_elements": {
-          "type": "array",
-          "items": {
-            "$ref": "/schemas/sponsored-intelligence/si-ui-element.json"
-          },
-          "description": "Visual components to render (DEPRECATED: use surface instead)",
-          "deprecated": true
-        }
-      },
-      "additionalProperties": true
+      "$ref": "/schemas/core/si-brand-agent-response.json",
+      "description": "Brand agent's response"
     },
     "mcp_resource_uri": {
       "type": "string",
@@ -72,20 +53,12 @@
               "description": "The commerce action (e.g., 'purchase')"
             },
             "product": {
-              "type": "object",
+              "$ref": "/schemas/core/si-transaction-product.json",
               "description": "Product details for checkout"
             },
             "price": {
-              "type": "object",
-              "description": "Price information",
-              "properties": {
-                "amount": {
-                  "type": "number"
-                },
-                "currency": {
-                  "type": "string"
-                }
-              }
+              "$ref": "/schemas/core/money.json",
+              "description": "Price information"
             }
           },
           "additionalProperties": true

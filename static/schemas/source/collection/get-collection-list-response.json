@@ -18,6 +18,7 @@
       "type": "array",
       "description": "Resolved collections that passed filters (if resolve=true). Each entry contains identification and key metadata for seller matching.",
       "items": {
+        "title": "Resolved Collection List Entry",
         "type": "object",
         "properties": {
           "collection_rid": {
@@ -41,26 +42,7 @@
             "type": "array",
             "description": "Platform-independent identifiers for cross-publisher matching",
             "items": {
-              "type": "object",
-              "properties": {
-                "type": {
-                  "$ref": "/schemas/enums/distribution-identifier-type.json",
-                  "description": "Type of distribution identifier"
-                },
-                "value": {
-                  "type": "string",
-                  "description": "The identifier value"
-                }
-              },
-              "required": [
-                "type",
-                "value"
-              ],
-              "additionalProperties": true,
-              "not": {
-                "required": ["type"],
-                "properties": { "type": { "const": "platform_channel_id" } }
-              }
+              "$ref": "/schemas/core/platform-independent-distribution-identifier.json"
             }
           },
           "content_rating": {
@@ -107,26 +89,7 @@
       "additionalProperties": {
         "type": "array",
         "items": {
-          "type": "object",
-          "properties": {
-            "type": {
-              "$ref": "/schemas/enums/distribution-identifier-type.json",
-              "description": "Type of distribution identifier"
-            },
-            "value": {
-              "type": "string",
-              "description": "The identifier value"
-            }
-          },
-          "required": [
-            "type",
-            "value"
-          ],
-          "additionalProperties": true,
-          "not": {
-            "required": ["type"],
-            "properties": { "type": { "const": "platform_channel_id" } }
-          }
+          "$ref": "/schemas/core/platform-independent-distribution-identifier.json"
         }
       }
     },

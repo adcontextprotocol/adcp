@@ -9,7 +9,7 @@
   ],
   "anyOf": [
     {
-      "properties": { "status": { "type": "string", "const": "completed" } },
+      "properties": { "status": { "type": "string", "const": "completed", "default": "completed" } },
       "required": ["results", "products"],
       "not": {
         "anyOf": [
@@ -28,6 +28,7 @@
       "description": "Results in the request's refinements[] order; position carries no ranking. If any result is finalized, every result MUST be finalized; under inventory_hold semantics a finalize batch either creates every requested hold or none, and under terms_only semantics (get_adcp_capabilities media_buy.proposal_refinement.hold_semantics, or a draft hold_policy with available false) it commits every requested proposal's terms or none, with no inventory hold placed for those entries. An extend_hold batch either extends every requested hold or none. Every returned proposal carries parent_proposal_id equal to the result's source_proposal_id, making negotiation lineage reconstructible from the proposals alone.",
       "minItems": 1,
       "items": {
+        "title": "ProposalRefinementResult",
         "type": "object",
         "discriminator": {
           "propertyName": "outcome"
@@ -54,7 +55,7 @@
             "$ref": "/schemas/enums/proposal-refinement-reason.json",
             "description": "Single most-significant code for this result. constraint_unsatisfiable takes precedence over every other code; an alternatives shortfall alongside an unsatisfied constraint remains visible through proposals.length."
           },
-          "reason": { "type": "string", "minLength": 1 },
+          "reason": { "$ref": "/schemas/core/refinement-result-reason.json" },
           "unsatisfied_constraints": {
             "type": "array",
             "description": "Stable keys from the request constraints object that were not satisfied by every returned draft. A result carrying any key here MUST use outcome partial or unable, never revised.",
@@ -83,7 +84,7 @@
           },
           "suggestions": {
             "type": "array",
-            "items": { "type": "string", "minLength": 1 },
+            "items": { "$ref": "/schemas/core/seller-suggestion.json" },
             "minItems": 1
           },
           "targeting_resolution": {
@@ -95,7 +96,7 @@
         "oneOf": [
           {
             "properties": {
-              "outcome": { "type": "string", "const": "revised" },
+              "outcome": { "type": "string", "const": "revised", "default": "revised" },
               "proposals": {
                 "items": {
                   "properties": { "proposal_status": { "type": "string", "const": "draft" } },
@@ -117,7 +118,7 @@
           },
           {
             "properties": {
-              "outcome": { "type": "string", "const": "partial" },
+              "outcome": { "type": "string", "const": "partial", "default": "partial" },
               "proposals": {
                 "items": {
                   "properties": { "proposal_status": { "type": "string", "const": "draft" } },
@@ -130,7 +131,7 @@
           },
           {
             "properties": {
-              "outcome": { "type": "string", "const": "finalized" },
+              "outcome": { "type": "string", "const": "finalized", "default": "finalized" },
               "proposal": {
                 "properties": {
                   "proposal_status": { "type": "string", "const": "committed" },
@@ -152,7 +153,7 @@
             }
           },
           {
-            "properties": { "outcome": { "type": "string", "const": "unable" } },
+            "properties": { "outcome": { "type": "string", "const": "unable", "default": "unable" } },
             "required": ["outcome", "reason_code", "reason"],
             "not": {
               "anyOf": [

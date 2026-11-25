@@ -10,7 +10,7 @@
   "oneOf": [
     {
       "properties": {
-        "scope": { "type": "string", "const": "standard" },
+        "scope": { "type": "string", "const": "standard", "default": "standard" },
         "metric_id": { "$ref": "/schemas/enums/available-metric.json" },
         "qualifier": { "$ref": "/schemas/core/canonical-metric-qualifier.json" },
         "effective_at": { "type": "string", "format": "date-time" }
@@ -20,7 +20,7 @@
     },
     {
       "properties": {
-        "scope": { "type": "string", "const": "vendor" },
+        "scope": { "type": "string", "const": "vendor", "default": "vendor" },
         "vendor": { "$ref": "/schemas/core/brand-key.json" },
         "metric_id": { "$ref": "/schemas/core/vendor-metric-id.json" },
         "qualifier": { "$ref": "/schemas/core/canonical-metric-qualifier.json" },

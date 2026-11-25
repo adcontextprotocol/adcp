@@ -7,10 +7,8 @@
   "type": "object",
   "properties": {
     "installment_id": {
-      "type": "string",
-      "minLength": 1,
-      "description": "Installment ID within the referenced collection. Collection-scoped, not globally unique.",
-      "x-entity": "installment"
+      "$ref": "/schemas/core/installment-id.json",
+      "description": "Installment ID within the referenced collection. Collection-scoped, not globally unique."
     },
     "collection_ref": {
       "$ref": "/schemas/core/collection-ref.json",

@@ -14,9 +14,7 @@
           "description": "Vendor whose measurement of the billing metric is authoritative for invoicing (e.g., { domain: 'campaignmanager.google.com' } for buyer's DCM, { domain: 'admanager.google.com' } for seller's GAM)."
         },
         "max_variance_percent": {
-          "type": "number",
-          "minimum": 0,
-          "exclusiveMaximum": 100,
+          "$ref": "/schemas/core/billing-variance-percent.json",
           "description": "Maximum acceptable variance between the billing vendor's count and the other party's count before resolution is triggered (e.g., 10 means a 10% divergence triggers review)."
         },
         "measurement_window": {
@@ -43,21 +41,8 @@
       "additionalProperties": true
     },
     "makegood_policy": {
-      "type": "object",
-      "description": "Remedies available when a performance standard or billing measurement variance is breached. Seller declares which remedy types they support. When a breach occurs, the seller proposes a remedy from this menu; the buyer accepts or disputes.",
-      "properties": {
-        "available_remedies": {
-          "type": "array",
-          "description": "Remedy types the seller supports. Ordered by seller preference (first = preferred). Seller proposes from this list when a breach occurs; buyer accepts or disputes.",
-          "items": {
-            "$ref": "/schemas/enums/makegood-remedy.json"
-          },
-          "minItems": 1,
-          "uniqueItems": true
-        }
-      },
-      "required": ["available_remedies"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/makegood-policy.json",
+      "description": "Remedies available when a performance standard or billing measurement variance is breached. Seller declares which remedy types they support. When a breach occurs, the seller proposes a remedy from this menu; the buyer accepts or disputes."
     }
   },
   "additionalProperties": true

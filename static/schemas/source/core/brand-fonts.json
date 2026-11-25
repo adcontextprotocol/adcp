@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-fonts.json",
+  "title": "Brand Fonts",
+  "description": "Brand typography. Each key is a role name (e.g., 'primary', 'secondary') referenced by type_scale entries. Values are either a CSS font-family string or a structured object with font files for reliable resolution.",
+  "type": "object",
+  "maxProperties": 20,
+  "properties": {
+    "primary": {
+      "$ref": "/schemas/core/brand-font-role.json",
+      "description": "Primary font family"
+    },
+    "secondary": {
+      "$ref": "/schemas/core/brand-font-role.json",
+      "description": "Secondary font family"
+    }
+  },
+  "additionalProperties": {
+    "$ref": "/schemas/core/brand-font-role.json"
+  }
+}

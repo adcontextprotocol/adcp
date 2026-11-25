@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/creative-preview.json",
+  "title": "Creative Preview",
+  "description": "Preview content for a creative: one or more previews, an optional interactive URL, and an expiry time.",
+  "type": "object",
+  "properties": {
+    "previews": {
+      "type": "array",
+      "description": "Array of preview variants for this creative",
+      "items": {
+        "$ref": "/schemas/core/preview-variant.json"
+      },
+      "minItems": 1
+    },
+    "interactive_url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the preview URLs expire. **Optional** — omit for non-expiring preview URLs. See the single-preview branch's `expires_at` description for the full convention."
+    }
+  },
+  "required": [
+    "previews"
+  ]
+}

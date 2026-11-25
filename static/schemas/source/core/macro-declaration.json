@@ -17,15 +17,11 @@
   "type": "object",
   "properties": {
     "declaration_id": {
-      "type": "string",
-      "pattern": "^[A-Za-z0-9_-]+$",
-      "minLength": 1,
-      "x-entity": "macro_declaration",
+      "$ref": "/schemas/core/macro-declaration-id.json",
       "description": "Identifier unique within the enclosing asset, used to correlate validation results."
     },
     "token": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/macro-token.json",
       "description": "Exact byte-preserved token expression at this occurrence, including delimiters."
     },
     "dialect": { "$ref": "/schemas/enums/macro-dialect.json" },
@@ -35,13 +31,11 @@
       "description": "Authority-controlled registry or mapping URI. Required for IAB VAST, IAB DAAST, and vendor dialects."
     },
     "dialect_revision": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/macro-dialect-revision.json",
       "description": "Immutable registry/mapping revision, release, commit, or digest. Required for IAB VAST, IAB DAAST, and vendor dialects."
     },
     "dialect_semantic": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/macro-dialect-semantic.json",
       "description": "Exact semantic identifier in the cited dialect, such as `CACHEBUSTING`, `PLAYERSTATE`, or a documented vendor name. This is not inferred from token spelling."
     },
     "mapping_status": { "$ref": "/schemas/enums/macro-mapping-status.json" },
@@ -85,8 +79,7 @@
       "description": "Whether terminal delivery must fail if the declared operation cannot complete."
     },
     "unavailable_behavior": {
-      "type": "string",
-      "enum": ["preserve", "omit_parameter", "dialect_sentinel", "reject"],
+      "$ref": "/schemas/enums/macro-unavailable-behavior.json",
       "description": "Action when the responsible actor has no value. Omission is legal only for a complete URL query-value occurrence; dialect sentinels require a cited dialect rule."
     }
   },
@@ -145,7 +138,7 @@
       "then": {
         "required": ["performed_by", "translation_target"],
         "properties": {
-          "mapping_status": { "enum": ["verified_universal", "dialect_defined"] },
+          "mapping_status": { "$ref": "/schemas/enums/resolved-macro-mapping-status.json" },
           "encoding": { "properties": { "kind": { "const": "none" }, "depth": { "const": 0 } } }
         }
       }
@@ -154,7 +147,7 @@
       "if": { "properties": { "operation": { "const": "resolve_value" } }, "required": ["operation"] },
       "then": {
         "required": ["performed_by"],
-        "properties": { "mapping_status": { "enum": ["verified_universal", "dialect_defined"] } },
+        "properties": { "mapping_status": { "$ref": "/schemas/enums/resolved-macro-mapping-status.json" } },
         "not": { "required": ["translation_target"] }
       }
     },
@@ -203,7 +196,7 @@
         "properties": {
           "operation": { "const": "resolve_value" },
           "performed_by": { "const": "seller" },
-          "location": { "properties": { "context": { "enum": ["url_query_value", "url_path_segment"] } } },
+          "location": { "properties": { "context": { "$ref": "/schemas/enums/url-macro-context.json" } } },
           "encoding": { "properties": { "kind": { "const": "rfc3986" }, "depth": { "const": 1 } } }
         }
       }

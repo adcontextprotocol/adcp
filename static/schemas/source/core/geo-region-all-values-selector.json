@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/geo-region-all-values-selector.json",
+  "title": "Geo Region All-Values Selector",
+  "description": "A selector that covers every subdivision value of a country.",
+  "type": "object",
+  "properties": {
+    "all_values": {
+      "type": "boolean",
+      "const": true,
+      "description": "Every protocol-valid ISO 3166-2 subdivision active in this declaration's support snapshot is selectable. Values introduced by a later catalog revision are not included automatically."
+    }
+  },
+  "required": [
+    "all_values"
+  ],
+  "not": {
+    "required": [
+      "values"
+    ]
+  },
+  "additionalProperties": true
+}

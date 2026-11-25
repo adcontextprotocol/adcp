@@ -36,29 +36,11 @@
           "properties": {
             "claim_type": {
               "type": "string",
-              "const": "subsidiary"
+              "const": "subsidiary",
+              "default": "subsidiary"
             },
             "claim": {
-              "type": "object",
-              "properties": {
-                "subsidiary_domain": {
-                  "type": "string",
-                  "format": "hostname",
-                  "description": "Domain of the leaf brand whose `house_domain` claim is being verified."
-                },
-                "subsidiary_brand_id": {
-                  "type": "string",
-                  "pattern": "^[a-z0-9_]+$",
-                  "description": "Stable brand identifier the leaf uses for itself. Optional but recommended."
-                },
-                "observed_at": {
-                  "type": "string",
-                  "format": "date-time",
-                  "description": "When the caller observed the leaf's claim."
-                }
-              },
-              "required": ["subsidiary_domain"],
-              "additionalProperties": true
+              "$ref": "/schemas/core/brand-claim-subsidiary.json"
             }
           },
           "required": ["claim_type", "claim"],
@@ -70,27 +52,11 @@
           "properties": {
             "claim_type": {
               "type": "string",
-              "const": "parent"
+              "const": "parent",
+              "default": "parent"
             },
             "claim": {
-              "type": "object",
-              "properties": {
-                "parent_domain": {
-                  "type": "string",
-                  "format": "hostname",
-                  "description": "Domain of the house claimed as this brand's parent."
-                },
-                "claimant_says": {
-                  "type": "string",
-                  "description": "Optional context — what the claimant published or said."
-                },
-                "observed_at": {
-                  "type": "string",
-                  "format": "date-time"
-                }
-              },
-              "required": ["parent_domain"],
-              "additionalProperties": true
+              "$ref": "/schemas/core/brand-claim-parent.json"
             }
           },
           "required": ["claim_type", "claim"],
@@ -102,31 +68,18 @@
           "properties": {
             "claim_type": {
               "type": "string",
-              "const": "property"
+              "const": "property",
+              "default": "property"
             },
             "claim": {
               "type": "object",
               "properties": {
                 "property": {
-                  "type": "object",
-                  "description": "Shape matches brand.json properties[] entry.",
-                  "properties": {
-                    "type": {
-                      "$ref": "/schemas/enums/property-type.json"
-                    },
-                    "identifier": { "type": "string" },
-                    "store": {
-                      "type": "string",
-                      "enum": ["apple", "google", "amazon", "roku", "fire_tv", "samsung", "lg", "vizio", "other"]
-                    },
-                    "region": { "type": "string" }
-                  },
-                  "required": ["type", "identifier"],
-                  "additionalProperties": true
+                  "$ref": "/schemas/core/brand-property.json",
+                  "description": "Shape matches brand.json properties[] entry."
                 },
                 "use_case": {
-                  "type": "string",
-                  "maxLength": 100,
+                  "$ref": "/schemas/core/brand-claim-use-case.json",
                   "description": "Optional caller-declared use case."
                 }
               },
@@ -143,35 +96,11 @@
           "properties": {
             "claim_type": {
               "type": "string",
-              "const": "trademark"
+              "const": "trademark",
+              "default": "trademark"
             },
             "claim": {
-              "type": "object",
-              "properties": {
-                "mark": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 200
-                },
-                "registry": {
-                  "type": "string",
-                  "maxLength": 50
-                },
-                "number": {
-                  "type": "string",
-                  "maxLength": 100
-                },
-                "countries": {
-                  "type": "array",
-                  "items": { "type": "string", "minLength": 2, "maxLength": 2 }
-                },
-                "use_case": {
-                  "type": "string",
-                  "maxLength": 100
-                }
-              },
-              "required": ["mark"],
-              "additionalProperties": true
+              "$ref": "/schemas/core/brand-claim-trademark.json"
             }
           },
           "required": ["claim_type", "claim"],

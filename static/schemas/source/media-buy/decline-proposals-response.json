@@ -9,7 +9,7 @@
   ],
   "anyOf": [
     {
-      "properties": { "status": { "type": "string", "const": "completed" } },
+      "properties": { "status": { "type": "string", "const": "completed", "default": "completed" } },
       "required": ["results"],
       "not": { "required": ["task_id"] }
     },
@@ -23,33 +23,31 @@
       "minItems": 0,
       "description": "One result per requested decline, in request order. Empty only when the request carried an empty declines array with an opportunity update.",
       "items": {
+        "title": "ProposalDeclineResult",
         "type": "object",
         "discriminator": { "propertyName": "outcome" },
         "properties": {
           "proposal_id": {
-            "type": "string",
-            "minLength": 1,
-            "x-entity": "proposal"
+            "$ref": "/schemas/core/proposal-id.json"
           },
           "outcome": {
             "type": "string",
             "enum": ["declined", "unable"]
           },
           "reason": {
-            "type": "string",
-            "minLength": 1,
+            "$ref": "/schemas/core/decline-failure-reason.json",
             "description": "Why the seller could not apply a decline. Present only for outcome unable."
           }
         },
         "required": ["proposal_id", "outcome"],
         "oneOf": [
           {
-            "properties": { "outcome": { "const": "declined" } },
+            "properties": { "outcome": { "const": "declined", "default": "declined" } },
             "required": ["outcome"],
             "not": { "required": ["reason"] }
           },
           {
-            "properties": { "outcome": { "const": "unable" } },
+            "properties": { "outcome": { "const": "unable", "default": "unable" } },
             "required": ["outcome", "reason"]
           }
         ],

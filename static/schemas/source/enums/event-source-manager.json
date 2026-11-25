@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/event-source-manager.json",
+  "title": "Event Source Manager",
+  "description": "Party that manages an event source.",
+  "type": "string",
+  "enum": [
+    "buyer",
+    "seller"
+  ]
+}

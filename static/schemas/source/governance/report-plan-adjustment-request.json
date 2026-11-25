@@ -84,32 +84,15 @@
       "x-entity": "seller_adjustment"
     },
     "adjustment_type": {
-      "type": "string",
-      "enum": ["decommitment", "refund", "credit", "makegood"],
+      "$ref": "/schemas/enums/plan-adjustment-type.json",
       "description": "Commercial meaning. Verified decommitments restore headroom in every mode; verified refunds and credits restore it only in verified_net_cost mode; makegoods never restore cash headroom."
     },
     "amount": {
-      "type": "object",
-      "description": "Positive adjustment amount in the plan currency.",
-      "properties": {
-        "amount": {
-          "type": "number",
-          "exclusiveMinimum": 0,
-          "description": "Finite positive amount. Cumulative adjustments for an outcome cannot exceed its authoritative commitment."
-        },
-        "currency": {
-          "type": "string",
-          "pattern": "^[A-Z]{3}$",
-          "description": "Three-letter uppercase currency code matching the plan currency."
-        }
-      },
-      "required": ["amount", "currency"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/plan-adjustment-amount.json",
+      "description": "Positive adjustment amount in the plan currency."
     },
     "reason": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 1000,
+      "$ref": "/schemas/core/plan-adjustment-reason.json",
       "description": "Human-readable reason retained in the audit trail."
     },
     "effective_at": {
@@ -118,31 +101,11 @@
       "description": "When the seller's adjustment became effective."
     },
     "evidence": {
-      "type": "object",
-      "description": "Integrity-bound commercial source record supplied by the seller. Its evidence_type must correspond to adjustment_type.",
-      "properties": {
-        "evidence_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255,
-          "description": "Immutable identifier in the authenticated seller's namespace. Reuse with different adjustment evidence is a conflict.",
-          "x-entity": "governance_adjustment_evidence"
-        },
-        "evidence_type": {
-          "type": "string",
-          "enum": ["decommitment_agreement", "refund_settlement", "credit_note", "makegood_agreement"]
-        },
-        "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
-        "issued_at": { "type": "string", "format": "date-time" }
-      },
-      "required": ["evidence_id", "evidence_type", "digest", "issued_at"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/plan-adjustment-evidence.json",
+      "description": "Integrity-bound commercial source record supplied by the seller. Its evidence_type must correspond to adjustment_type."
     },
     "idempotency_key": {
-      "type": "string",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
+      "$ref": "/schemas/core/idempotency-key.json",
       "description": "Caller-generated retry key. Exact replays return the original report or review; reuse with another payload is rejected."
     },
     "context": { "$ref": "/schemas/core/context.json" },

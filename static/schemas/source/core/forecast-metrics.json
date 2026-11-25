@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/forecast-metrics.json",
+  "title": "Forecast Metrics",
+  "description": "Forecast metric values keyed by metric, each a low, mid, and high range. Additional keys carry event-type metrics.",
+  "type": "object",
+  "properties": {
+    "audience_size": {
+      "$ref": "/schemas/core/forecast-range.json"
+    },
+    "reach": {
+      "$ref": "/schemas/core/forecast-range.json"
+    },
+    "frequency": {
+      "$ref": "/schemas/core/forecast-range.json"
+    },
+    "impressions": {
+      "$ref": "/schemas/core/forecast-range.json"
+    },
+    "clicks": {
+      "$ref": "/schemas/core/forecast-range.json"
+    },
+    "spend": {
+      "$ref": "/schemas/core/forecast-range.json"
+    },
+    "views": {
+      "$ref": "/schemas/core/forecast-range.json"
+    },
+    "completed_views": {
+      "$ref": "/schemas/core/forecast-range.json"
+    },
+    "grps": {
+      "$ref": "/schemas/core/forecast-range.json"
+    },
+    "engagements": {
+      "$ref": "/schemas/core/forecast-range.json"
+    },
+    "follows": {
+      "$ref": "/schemas/core/forecast-range.json"
+    },
+    "saves": {
+      "$ref": "/schemas/core/forecast-range.json"
+    },
+    "profile_visits": {
+      "$ref": "/schemas/core/forecast-range.json"
+    },
+    "measured_impressions": {
+      "$ref": "/schemas/core/forecast-range.json"
+    },
+    "downloads": {
+      "$ref": "/schemas/core/forecast-range.json"
+    },
+    "plays": {
+      "$ref": "/schemas/core/forecast-range.json"
+    },
+    "coverage_rate": {
+      "$ref": "/schemas/core/forecast-rate-range.json",
+      "description": "Share of the declared forecast scope represented by this point. For signal coverage forecasts, this is the point's count divided by the coverage_forecast.scope denominator. Range 0.0 to 1.0."
+    }
+  },
+  "additionalProperties": {
+    "$ref": "/schemas/core/forecast-range.json"
+  }
+}

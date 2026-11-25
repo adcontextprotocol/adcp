@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-border-radius.json",
+  "title": "Brand Border Radius",
+  "description": "Named border radius presets for UI components and layout elements. One of the most visible brand differentiators — Airbnb uses generous 20px, Stripe uses precise 4–8px, Spotify uses pill/999px.",
+  "type": "object",
+  "properties": {
+    "none": {
+      "type": "string",
+      "description": "Explicitly sharp corners (e.g., '0')"
+    },
+    "default": {
+      "type": "string",
+      "description": "Default border radius for UI components (e.g., '8px', '12px', '0'). For graphic/illustration elements, see graphic_style.corner_radius."
+    },
+    "small": {
+      "type": "string",
+      "description": "Small border radius for compact elements (e.g., '4px')"
+    },
+    "large": {
+      "type": "string",
+      "description": "Large border radius for cards and containers (e.g., '16px', '24px')"
+    },
+    "pill": {
+      "type": "string",
+      "description": "Fully rounded / pill shape (e.g., '999px')"
+    }
+  },
+  "additionalProperties": {
+    "type": "string"
+  }
+}

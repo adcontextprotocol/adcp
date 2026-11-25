@@ -13,6 +13,7 @@
         "type": {
           "type": "string",
           "const": "segment_id",
+          "default": "segment_id",
           "description": "Segment ID based targeting"
         },
         "segment_id": {
@@ -31,6 +32,7 @@
         "type": {
           "type": "string",
           "const": "key_value",
+          "default": "key_value",
           "description": "Key-value pair based targeting"
         },
         "key": {

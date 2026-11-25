@@ -15,6 +15,7 @@
       "type": "array",
       "description": "Status for each synced plan.",
       "items": {
+        "title": "Plan Sync Result",
         "type": "object",
         "properties": {
           "plan_id": {

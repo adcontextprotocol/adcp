@@ -12,8 +12,7 @@
       "description": "Stable identifier for this declaration within its namespace. REQUIRED when a product contains multiple declarations with the same format_kind and SHOULD be set on every entry. Publisher-backed options pair it with publisher_domain; product-local options omit publisher_domain. When a single declaration has a unique format_kind and no ID, buyers author canonically with format_kind plus params; they MUST NOT fall back to deprecated format_ids merely because this optional ID is absent. Examples: 'display_image_300x250', 'responsive_search', 'daily_pulse_homepage_image'."
     },
     "publisher_domain": {
-      "type": "string",
-      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+      "$ref": "/schemas/core/domain-name.json",
       "description": "Namespace for `format_option_id` when this declaration references or narrows a publisher-declared format option from that publisher's adagents.json top-level `formats[]`. Product-local options omit this field and are selected by `format_option_id` within the target product."
     },
     "tracker_execution_contract": {
@@ -40,9 +39,7 @@
       "description": "Optional seller-controlled human-readable label for this format declaration. Used by buyer dashboards, catalog UIs, and reporting surfaces to show a seller's own naming ('Homepage Takeover', 'Branded Canvas', 'Reels Premium Video') rather than the raw `format_kind` or `format_option_id`. Has no machine semantics — buyer agents route on `format_kind` and `format_option_id`; `display_name` is purely for human presentation. Freeform; no enumeration. Sellers SHOULD keep it stable once published to avoid dashboard churn."
     },
     "sample_render_url": {
-      "type": "string",
-      "format": "uri",
-      "pattern": "^https://",
+      "$ref": "/schemas/core/https-url.json",
       "description": "Optional public HTTPS page where a human can inspect a sample render of this declaration using assets chosen by the party publishing the enclosing declaration. Consumers MUST identify that source correctly: publisher or community mirror for `adagents.json` `formats[]`, seller for product or inline-placement declarations, and creative agent for `creative.supported_formats`. Informational only: this is not a renderer endpoint, buyer-asset preview, validation result, creative approval, proof of publisher acceptance, or guarantee of live delivery. Declaring parties SHOULD keep the URL stable while the declaration is active."
     },
     "applies_to_channels": {
@@ -52,8 +49,7 @@
       "description": "Optional subset of the parent product's `channels` to which this declaration applies. When omitted, the declaration applies to ALL channels declared on the product. Lets a multi-channel product (e.g., `channels: ['display', 'video']`) carry distinct format_options per channel — `format_options: [{format_kind: 'image', applies_to_channels: ['display']}, {format_kind: 'video_hosted', applies_to_channels: ['video']}]`. Buyers ship channel-appropriate manifests per `applies_to_channels`."
     },
     "seller_preference": {
-      "type": "string",
-      "enum": ["preferred", "accepted", "discouraged"],
+      "$ref": "/schemas/enums/format-seller-preference.json",
       "description": "Optional soft routing hint *within* a product's accepted set of formats — NOT an enforcement axis. `preferred` — seller actively recommends this format (often because of measurement, viewability, or render-quality differences); `accepted` — supported on equal footing with other format_options (default when omitted); `discouraged` — supported but suboptimal (e.g., legacy 3p-tag where the seller would prefer html5 for OM-SDK coverage). Buyer agents picking between format_options SHOULD respect seller preferences when their own constraints don't override.\n\n**Not an enforcement axis (normative).** `seller_preference` does NOT carry the meaning of 'this format won't work / required-only'. That case is structural: `format_options[]` IS the closed set of accepted formats; anything outside the list is rejected at `create_media_buy` regardless of preference. A seller that accepts only one format lists exactly that one entry — the structural fact does the enforcement work, no enum value needed. There is intentionally no `required` value; preference is bounded to *ranking within the already-accepted set*, not gating into it."
     },
     "locale_policy": {
@@ -160,7 +156,7 @@
     {
       "title": "Image Format Declaration",
       "properties": {
-        "format_kind": { "type": "string", "const": "image" },
+        "format_kind": { "type": "string", "const": "image", "default": "image" },
         "params": { "$ref": "/schemas/formats/canonical/image.json" }
       },
       "required": ["format_kind", "params"]
@@ -168,7 +164,7 @@
     {
       "title": "HTML5 Format Declaration",
       "properties": {
-        "format_kind": { "type": "string", "const": "html5" },
+        "format_kind": { "type": "string", "const": "html5", "default": "html5" },
         "params": { "$ref": "/schemas/formats/canonical/html5.json" }
       },
       "required": ["format_kind", "params"]
@@ -176,7 +172,7 @@
     {
       "title": "Display Tag Format Declaration",
       "properties": {
-        "format_kind": { "type": "string", "const": "display_tag" },
+        "format_kind": { "type": "string", "const": "display_tag", "default": "display_tag" },
         "params": { "$ref": "/schemas/formats/canonical/display_tag.json" }
       },
       "required": ["format_kind", "params"]
@@ -184,7 +180,7 @@
     {
       "title": "Image Carousel Format Declaration",
       "properties": {
-        "format_kind": { "type": "string", "const": "image_carousel" },
+        "format_kind": { "type": "string", "const": "image_carousel", "default": "image_carousel" },
         "params": { "$ref": "/schemas/formats/canonical/image_carousel.json" }
       },
       "required": ["format_kind", "params"]
@@ -192,7 +188,7 @@
     {
       "title": "Hosted Video Format Declaration",
       "properties": {
-        "format_kind": { "type": "string", "const": "video_hosted" },
+        "format_kind": { "type": "string", "const": "video_hosted", "default": "video_hosted" },
         "params": { "$ref": "/schemas/formats/canonical/video_hosted.json" }
       },
       "required": ["format_kind", "params"]
@@ -200,7 +196,7 @@
     {
       "title": "VAST Video Format Declaration",
       "properties": {
-        "format_kind": { "type": "string", "const": "video_vast" },
+        "format_kind": { "type": "string", "const": "video_vast", "default": "video_vast" },
         "params": { "$ref": "/schemas/formats/canonical/video_vast.json" }
       },
       "required": ["format_kind", "params"]
@@ -208,7 +204,7 @@
     {
       "title": "Hosted Audio Format Declaration",
       "properties": {
-        "format_kind": { "type": "string", "const": "audio_hosted" },
+        "format_kind": { "type": "string", "const": "audio_hosted", "default": "audio_hosted" },
         "params": { "$ref": "/schemas/formats/canonical/audio_hosted.json" }
       },
       "required": ["format_kind", "params"]
@@ -216,7 +212,7 @@
     {
       "title": "VAST Audio Format Declaration",
       "properties": {
-        "format_kind": { "type": "string", "const": "audio_vast" },
+        "format_kind": { "type": "string", "const": "audio_vast", "default": "audio_vast" },
         "params": { "$ref": "/schemas/formats/canonical/audio_vast.json" }
       },
       "required": ["format_kind", "params"]
@@ -224,7 +220,7 @@
     {
       "title": "DAAST Audio Format Declaration",
       "properties": {
-        "format_kind": { "type": "string", "const": "audio_daast" },
+        "format_kind": { "type": "string", "const": "audio_daast", "default": "audio_daast" },
         "params": { "$ref": "/schemas/formats/canonical/audio_daast.json" }
       },
       "required": ["format_kind", "params"]
@@ -232,7 +228,7 @@
     {
       "title": "Sponsored Placement Format Declaration",
       "properties": {
-        "format_kind": { "type": "string", "const": "sponsored_placement" },
+        "format_kind": { "type": "string", "const": "sponsored_placement", "default": "sponsored_placement" },
         "params": { "$ref": "/schemas/formats/canonical/sponsored_placement.json" }
       },
       "required": ["format_kind", "params"]
@@ -240,7 +236,7 @@
     {
       "title": "Native In-Feed Format Declaration",
       "properties": {
-        "format_kind": { "type": "string", "const": "native_in_feed" },
+        "format_kind": { "type": "string", "const": "native_in_feed", "default": "native_in_feed" },
         "params": { "$ref": "/schemas/formats/canonical/native_in_feed.json" }
       },
       "required": ["format_kind", "params"]
@@ -248,7 +244,7 @@
     {
       "title": "Responsive Creative Format Declaration",
       "properties": {
-        "format_kind": { "type": "string", "const": "responsive_creative" },
+        "format_kind": { "type": "string", "const": "responsive_creative", "default": "responsive_creative" },
         "params": { "$ref": "/schemas/formats/canonical/responsive_creative.json" }
       },
       "required": ["format_kind", "params"]
@@ -256,7 +252,7 @@
     {
       "title": "Agent Placement Format Declaration",
       "properties": {
-        "format_kind": { "type": "string", "const": "agent_placement" },
+        "format_kind": { "type": "string", "const": "agent_placement", "default": "agent_placement" },
         "params": { "$ref": "/schemas/formats/canonical/agent_placement.json" }
       },
       "required": ["format_kind", "params"]
@@ -264,7 +260,7 @@
     {
       "title": "Seller-Rendered Stateful Display Format Declaration",
       "properties": {
-        "format_kind": { "type": "string", "const": "seller_rendered_stateful_display" },
+        "format_kind": { "type": "string", "const": "seller_rendered_stateful_display", "default": "seller_rendered_stateful_display" },
         "params": { "$ref": "/schemas/formats/canonical/seller_rendered_stateful_display.json" }
       },
       "required": ["format_kind", "params"]
@@ -272,7 +268,7 @@
     {
       "title": "Coordinated Placements Format Declaration",
       "properties": {
-        "format_kind": { "type": "string", "const": "coordinated_placements" },
+        "format_kind": { "type": "string", "const": "coordinated_placements", "default": "coordinated_placements" },
         "params": { "$ref": "/schemas/formats/canonical/coordinated_placements.json" }
       },
       "required": ["format_kind", "params"]
@@ -281,10 +277,9 @@
       "title": "Custom Format Declaration",
       "description": "Adopter-defined shape that doesn't fit the 15 canonicals. Requires `format_shape` (vocabulary-registered global pattern) and `format_schema` (URI+digest reference to a fetchable schema describing the actual params/slots). `params` shape is governed by the fetched schema rather than baked into AdCP — kept as `type: object` here with `additionalProperties: true` because the canonical schema validates dynamically post-fetch.",
       "properties": {
-        "format_kind": { "type": "string", "const": "custom" },
+        "format_kind": { "type": "string", "const": "custom", "default": "custom" },
         "params": {
-          "type": "object",
-          "additionalProperties": true,
+          "$ref": "/schemas/core/format-params.json",
           "description": "Custom shape's params. Validated against the schema fetched from `format_schema.uri` at the cached `format_schema.digest`."
         }
       },

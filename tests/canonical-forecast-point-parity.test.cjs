@@ -5,6 +5,7 @@ const addFormats = require("ajv-formats");
 const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
 const { isDeepStrictEqual } = require("node:util");
+const { resolveSchema } = require("./helpers/named-scalar-schemas.cjs");
 
 const SCHEMA_ROOT = path.join(__dirname, "..", "static", "schemas", "source");
 
@@ -80,28 +81,16 @@ describe("canonical-forecast-point parity with forecast-point", () => {
     canonical = readSchema("/schemas/core/canonical-forecast-point.json");
   });
 
-  it("keeps exceptional metric constraints aligned while remaining compact", () => {
-    const sourceMetrics = source.properties.metrics;
-    const canonicalMetrics = canonical.properties.metrics;
-    const exceptionalSourceProperties = exceptionalMetricProperties(sourceMetrics);
-
-    assert.deepEqual(
-      withoutAnnotations(canonicalMetrics.additionalProperties),
-      withoutAnnotations(sourceMetrics.additionalProperties),
-      "canonical metric fallback drifted from source"
+  it("keeps exceptional metric constraints aligned by sharing one metrics definition", () => {
+    // Both twins reference the same metrics definition, the stronger form of
+    // the parity this test used to check copy by copy.
+    assert.equal(source.properties.metrics.$ref, "/schemas/core/forecast-metrics.json");
+    assert.equal(canonical.properties.metrics.$ref, source.properties.metrics.$ref);
+    const exceptional = exceptionalMetricProperties(resolveSchema(source.properties.metrics));
+    assert.ok(
+      exceptional.coverage_rate,
+      "the shared metrics definition bounds coverage_rate beyond the fallback"
     );
-    assert.deepEqual(
-      Object.keys(canonicalMetrics.properties).sort(),
-      Object.keys(exceptionalSourceProperties).sort(),
-      "canonical metrics must name every source metric with constraints beyond the fallback"
-    );
-    for (const [name, propertySchema] of Object.entries(exceptionalSourceProperties)) {
-      assert.deepEqual(
-        resolvedSemantics(canonicalMetrics.properties[name]),
-        resolvedSemantics(propertySchema),
-        `canonical metric ${name} drifted from source`
-      );
-    }
   });
 
   it("keeps viewability property schemas aligned (vendor identity differs by design)", () => {
@@ -135,8 +124,8 @@ describe("canonical-forecast-point parity with forecast-point", () => {
       rangeBounds(source.properties.viewability.properties.viewable_rate, "source viewable_rate")
     );
     assert.deepEqual(
-      rangeBounds(canonical.properties.metrics.properties.coverage_rate, "canonical coverage_rate"),
-      rangeBounds(source.properties.metrics.properties.coverage_rate, "source coverage_rate")
+      rangeBounds(resolveSchema(canonical.properties.metrics).properties.coverage_rate, "canonical coverage_rate"),
+      rangeBounds(resolveSchema(source.properties.metrics).properties.coverage_rate, "source coverage_rate")
     );
   });
 

@@ -1,0 +1,105 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/geo-proximity.json",
+  "title": "Geo Proximity Area",
+  "description": "A proximity target: a point with a travel time and transport mode, a point with a radius, or a GeoJSON geometry.",
+  "type": "object",
+  "properties": {
+    "lat": {
+      "$ref": "/schemas/core/latitude.json",
+      "description": "Latitude in decimal degrees (WGS 84). Required for travel_time and radius methods."
+    },
+    "lng": {
+      "$ref": "/schemas/core/longitude.json",
+      "description": "Longitude in decimal degrees (WGS 84). Required for travel_time and radius methods."
+    },
+    "label": {
+      "type": "string",
+      "description": "Human-readable label for this entry (e.g., 'Düsseldorf', 'Heathrow Airport', 'Primary trade area')."
+    },
+    "travel_time": {
+      "$ref": "/schemas/core/travel-time.json",
+      "description": "Travel time limit for isochrone calculation. The platform resolves this to a geographic boundary based on actual transportation networks."
+    },
+    "transport_mode": {
+      "$ref": "/schemas/enums/transport-mode.json",
+      "description": "Transportation mode for isochrone calculation. Required when travel_time is provided."
+    },
+    "radius": {
+      "$ref": "/schemas/core/radius.json",
+      "description": "Simple radius from the point. The platform draws a circle of this distance around the coordinates."
+    },
+    "geometry": {
+      "$ref": "/schemas/core/geojson-geometry.json",
+      "description": "Pre-computed GeoJSON geometry defining the proximity boundary. Use when the buyer has already calculated isochrones (via TravelTime, Mapbox, etc.) or has custom boundaries. When geometry is provided, lat/lng are not required."
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "oneOf": [
+    {
+      "required": [
+        "lat",
+        "lng",
+        "travel_time",
+        "transport_mode"
+      ],
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "radius"
+            ]
+          },
+          {
+            "required": [
+              "geometry"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "required": [
+        "lat",
+        "lng",
+        "radius"
+      ],
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "travel_time"
+            ]
+          },
+          {
+            "required": [
+              "geometry"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "required": [
+        "geometry"
+      ],
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "travel_time"
+            ]
+          },
+          {
+            "required": [
+              "radius"
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "additionalProperties": true
+}

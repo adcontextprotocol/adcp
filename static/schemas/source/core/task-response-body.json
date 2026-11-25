@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/task-response-body.json",
+  "title": "Task Response Body",
+  "description": "A task-specific response body. Each task's response schema defines its fields.",
+  "type": "object",
+  "additionalProperties": true
+}

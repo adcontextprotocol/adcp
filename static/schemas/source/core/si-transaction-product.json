@@ -1,0 +1,7 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/si-transaction-product.json",
+  "title": "SI Transaction Product",
+  "description": "Details of the product or service in a transaction, as an open object.",
+  "type": "object"
+}

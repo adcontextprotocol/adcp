@@ -12,6 +12,7 @@
     "pricing_model": {
       "type": "string",
       "const": "cpa",
+      "default": "cpa",
       "description": "Cost per acquisition (conversion event)"
     },
     "event_type": {
@@ -27,9 +28,8 @@
       "description": "When present, only events from this specific event source count toward billing. Allows different CPA rates for different sources (e.g., online vs in-store purchases). Must match an event source configured via sync_event_sources."
     },
     "currency": {
-      "type": "string",
+      "$ref": "/schemas/core/currency-code.json",
       "description": "ISO 4217 currency code",
-      "pattern": "^[A-Z]{3}$",
       "examples": ["USD", "EUR", "GBP", "JPY"]
     },
     "fixed_price": {

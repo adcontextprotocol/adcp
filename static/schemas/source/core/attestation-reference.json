@@ -28,12 +28,11 @@
           "properties": {
             "type": {
               "type": "string",
-              "const": "credential_uri"
+              "const": "credential_uri",
+              "default": "credential_uri"
             },
             "credential_uri": {
-              "type": "string",
-              "format": "uri",
-              "pattern": "^https://",
+              "$ref": "/schemas/core/https-url.json",
               "description": "HTTPS URI of the credential. Before any fetch, evaluators MUST match its canonical origin to credential_origins on the accepted issuer capability and then apply the attestation fetch contract."
             },
             "ext": {
@@ -49,7 +48,8 @@
           "properties": {
             "type": {
               "type": "string",
-              "const": "issuer_credential_id"
+              "const": "issuer_credential_id",
+              "default": "issuer_credential_id"
             },
             "credential_id": {
               "type": "string",
@@ -59,10 +59,7 @@
               "x-entity": "attestation_credential"
             },
             "resolver_id": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 255,
-              "pattern": "^[A-Za-z0-9._:-]+$",
+              "$ref": "/schemas/core/attestation-resolver-id.json",
               "description": "Identifier of a resolver already published in the matched accepted_issuers[].resolvers[] capability. A presenter cannot supply or override its URL."
             },
             "ext": {
@@ -75,6 +72,7 @@
       ]
     },
     "embedded_credential": {
+      "title": "Attestation Embedded Credential",
       "type": "object",
       "description": "Optional inline credential for private, authenticated, or offline delivery. It may accompany locator or be the only delivery path. Its format must be supported by the evaluator, and the evaluator MUST verify the credential exactly as it would a resolved credential.",
       "properties": {
@@ -96,8 +94,7 @@
       "additionalProperties": true
     },
     "content_digest": {
-      "type": "string",
-      "pattern": "^sha256:[a-f0-9]{64}$",
+      "$ref": "/schemas/core/sha256-digest.json",
       "description": "Optional SHA-256 digest pin for the exact credential bytes, formatted as sha256:<lowercase hex>. The credential format defines its canonical byte representation. A mismatch is invalid and MUST NOT fall back to the unpinned credential. REQUIRED when both locator and embedded_credential are present; both byte representations MUST match this digest."
     },
     "credential_version": {
@@ -123,13 +120,12 @@
       "minProperties": 1
     },
     "verify_agent": {
+      "title": "Attestation Verifier Nomination",
       "type": "object",
       "description": "Optional presenter nomination of a verifier already published by the evaluator. This is a representation, not routing authority: agent_url MUST match an accepted_verifiers[] entry after canonicalization, and the evaluator may choose another accepted verifier or verify locally. A verifier call goes to the matched accepted_verifiers[] entry's agent_url, never to the presented string.",
       "properties": {
         "agent_url": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://"
+          "$ref": "/schemas/core/https-url.json"
         }
       },
       "required": ["agent_url"],

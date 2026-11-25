@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/locale-fallback-rule.json",
+  "title": "Locale Fallback Rule",
+  "description": "A locale fallback rule: requests matching a language range use the given locale variant.",
+  "type": "object",
+  "properties": {
+    "language_range": {
+      "$ref": "/schemas/core/locale-tag.json",
+      "description": "Canonical concrete BCP 47 range matched against progressively truncated requested ranges. Wildcards are not supported."
+    },
+    "locale_variant_id": {
+      "$ref": "/schemas/core/creative-locale-variant-id.json",
+      "description": "Source or target locale variant to serve when this explicit fallback rule matches."
+    }
+  },
+  "required": [
+    "language_range",
+    "locale_variant_id"
+  ],
+  "additionalProperties": true
+}

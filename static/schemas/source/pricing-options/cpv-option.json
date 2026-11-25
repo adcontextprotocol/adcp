@@ -12,12 +12,12 @@
     "pricing_model": {
       "type": "string",
       "const": "cpv",
+      "default": "cpv",
       "description": "Cost per view at threshold"
     },
     "currency": {
-      "type": "string",
+      "$ref": "/schemas/core/currency-code.json",
       "description": "ISO 4217 currency code",
-      "pattern": "^[A-Z]{3}$",
       "examples": ["USD", "EUR", "GBP", "JPY"]
     },
     "fixed_price": {
@@ -41,16 +41,15 @@
       "$ref": "/schemas/pricing-options/price-guidance.json"
     },
     "parameters": {
+      "title": "CpvParameters",
       "type": "object",
       "description": "CPV-specific parameters defining the view threshold",
       "properties": {
         "view_threshold": {
           "oneOf": [
             {
-              "type": "number",
-              "description": "Percentage completion threshold (0.0 to 1.0, e.g., 0.5 = 50%)",
-              "minimum": 0,
-              "maximum": 1
+              "$ref": "/schemas/core/fraction.json",
+              "description": "Percentage completion threshold (0.0 to 1.0, e.g., 0.5 = 50%)"
             },
             {
               "type": "object",

@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/signal-modeling-method.json",
+  "title": "Signal Modeling Method",
+  "description": "Method used to model a signal.",
+  "type": "string",
+  "enum": [
+    "lookalike",
+    "supervised",
+    "embedding",
+    "rules"
+  ]
+}

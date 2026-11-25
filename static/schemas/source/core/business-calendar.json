@@ -18,9 +18,10 @@
       "type": "array", "minItems": 1, "uniqueItems": true,
       "description": "Non-overlapping half-open local-time periods. start_time MUST precede end_time. Split overnight periods at midnight; 24:00 is accepted only as an end. On DST transitions nonexistent local boundaries advance to the first existing instant; ambiguous starts use the earlier instant and ambiguous ends the later instant. Count actual elapsed seconds within the resulting union of working intervals.",
       "items": {
+        "title": "Business Calendar Working Period",
         "type": "object",
         "properties": {
-          "days": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "enum": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] } },
+          "days": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "/schemas/enums/day-of-week.json" } },
           "start_time": { "type": "string", "pattern": "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$" },
           "end_time": { "type": "string", "pattern": "^(?:(?:[01][0-9]|2[0-3]):[0-5][0-9]|24:00)$" }
         },

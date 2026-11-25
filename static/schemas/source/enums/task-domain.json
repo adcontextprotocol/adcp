@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/task-domain.json",
+  "title": "Task Domain",
+  "description": "AdCP domain that a task belongs to.",
+  "type": "string",
+  "enum": [
+    "media-buy",
+    "signals",
+    "creative"
+  ]
+}

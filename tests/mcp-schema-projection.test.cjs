@@ -12,6 +12,7 @@ const Ajv2020 = require('ajv/dist/2020');
 const addFormats = require('ajv-formats');
 const yaml = require('js-yaml');
 const semver = require('semver');
+const { addNamedScalarSchemas } = require('./helpers/named-scalar-schemas.cjs');
 const { reportingSummaryCases } = require('./helpers/reporting-summary-cases.cjs');
 const {
   normalizeStoryboardSampleRequests,
@@ -137,12 +138,28 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // 3.3.0-beta.1 window: the queued account, pricing, seller-terms and creative
 // PRs each add a few hundred bytes to a few KiB (measured 465-467 KiB each on
 // top of main). Bound at 476 KiB once for the window; resume per-PR bounding
-// after the beta.1 cut.
+// after the beta.1 cut. Naming five repeated scalar subschemas (#8525) makes
+// each a shared definition, which brings the media-buy context to 496,720
+// bytes / 485.08 KiB. Naming the further repeated scalar concepts brings it to
+// 529,573 bytes / 517.16 KiB, and repeated enums to 533,507 bytes / 521.00 KiB.
+// Naming every remaining repeat, including repeats inside one document, brings
+// it to 551,679 bytes / 538.75 KiB. Pointing every site at one definition
+// brings it to 561,291 bytes / 548.14 KiB; bound it at 549 KiB.
 // Named rejections (DR-0036) are validation, so the model-context view omits
 // them with the bounds; the budget is unchanged.
+// Replacing repeated inline object copies with shared core definitions adds 31
+// definitions to the media-buy inputs, each with its own title and description:
+// 558,798 → 567,927 bytes (545.70 → 554.62 KiB measured); bound it at 555 KiB.
+// Merged with main's single-value deprecations (#9123) and
+// PROPOSAL_TERMS_CHANGED (#9171), the media-buy inputs measure 571,034 bytes
+// (557.65 KiB); bound it at 558 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 476,
-  creative: 410,
+  'media-buy': 558,
+  // The further repeated scalar concepts of #8525 bring it to 434,267 bytes /
+  // 424.09 KiB, repeated enums to 436,047 bytes / 425.83 KiB, and every remaining
+  // repeat to 446,778 bytes / 436.31 KiB, and pointing every site at one
+  // definition to 453,051 bytes / 442.43 KiB.
+  creative: 443,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
 // bound while allowing example-bearing schemas to carry the complete Product
@@ -233,7 +250,27 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // Reserved-word enum replacements (#8791) add a replacement value and its
 // deprecation metadata to enums in the controller closure; merged with the
 // above they stay within 1_388_000.
-const PARITY_COMPILE_LIMIT = 1_388_000;
+// Naming five repeated scalar subschemas (#8525) brings the
+// controller to 1_378_383 bytes, and the further repeated
+// scalar concepts to 1_401_918, repeated enums to 1_412_332, and every remaining
+// repeat to 1_442_008, pointing every site at one definition to 1_452_778,
+// and building the incomplete scope from the product incomplete scope to
+// 1_453_708, all measured before match keys. With match keys on top, the
+// controller measures 1_461_855 bytes; bound it at 1_462_000.
+// Merged with main's withdrawals and the reserved-word enum replacements, the
+// controller measures 1_424_038 bytes; bound it at 1_425_000.
+// Naming the two legacy webhook authentication objects (#8907) puts them in
+// the controller closure as shared definitions: 1_425_903 bytes, bound at
+// 1_426_000. The 4.0 length annotations on the named URL and ID schemas
+// (#8899, #8900) bring it to 1_426_550 bytes; bound at 1_427_000.
+// Defaulting every tagged-union tag to its const brings it to 1_430_635 bytes.
+// Replacing repeated inline object copies with shared definitions puts their
+// titles and descriptions in the controller closure: 1_452_389 bytes measured;
+// bound at 1_453_000.
+// Merged with main's reporting dimension systems (#9049), single-value
+// deprecations (#9123), and PROPOSAL_TERMS_CHANGED (#9171), the controller
+// measures 1_456_358 bytes; bound at 1_457_000.
+const PARITY_COMPILE_LIMIT = 1_457_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
@@ -1042,7 +1079,7 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   const canonicalManifest = readJson(path.join(LATEST_DIR, 'manifest.json'));
   const projectionManifest = readJson(path.join(PROJECTION_DIR, 'manifest.json'));
   const storyboardFixtures = collectStoryboardRequestFixtures();
-  const validateCanonicalManifest = createValidator(AjvDraft07).compile(
+  const validateCanonicalManifest = addNamedScalarSchemas(createValidator(AjvDraft07)).compile(
     readJson(path.join(SOURCE_DIR, 'manifest.schema.json'))
   );
   assert.equal(
@@ -1307,8 +1344,14 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   // requests, reached from request_account and list_accounts (23,090,968 bytes
   // measured), so the cap moves to 23 MiB. Composing the protocol envelope
   // into every task response (every response bundles the envelope) also
-  // grows it; the 23 MiB cap holds both.
-  assert.ok(totalBytes < 23 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
+  // grows it; the 23 MiB cap holds both. Naming five repeated scalar subschemas
+  // (#8525) brings it to 24,176,139 bytes, the further concepts to 25,034,871
+  // bytes, naming every remaining repeat to 25,664,885 bytes (24.48 MiB), and
+  // pointing every site at one definition to 25,961,497 bytes (24.76 MiB), so
+  // the cap moves to 25 MiB. Replacing repeated inline object copies with
+  // shared definitions takes it from 26,030,614 bytes (24.82 MiB) at the start
+  // of this series to 26,317,378 bytes (25.10 MiB), so the cap moves to 26 MiB.
+  assert.ok(totalBytes < 26 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
 
   const draft07 = createValidator(AjvDraft07);
   const draft2020 = createValidator(Ajv2020);

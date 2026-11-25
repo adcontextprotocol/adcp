@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/sha256-hex-digest.json",
+  "title": "SHA-256 Hex Digest",
+  "description": "SHA-256 digest as 64 hexadecimal characters of either case, with no prefix.",
+  "type": "string",
+  "pattern": "^[A-Fa-f0-9]{64}$"
+}

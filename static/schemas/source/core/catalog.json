@@ -35,6 +35,7 @@
       "type": "array",
       "description": "Inline catalog data. The item schema depends on the catalog type: Offering objects for 'offering', StoreItem for 'store', HotelItem for 'hotel', FlightItem for 'flight', JobItem for 'job', VehicleItem for 'vehicle', RealEstateItem for 'real_estate', EducationItem for 'education', DestinationItem for 'destination', AppItem for 'app', or freeform objects for 'product', 'inventory', and 'promotion'. Mutually exclusive with url — provide one or the other, not both. Implementations should validate items against the type-specific schema.",
       "items": {
+        "title": "Catalog Item",
         "type": "object"
       },
       "minItems": 1
@@ -51,8 +52,7 @@
       "type": "array",
       "description": "Filter product-type catalogs by GTIN identifiers for cross-retailer catalog matching. Accepts standard GTIN formats (GTIN-8, UPC-A/GTIN-12, EAN-13/GTIN-13, GTIN-14). Only applicable when type is 'product'.",
       "items": {
-        "type": "string",
-        "pattern": "^[0-9]{8,14}$"
+        "$ref": "/schemas/core/gtin.json"
       },
       "minItems": 1
     },

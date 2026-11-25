@@ -15,13 +15,8 @@
       "default": "direct_targeting"
     },
     "selection_mode": {
-      "type": "string",
+      "$ref": "/schemas/enums/signal-selection-mode.json",
       "description": "Default selection behavior for selectable signals on this product. 'optional' means the buyer may select zero or more signals. 'required' means the buyer must select at least min_selected_signals, or 1 when min_selected_signals is omitted. 'fixed' means the seller applies the default_selected signals and the buyer cannot add or remove them; buyers SHOULD render those entries as read-only and sellers MUST echo them in package targeting_overlay.signal_targeting_groups. Use selection_group_rules for product-scoped products that need different behavior for different groups, such as fixed suppressions plus a required include tier.",
-      "enum": [
-        "optional",
-        "required",
-        "fixed"
-      ],
       "default": "optional"
     },
     "min_selected_signals": {

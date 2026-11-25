@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/task-summary.json",
+  "title": "Task Summary",
+  "description": "A summary of one task: ID, type, domain, status, timestamps, and whether it has a webhook.",
+  "type": "object",
+  "properties": {
+    "task_id": {
+      "$ref": "/schemas/core/task-id.json",
+      "description": "Unique identifier for this task"
+    },
+    "task_type": {
+      "$ref": "/schemas/enums/task-type.json",
+      "description": "Type of AdCP operation"
+    },
+    "domain": {
+      "$ref": "/schemas/enums/task-domain.json",
+      "description": "AdCP domain this task belongs to"
+    },
+    "status": {
+      "$ref": "/schemas/enums/task-status.json",
+      "description": "Current task status"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the task was initially created (ISO 8601)"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the task was last updated (ISO 8601)"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the task completed (ISO 8601, only for completed/failed/canceled tasks)"
+    },
+    "has_webhook": {
+      "type": "boolean",
+      "description": "Whether this task has webhook configuration"
+    }
+  },
+  "required": [
+    "task_id",
+    "task_type",
+    "domain",
+    "status",
+    "created_at",
+    "updated_at"
+  ],
+  "additionalProperties": true
+}

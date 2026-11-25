@@ -25,7 +25,8 @@
           "properties": {
             "type": {
               "type": "string",
-              "const": "continuous_bounds"
+              "const": "continuous_bounds",
+              "default": "continuous_bounds"
             },
             "ext": {
               "$ref": "/schemas/core/ext.json"
@@ -39,15 +40,14 @@
           "properties": {
             "type": {
               "type": "string",
-              "const": "enumerated_intervals"
+              "const": "enumerated_intervals",
+              "default": "enumerated_intervals"
             },
             "interval_ids": {
               "type": "array",
               "description": "Seller-scoped interval identifiers whose union produced applied.",
               "items": {
-                "type": "string",
-                "minLength": 1,
-                "x-entity": "demographic_interval_id"
+                "$ref": "#/definitions/demographic_interval_id"
               },
               "minItems": 1,
               "uniqueItems": true
@@ -60,47 +60,10 @@
           "additionalProperties": true
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "signals"
-            },
-            "signal_refs": {
-              "type": "array",
-              "description": "Authoritative signal references whose demographic predicates were unioned to produce applied. Signal names alone never establish equivalence.",
-              "items": {
-                "$ref": "/schemas/core/signal-ref.json"
-              },
-              "minItems": 1,
-              "uniqueItems": true
-            },
-            "ext": {
-              "$ref": "/schemas/core/ext.json"
-            }
-          },
-          "required": ["type", "signal_refs"],
-          "additionalProperties": true
+          "$ref": "/schemas/core/demographic-signals-execution.json"
         },
         {
-          "type": "object",
-          "properties": {
-            "type": {
-              "type": "string",
-              "const": "gender_values",
-              "x-status": "experimental",
-              "x-added-in": "3.3.0"
-            },
-            "ext": {
-              "$ref": "/schemas/core/ext.json",
-              "x-status": "experimental",
-              "x-added-in": "3.3.0"
-            }
-          },
-          "required": [
-            "type"
-          ],
-          "additionalProperties": true,
+          "$ref": "#/definitions/gender_values_execution",
           "x-status": "experimental",
           "x-added-in": "3.3.0"
         },
@@ -110,6 +73,7 @@
             "type": {
               "type": "string",
               "const": "per_dimension",
+              "default": "per_dimension",
               "x-status": "experimental",
               "x-added-in": "3.3.0"
             },
@@ -121,6 +85,7 @@
                     "type": {
                       "type": "string",
                       "const": "continuous_bounds",
+                      "default": "continuous_bounds",
                       "x-status": "experimental",
                       "x-added-in": "3.3.0"
                     },
@@ -141,6 +106,7 @@
                     "type": {
                       "type": "string",
                       "const": "enumerated_intervals",
+                      "default": "enumerated_intervals",
                       "x-status": "experimental",
                       "x-added-in": "3.3.0"
                     },
@@ -148,9 +114,7 @@
                       "type": "array",
                       "description": "Seller-scoped interval identifiers whose union produced applied.",
                       "items": {
-                        "type": "string",
-                        "minLength": 1,
-                        "x-entity": "demographic_interval_id"
+                        "$ref": "#/definitions/demographic_interval_id"
                       },
                       "minItems": 1,
                       "uniqueItems": true,
@@ -170,36 +134,9 @@
                   "additionalProperties": true
                 },
                 {
-                  "type": "object",
-                  "properties": {
-                    "type": {
-                      "type": "string",
-                      "const": "signals",
-                      "x-status": "experimental",
-                      "x-added-in": "3.3.0"
-                    },
-                    "signal_refs": {
-                      "type": "array",
-                      "description": "Authoritative signal references whose demographic predicates were unioned to produce applied. Signal names alone never establish equivalence.",
-                      "items": {
-                        "$ref": "/schemas/core/signal-ref.json"
-                      },
-                      "minItems": 1,
-                      "uniqueItems": true,
-                      "x-status": "experimental",
-                      "x-added-in": "3.3.0"
-                    },
-                    "ext": {
-                      "$ref": "/schemas/core/ext.json",
-                      "x-status": "experimental",
-                      "x-added-in": "3.3.0"
-                    }
-                  },
-                  "required": [
-                    "type",
-                    "signal_refs"
-                  ],
-                  "additionalProperties": true
+                  "$ref": "/schemas/core/demographic-signals-execution.json",
+                  "x-status": "experimental",
+                  "x-added-in": "3.3.0"
                 }
               ],
               "description": "Exact age execution. Signal references MUST carry age-only predicates; dropping a correlated gender constraint is forbidden.",
@@ -209,56 +146,12 @@
             "gender": {
               "oneOf": [
                 {
-                  "type": "object",
-                  "properties": {
-                    "type": {
-                      "type": "string",
-                      "const": "gender_values",
-                      "x-status": "experimental",
-                      "x-added-in": "3.3.0"
-                    },
-                    "ext": {
-                      "$ref": "/schemas/core/ext.json",
-                      "x-status": "experimental",
-                      "x-added-in": "3.3.0"
-                    }
-                  },
-                  "required": [
-                    "type"
-                  ],
-                  "additionalProperties": true
+                  "$ref": "#/definitions/gender_values_execution"
                 },
                 {
-                  "type": "object",
-                  "properties": {
-                    "type": {
-                      "type": "string",
-                      "const": "signals",
-                      "x-status": "experimental",
-                      "x-added-in": "3.3.0"
-                    },
-                    "signal_refs": {
-                      "type": "array",
-                      "description": "Authoritative signal references whose demographic predicates were unioned to produce applied. Signal names alone never establish equivalence.",
-                      "items": {
-                        "$ref": "/schemas/core/signal-ref.json"
-                      },
-                      "minItems": 1,
-                      "uniqueItems": true,
-                      "x-status": "experimental",
-                      "x-added-in": "3.3.0"
-                    },
-                    "ext": {
-                      "$ref": "/schemas/core/ext.json",
-                      "x-status": "experimental",
-                      "x-added-in": "3.3.0"
-                    }
-                  },
-                  "required": [
-                    "type",
-                    "signal_refs"
-                  ],
-                  "additionalProperties": true
+                  "$ref": "/schemas/core/demographic-signals-execution.json",
+                  "x-status": "experimental",
+                  "x-added-in": "3.3.0"
                 }
               ],
               "description": "Exact gender execution. Signal references MUST carry gender-only predicates; dropping a correlated age constraint is forbidden. Experimental in AdCP 3.3 (media_buy.gender_targeting). AdCP 3.2 core remains age-only.",
@@ -526,5 +419,37 @@
       { "required": ["buyer_approved"] }
     ]
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "definitions": {
+    "demographic_interval_id": {
+      "title": "Demographic Interval ID",
+      "description": "Seller-scoped identifier of one demographic interval used to execute an age or gender predicate.",
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "demographic_interval_id"
+    },
+    "gender_values_execution": {
+      "title": "Gender Values Execution",
+      "description": "A demographic targeting execution that applies gender values directly.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "gender_values",
+          "default": "gender_values",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json",
+          "x-status": "experimental",
+          "x-added-in": "3.3.0"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": true
+    }
+  }
 }

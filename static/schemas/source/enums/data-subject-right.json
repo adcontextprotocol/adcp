@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/data-subject-right.json",
+  "title": "Data Subject Right",
+  "description": "Data subject right that a rights channel serves.",
+  "type": "string",
+  "enum": [
+    "access",
+    "rectification",
+    "erasure",
+    "portability",
+    "objection"
+  ]
+}

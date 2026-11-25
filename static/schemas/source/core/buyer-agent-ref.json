@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/buyer-agent-ref.json",
+  "title": "Buyer Agent Reference",
+  "description": "A reference to a buyer agent by its agent URL.",
+  "type": "object",
+  "properties": {
+    "agent_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Buyer agent's registered agent URL. Canonical identifier, mirroring trusted_match.providers[].agent_url."
+    }
+  },
+  "required": [
+    "agent_url"
+  ],
+  "additionalProperties": true
+}

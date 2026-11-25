@@ -19,7 +19,8 @@
           "properties": {
             "kind": {
               "type": "string",
-              "const": "applied"
+              "const": "applied",
+              "default": "applied"
             },
             "action": {
               "type": "string",
@@ -28,12 +29,11 @@
             },
             "dry_run": {
               "type": "boolean",
-              "const": false
+              "const": false,
+              "default": false
             },
             "principal_id": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 255,
+              "$ref": "/schemas/core/principal-id.json",
               "description": "Seller-issued opaque identifier for this authenticated principal record. It is response-only, not a credential, not caller identity, and not advertiser-account authority."
             },
             "principal_kind": {
@@ -43,9 +43,7 @@
               "description": "Deprecated in 3.3. Seller-resolved party kind of the authenticated principal: a buyer-agent workload, or an operator-side identity such as a person at the operator. Resolved solely from the seller's authorization system, never from request content, so per-party policy such as billing gates can rely on it."
             },
             "configuration_version": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 255,
+              "$ref": "/schemas/core/principal-configuration-version.json",
               "description": "Opaque version of the persisted configuration. Compare only for equality and return it as expected_configuration_version on a later guarded replacement."
             },
             "configuration": {
@@ -69,7 +67,8 @@
           "properties": {
             "kind": {
               "type": "string",
-              "const": "validated"
+              "const": "validated",
+              "default": "validated"
             },
             "action": {
               "type": "string",
@@ -77,7 +76,8 @@
             },
             "dry_run": {
               "type": "boolean",
-              "const": true
+              "const": true,
+              "default": true
             },
             "warnings": {
               "type": "array",
@@ -92,24 +92,7 @@
           "additionalProperties": true
         },
         {
-          "title": "Failed principal sync",
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "failed"
-            },
-            "errors": {
-              "type": "array",
-              "items": {
-                "$ref": "/schemas/core/error.json"
-              },
-              "minItems": 1,
-              "maxItems": 16
-            }
-          },
-          "required": ["kind", "errors"],
-          "additionalProperties": false
+          "$ref": "/schemas/core/principal-operation-failure.json"
         }
       ]
     },
@@ -136,7 +119,7 @@
   "then": {
     "properties": {
       "status": {
-        "enum": ["failed", "rejected"]
+        "$ref": "/schemas/enums/task-failure-status.json"
       }
     }
   },

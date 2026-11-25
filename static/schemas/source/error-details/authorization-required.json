@@ -29,6 +29,7 @@
       "description": "Human-readable recovery instructions. Use `missing_connections[].authorization_instructions` when instructions differ per downstream connection."
     },
     "reference_authorization": {
+      "title": "Reference Authorization Hint",
       "type": "object",
       "deprecated": true,
       "description": "Legacy or provider-specific authorization hint for the referenced object. Prefer `missing_connections[]` for new implementations.",

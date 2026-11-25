@@ -38,6 +38,7 @@
           "$ref": "#/definitions/supported"
         },
         {
+          "title": "Geographic Metro Support",
           "type": "object",
           "properties": {
             "systems": {
@@ -71,25 +72,16 @@
       "description": "Selectable country/type pairs and catalog versions for one identifier system.",
       "properties": {
         "countries": {
-          "type": "object",
-          "propertyNames": { "pattern": "^[A-Z]{2}$" },
-          "additionalProperties": {
-            "type": "array",
-            "items": { "$ref": "/schemas/core/geo-place-type.json" },
-            "minItems": 1,
-            "uniqueItems": true
-          },
-          "minProperties": 1
+          "$ref": "/schemas/core/geo-country-place-types.json"
         },
         "current_version": {
-          "type": "string",
-          "minLength": 1,
+          "$ref": "/schemas/core/geo-place-system-version.json",
           "description": "Version applied when a later package overlay omits system_version. Must be present in system_versions."
         },
         "system_versions": {
           "type": "array",
           "description": "Exact catalog versions selectable on later package overlays.",
-          "items": { "type": "string", "minLength": 1 },
+          "items": { "$ref": "/schemas/core/geo-place-system-version.json" },
           "minItems": 1,
           "uniqueItems": true
         },
@@ -103,6 +95,7 @@
       }
     },
     "placeSupport": {
+      "title": "Geographic Place Support",
       "type": "object",
       "description": "Binding permission to select named-place values later, keyed first by identifier system and then by country to avoid namespace and place-type collisions.",
       "properties": {
@@ -335,6 +328,7 @@
           "description": "Deprecated in 3.3. The 3.2 shorthand for { age: true }. Senders MUST send the object; receivers MUST accept true."
         },
         {
+          "title": "Demographic Targeting Support",
           "type": "object",
           "properties": {
             "age": { "$ref": "#/definitions/supported" },
@@ -366,6 +360,7 @@
       "anyOf": [
         { "$ref": "#/definitions/supported" },
         {
+          "title": "Placement Selection Support",
           "type": "object",
           "properties": {
             "max_values_per_package": { "type": "integer", "minimum": 1 },

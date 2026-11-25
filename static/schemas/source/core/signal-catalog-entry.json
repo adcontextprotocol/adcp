@@ -1,0 +1,119 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/signal-catalog-entry.json",
+  "title": "Signal Catalog Entry",
+  "description": "A signal in a signal catalog: identity, name and description, type, provider, coverage, deployments, and pricing options.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/signal-listing.json"
+    },
+    {
+      "$ref": "/schemas/core/signal-definition-enrichment.json"
+    }
+  ],
+  "properties": {
+    "signal_id": {
+      "$ref": "/schemas/core/signal-id.json",
+      "description": "DEPRECATED. Use signal_ref instead. Legacy SignalId retained for compatibility with older Signals Protocol clients.",
+      "deprecated": true
+    },
+    "signal_ref": {
+      "$ref": "/schemas/core/signal-ref.json",
+      "description": "Canonical signal reference for discovery, activation, and media-buy targeting. Provider-published signals use scope 'data_provider'. Source-native custom signals that are not published in adagents.json signals[] use scope 'signal_source'. Product-local refs are only meaningful when the response is explicitly scoped to a product context."
+    },
+    "signal_agent_segment_id": {
+      "type": "string",
+      "description": "Opaque resolved-segment handle issued by this signal source. Pass this string verbatim to activate_signal.signal_agent_segment_id, and echo it in package signal targeting when the selected product option exposes the same handle. Treat the value as provider-scoped and opaque: providers MAY namespace it so two providers can expose similarly named signals without relying on a shared taxonomy. Do not pass the signal_id object as this handle, and do not reconstruct a segment handle from categorical values when get_signals returned a resolved segment.",
+      "x-entity": "signal_activation_id"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable signal name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed signal description"
+    },
+    "value_type": {
+      "$ref": "/schemas/enums/signal-value-type.json",
+      "description": "The data type of this signal's values (binary, categorical, numeric)"
+    },
+    "categories": {
+      "type": "array",
+      "description": "Valid values for categorical signals. Present when value_type is 'categorical'. Buyers must use one of these values in SignalTargeting.values.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "range": {
+      "$ref": "/schemas/core/numeric-range.json",
+      "description": "Valid range for numeric signals. Present when value_type is 'numeric'."
+    },
+    "signal_type": {
+      "$ref": "/schemas/enums/signal-catalog-type.json",
+      "description": "Commercial/provenance type of signal (marketplace, custom, owned)"
+    },
+    "data_provider": {
+      "type": "string",
+      "description": "Human-readable source name for the signal, when applicable. For data_provider-scoped signals this is the data provider name; for signal_source-scoped signals it may identify the signal source or proprietary origin."
+    },
+    "coverage_percentage": {
+      "$ref": "/schemas/core/percentage.json",
+      "description": "DEPRECATED for detailed planning. Optional legacy scalar percentage of audience coverage retained only as a fallback for clients that do not consume coverage_forecast. When coverage_forecast is present, coverage_forecast is authoritative for signal-level discovery and coverage_percentage is fallback-only. If coverage_forecast includes an absent bucket over the same denominator, coverage_percentage SHOULD align with 100 * (1 - absent coverage_rate.mid).",
+      "deprecated": true
+    },
+    "coverage_forecast": {
+      "$ref": "/schemas/core/signal-coverage-forecast.json",
+      "description": "Optional forecast-shaped signal availability guidance. When present, this is authoritative for signal-level discovery coverage. Use this to disclose the denominator, bucket semantics, not-present bucket, aggregate present bucket, and per-value coverage distribution for the signal."
+    },
+    "signal_status": {
+      "$ref": "/schemas/enums/signal-status.json",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Construction readiness of this signal: 'processing' (still being built, for example a custom or lookalike segment derived from a seed audience), 'ready', or 'failed'. Absent means 'ready', so agents that do not build segments on demand are unchanged. Agents MUST NOT report is_live: true or return an activation_key for a signal that is not 'ready'. Buyers SHOULD NOT call activate_signal for, or target in create_media_buy, a signal whose signal_status is 'processing' or 'failed'. Agents that emit 'processing' or 'failed' and return wholesale_feed_version MUST change it when a signal's signal_status changes; the rule binds only agents that emit those values. Distinct from the response's top-level status discriminator. Experimental (x-status: experimental): part of the signals.signal_lifecycle surface — agents that emit signal_status MUST list signals.signal_lifecycle in experimental_features. Per docs/reference/experimental-status, this surface MAY change between 3.x releases with notice. See docs/signals/tasks/get_signals for the re-read and Submitted-arm rules."
+    },
+    "source_audience_id": {
+      "type": "string",
+      "x-status": "experimental",
+      "x-added-in": "3.3.0",
+      "description": "Seed audience this signal was derived from, for example a lookalike or custom segment built from a first-party seed. When present, this is the audience_id the buyer synced with sync_audiences (typically audience_type 'lookalike_seed') on the same account, at the agent that holds the seed. Lineage only: AdCP does not transport seed membership through get_signals, and the audience remains governed by its sync_audiences consent and residency terms. Agents MUST NOT return it to a caller that did not supply an account, or in a response with cache_scope 'public', because the value is buyer-scoped. Experimental (x-status: experimental): part of the signals.signal_lifecycle surface. Per docs/reference/experimental-status, this surface MAY change between 3.x releases with notice.",
+      "x-entity": "audience"
+    },
+    "deployments": {
+      "type": "array",
+      "description": "Array of deployment targets",
+      "items": {
+        "$ref": "/schemas/core/deployment.json"
+      }
+    },
+    "pricing_options": {
+      "type": "array",
+      "description": "Pricing options available for this signal when it has an incremental price. The buyer selects one and passes its pricing_option_id in report_usage or package-level signal_targeting_groups for billing verification. Omit when pricing is unavailable to the caller, bundled into the destination product, or has no incremental cost.",
+      "items": {
+        "$ref": "/schemas/core/vendor-pricing-option.json"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "signal_agent_segment_id",
+    "name",
+    "description",
+    "signal_type",
+    "deployments"
+  ],
+  "anyOf": [
+    {
+      "required": [
+        "signal_ref"
+      ]
+    },
+    {
+      "required": [
+        "signal_id"
+      ]
+    }
+  ],
+  "additionalProperties": true
+}

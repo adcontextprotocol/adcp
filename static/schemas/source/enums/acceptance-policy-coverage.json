@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/acceptance-policy-coverage.json",
+  "title": "Acceptance Policy Coverage",
+  "description": "Whether an acceptance policy profile lists every rule.",
+  "type": "string",
+  "enum": [
+    "partial",
+    "complete"
+  ]
+}

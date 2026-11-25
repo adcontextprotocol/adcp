@@ -17,19 +17,13 @@
             "description": "Zero-based index of the rejected operation in the request's assignment_operations array."
           },
           "creative_id": {
-            "type": "string",
-            "minLength": 1,
-            "x-entity": "creative"
+            "$ref": "/schemas/core/creative-id.json"
           },
           "package_id": {
-            "type": "string",
-            "minLength": 1,
-            "x-entity": "package"
+            "$ref": "/schemas/core/package-id.json"
           },
           "merged_creative_id": {
-            "type": "string",
-            "minLength": 1,
-            "x-entity": "creative"
+            "$ref": "/schemas/core/creative-id.json"
           },
           "reason": {
             "$ref": "/schemas/enums/creative-merge-rejection-reason.json"

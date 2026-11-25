@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/bulk-pagination.json",
+  "title": "Bulk Pagination",
+  "description": "Pagination parameters for bulk list requests, with higher page-size limits than standard pagination.",
+  "type": "object",
+  "properties": {
+    "max_results": {
+      "$ref": "/schemas/core/bulk-page-size.json",
+      "default": 1000,
+      "description": "Maximum number of entries to return per page."
+    },
+    "cursor": {
+      "$ref": "/schemas/core/page-cursor.json",
+      "description": "Opaque cursor from a previous response to fetch the next page"
+    }
+  },
+  "additionalProperties": true
+}

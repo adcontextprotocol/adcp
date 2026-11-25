@@ -6,25 +6,16 @@
   "type": "object",
   "properties": {
     "catalog_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "description": "Buyer-assigned catalog ID.",
-      "x-entity": "catalog"
+      "$ref": "/schemas/core/catalog-id.json",
+      "description": "Buyer-assigned catalog ID."
     },
     "catalog_generation": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "description": "Opaque seller-issued token for the referenced catalog incarnation. It remains stable across ordinary upserts and feed refreshes, changes when a deleted catalog_id is recreated, and MUST never be reused for that account and catalog_id.",
-      "x-entity": "catalog_generation"
+      "$ref": "/schemas/core/catalog-generation.json",
+      "description": "Opaque seller-issued token for the referenced catalog incarnation. It remains stable across ordinary upserts and feed refreshes, changes when a deleted catalog_id is recreated, and MUST never be reused for that account and catalog_id."
     },
     "item_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "description": "Exact canonical item key used by Catalog.ids. For typed catalogs this is the type-specific identifier field; for product, inventory, and promotion catalogs it is the stable normalized source identifier retained during ingestion.",
-      "x-entity": "catalog_item"
+      "$ref": "/schemas/core/catalog-item-id.json",
+      "description": "Exact canonical item key used by Catalog.ids. For typed catalogs this is the type-specific identifier field; for product, inventory, and promotion catalogs it is the stable normalized source identifier retained during ingestion."
     }
   },
   "required": ["catalog_id", "catalog_generation", "item_id"],

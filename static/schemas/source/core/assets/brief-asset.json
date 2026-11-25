@@ -8,6 +8,7 @@
     "asset_type": {
       "type": "string",
       "const": "brief",
+      "default": "brief",
       "description": "Discriminator identifying this as a brief asset. See /schemas/creative/asset-types for the registry."
     }
   },

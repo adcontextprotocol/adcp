@@ -108,65 +108,8 @@
             "description": "When true, parameters for this render (dimensions and/or duration) are specified in the format_id. Used for template formats that accept parameters. Mutually exclusive with specifying dimensions object explicitly."
           },
           "dimensions": {
-            "type": "object",
-            "description": "Dimensions for this rendered piece. Defaults to pixels when unit is absent.",
-            "properties": {
-              "width": {
-                "type": "number",
-                "exclusiveMinimum": 0,
-                "description": "Fixed width. Interpretation depends on unit (default: pixels)."
-              },
-              "height": {
-                "type": "number",
-                "exclusiveMinimum": 0,
-                "description": "Fixed height. Interpretation depends on unit (default: pixels)."
-              },
-              "min_width": {
-                "type": "number",
-                "exclusiveMinimum": 0,
-                "description": "Minimum width for responsive renders"
-              },
-              "min_height": {
-                "type": "number",
-                "exclusiveMinimum": 0,
-                "description": "Minimum height for responsive renders"
-              },
-              "max_width": {
-                "type": "number",
-                "exclusiveMinimum": 0,
-                "description": "Maximum width for responsive renders"
-              },
-              "max_height": {
-                "type": "number",
-                "exclusiveMinimum": 0,
-                "description": "Maximum height for responsive renders"
-              },
-              "unit": {
-                "$ref": "/schemas/enums/dimension-unit.json",
-                "description": "Unit of measurement for width/height values. Defaults to 'px' when absent. Print formats use 'inches' or 'cm'."
-              },
-              "responsive": {
-                "type": "object",
-                "description": "Indicates which dimensions are responsive/fluid",
-                "properties": {
-                  "width": {
-                    "type": "boolean"
-                  },
-                  "height": {
-                    "type": "boolean"
-                  }
-                },
-                "required": [
-                  "width",
-                  "height"
-                ]
-              },
-              "aspect_ratio": {
-                "type": "string",
-                "description": "Fixed aspect ratio constraint (e.g., '16:9', '4:3', '1:1', '1.91:1')",
-                "pattern": "^\\d+(\\.\\d+)?:\\d+(\\.\\d+)?$"
-              }
-            }
+            "$ref": "/schemas/core/render-dimensions.json",
+            "description": "Dimensions for this rendered piece. Defaults to pixels when unit is absent."
           }
         },
         "required": [
@@ -212,7 +155,7 @@
             "type": "object",
             "description": "Individual asset slot",
             "properties": {
-              "item_type": { "type": "string", "const": "individual" }
+              "item_type": { "type": "string", "const": "individual", "default": "individual" }
             },
             "required": ["item_type"],
             "discriminator": { "propertyName": "asset_type" },
@@ -223,7 +166,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "image" },
+                  "asset_type": { "const": "image", "default": "image" },
                   "requirements": { "$ref": "/schemas/core/requirements/image-asset-requirements.json" }
                 },
                 "required": ["asset_type"]
@@ -234,7 +177,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "video" },
+                  "asset_type": { "const": "video", "default": "video" },
                   "requirements": { "$ref": "/schemas/core/requirements/video-asset-requirements.json" }
                 },
                 "required": ["asset_type"]
@@ -245,7 +188,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "audio" },
+                  "asset_type": { "const": "audio", "default": "audio" },
                   "requirements": { "$ref": "/schemas/core/requirements/audio-asset-requirements.json" }
                 },
                 "required": ["asset_type"]
@@ -256,7 +199,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "text" },
+                  "asset_type": { "const": "text", "default": "text" },
                   "requirements": { "$ref": "/schemas/core/requirements/text-asset-requirements.json" }
                 },
                 "required": ["asset_type"]
@@ -267,7 +210,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "markdown" },
+                  "asset_type": { "const": "markdown", "default": "markdown" },
                   "requirements": { "$ref": "/schemas/core/requirements/markdown-asset-requirements.json" }
                 },
                 "required": ["asset_type"]
@@ -278,7 +221,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "html" },
+                  "asset_type": { "const": "html", "default": "html" },
                   "requirements": { "$ref": "/schemas/core/requirements/html-asset-requirements.json" }
                 },
                 "required": ["asset_type"]
@@ -289,7 +232,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "css" },
+                  "asset_type": { "const": "css", "default": "css" },
                   "requirements": { "$ref": "/schemas/core/requirements/css-asset-requirements.json" }
                 },
                 "required": ["asset_type"]
@@ -300,7 +243,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "javascript" },
+                  "asset_type": { "const": "javascript", "default": "javascript" },
                   "requirements": { "$ref": "/schemas/core/requirements/javascript-asset-requirements.json" }
                 },
                 "required": ["asset_type"]
@@ -311,7 +254,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "zip" }
+                  "asset_type": { "const": "zip", "default": "zip" }
                 },
                 "required": ["asset_type"]
               },
@@ -321,7 +264,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "vast" },
+                  "asset_type": { "const": "vast", "default": "vast" },
                   "requirements": { "$ref": "/schemas/core/requirements/vast-asset-requirements.json" }
                 },
                 "required": ["asset_type"]
@@ -332,7 +275,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "daast" },
+                  "asset_type": { "const": "daast", "default": "daast" },
                   "requirements": { "$ref": "/schemas/core/requirements/daast-asset-requirements.json" }
                 },
                 "required": ["asset_type"]
@@ -343,7 +286,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "url" },
+                  "asset_type": { "const": "url", "default": "url" },
                   "requirements": { "$ref": "/schemas/core/requirements/url-asset-requirements.json" }
                 },
                 "required": ["asset_type"]
@@ -354,7 +297,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "webhook" },
+                  "asset_type": { "const": "webhook", "default": "webhook" },
                   "requirements": { "$ref": "/schemas/core/requirements/webhook-asset-requirements.json" }
                 },
                 "required": ["asset_type"]
@@ -365,7 +308,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "brief" }
+                  "asset_type": { "const": "brief", "default": "brief" }
                 },
                 "required": ["asset_type"]
               },
@@ -375,7 +318,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "video_brief" }
+                  "asset_type": { "const": "video_brief", "default": "video_brief" }
                 },
                 "required": ["asset_type"]
               },
@@ -385,7 +328,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "catalog" },
+                  "asset_type": { "const": "catalog", "default": "catalog" },
                   "requirements": { "$ref": "/schemas/core/requirements/catalog-requirements.json" }
                 },
                 "required": ["asset_type"]
@@ -396,7 +339,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "display_tag" }
+                  "asset_type": { "const": "display_tag", "default": "display_tag" }
                 },
                 "required": ["asset_type"]
               },
@@ -406,7 +349,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "published_post" }
+                  "asset_type": { "const": "published_post", "default": "published_post" }
                 },
                 "required": ["asset_type"]
               },
@@ -416,7 +359,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "card" }
+                  "asset_type": { "const": "card", "default": "card" }
                 },
                 "required": ["asset_type"]
               },
@@ -426,7 +369,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "pixel_tracker" }
+                  "asset_type": { "const": "pixel_tracker", "default": "pixel_tracker" }
                 },
                 "required": ["asset_type"]
               },
@@ -436,7 +379,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "vast_tracker" }
+                  "asset_type": { "const": "vast_tracker", "default": "vast_tracker" }
                 },
                 "required": ["asset_type"]
               },
@@ -446,7 +389,7 @@
                 "allOf": [{ "$ref": "#/$defs/baseIndividualAsset" }],
                 "properties": {
                   "item_type": { "const": "individual" },
-                  "asset_type": { "const": "daast_tracker" }
+                  "asset_type": { "const": "daast_tracker", "default": "daast_tracker" }
                 },
                 "required": ["asset_type"]
               }
@@ -460,6 +403,7 @@
               "item_type": {
                 "type": "string",
                 "const": "repeatable_group",
+                "default": "repeatable_group",
                 "description": "Discriminator indicating this is a repeatable asset group"
               },
               "asset_group_id": {
@@ -502,7 +446,7 @@
                       "description": "Image asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "image" },
+                        "asset_type": { "const": "image", "default": "image" },
                         "requirements": { "$ref": "/schemas/core/requirements/image-asset-requirements.json" }
                       },
                       "required": ["asset_type"]
@@ -512,7 +456,7 @@
                       "description": "Video asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "video" },
+                        "asset_type": { "const": "video", "default": "video" },
                         "requirements": { "$ref": "/schemas/core/requirements/video-asset-requirements.json" }
                       },
                       "required": ["asset_type"]
@@ -522,7 +466,7 @@
                       "description": "Audio asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "audio" },
+                        "asset_type": { "const": "audio", "default": "audio" },
                         "requirements": { "$ref": "/schemas/core/requirements/audio-asset-requirements.json" }
                       },
                       "required": ["asset_type"]
@@ -532,7 +476,7 @@
                       "description": "Text asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "text" },
+                        "asset_type": { "const": "text", "default": "text" },
                         "requirements": { "$ref": "/schemas/core/requirements/text-asset-requirements.json" }
                       },
                       "required": ["asset_type"]
@@ -542,7 +486,7 @@
                       "description": "Markdown asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "markdown" },
+                        "asset_type": { "const": "markdown", "default": "markdown" },
                         "requirements": { "$ref": "/schemas/core/requirements/markdown-asset-requirements.json" }
                       },
                       "required": ["asset_type"]
@@ -552,7 +496,7 @@
                       "description": "HTML asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "html" },
+                        "asset_type": { "const": "html", "default": "html" },
                         "requirements": { "$ref": "/schemas/core/requirements/html-asset-requirements.json" }
                       },
                       "required": ["asset_type"]
@@ -562,7 +506,7 @@
                       "description": "CSS asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "css" },
+                        "asset_type": { "const": "css", "default": "css" },
                         "requirements": { "$ref": "/schemas/core/requirements/css-asset-requirements.json" }
                       },
                       "required": ["asset_type"]
@@ -572,7 +516,7 @@
                       "description": "JavaScript asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "javascript" },
+                        "asset_type": { "const": "javascript", "default": "javascript" },
                         "requirements": { "$ref": "/schemas/core/requirements/javascript-asset-requirements.json" }
                       },
                       "required": ["asset_type"]
@@ -582,7 +526,7 @@
                       "description": "Zip-bundled asset in group (HTML5 banner bundles, etc.)",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "zip" }
+                        "asset_type": { "const": "zip", "default": "zip" }
                       },
                       "required": ["asset_type"]
                     },
@@ -591,7 +535,7 @@
                       "description": "VAST asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "vast" },
+                        "asset_type": { "const": "vast", "default": "vast" },
                         "requirements": { "$ref": "/schemas/core/requirements/vast-asset-requirements.json" }
                       },
                       "required": ["asset_type"]
@@ -601,7 +545,7 @@
                       "description": "DAAST asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "daast" },
+                        "asset_type": { "const": "daast", "default": "daast" },
                         "requirements": { "$ref": "/schemas/core/requirements/daast-asset-requirements.json" }
                       },
                       "required": ["asset_type"]
@@ -611,7 +555,7 @@
                       "description": "URL asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "url" },
+                        "asset_type": { "const": "url", "default": "url" },
                         "requirements": { "$ref": "/schemas/core/requirements/url-asset-requirements.json" }
                       },
                       "required": ["asset_type"]
@@ -621,7 +565,7 @@
                       "description": "Webhook asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "webhook" },
+                        "asset_type": { "const": "webhook", "default": "webhook" },
                         "requirements": { "$ref": "/schemas/core/requirements/webhook-asset-requirements.json" }
                       },
                       "required": ["asset_type"]
@@ -631,7 +575,7 @@
                       "description": "Brief asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "brief" }
+                        "asset_type": { "const": "brief", "default": "brief" }
                       },
                       "required": ["asset_type"]
                     },
@@ -640,7 +584,7 @@
                       "description": "Structured video brief asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "video_brief" }
+                        "asset_type": { "const": "video_brief", "default": "video_brief" }
                       },
                       "required": ["asset_type"]
                     },
@@ -649,7 +593,7 @@
                       "description": "Catalog asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "catalog" },
+                        "asset_type": { "const": "catalog", "default": "catalog" },
                         "requirements": { "$ref": "/schemas/core/requirements/catalog-requirements.json" }
                       },
                       "required": ["asset_type"]
@@ -659,7 +603,7 @@
                       "description": "Third-party display tag asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "display_tag" }
+                        "asset_type": { "const": "display_tag", "default": "display_tag" }
                       },
                       "required": ["asset_type"]
                     },
@@ -668,7 +612,7 @@
                       "description": "Published post asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "published_post" }
+                        "asset_type": { "const": "published_post", "default": "published_post" }
                       },
                       "required": ["asset_type"]
                     },
@@ -677,7 +621,7 @@
                       "description": "Card asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "card" }
+                        "asset_type": { "const": "card", "default": "card" }
                       },
                       "required": ["asset_type"]
                     },
@@ -686,7 +630,7 @@
                       "description": "Pixel tracker asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "pixel_tracker" }
+                        "asset_type": { "const": "pixel_tracker", "default": "pixel_tracker" }
                       },
                       "required": ["asset_type"]
                     },
@@ -695,7 +639,7 @@
                       "description": "VAST tracker asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "vast_tracker" }
+                        "asset_type": { "const": "vast_tracker", "default": "vast_tracker" }
                       },
                       "required": ["asset_type"]
                     },
@@ -704,7 +648,7 @@
                       "description": "DAAST tracker asset in group",
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
-                        "asset_type": { "const": "daast_tracker" }
+                        "asset_type": { "const": "daast_tracker", "default": "daast_tracker" }
                       },
                       "required": ["asset_type"]
                     }
@@ -718,6 +662,7 @@
       }
     },
     "delivery": {
+      "title": "Format Delivery Specification",
       "type": "object",
       "description": "Delivery method specifications (e.g., hosted, VAST, third-party tags)",
       "additionalProperties": true
@@ -751,26 +696,11 @@
       }
     },
     "format_card": {
-      "type": "object",
-      "description": "Optional standard visual card (300x400px) for displaying this format in user interfaces. Can be rendered via preview_creative or pre-generated.",
-      "properties": {
-        "format_id": {
-          "$ref": "/schemas/core/format-id.json",
-          "description": "Creative format defining the card layout (typically format_card_standard)"
-        },
-        "manifest": {
-          "type": "object",
-          "description": "Asset manifest for rendering the card, structure defined by the format",
-          "additionalProperties": true
-        }
-      },
-      "required": [
-        "format_id",
-        "manifest"
-      ],
-      "additionalProperties": true
+      "$ref": "/schemas/core/format-card.json",
+      "description": "Optional standard visual card (300x400px) for displaying this format in user interfaces. Can be rendered via preview_creative or pre-generated."
     },
     "accessibility": {
+      "title": "Format Accessibility Requirements",
       "type": "object",
       "description": "Accessibility posture of this format. Declares the WCAG conformance level that creatives produced by this format will meet.",
       "properties": {
@@ -820,24 +750,8 @@
       "minItems": 1
     },
     "format_card_detailed": {
-      "type": "object",
-      "description": "Optional detailed card with carousel and full specifications. Provides rich format documentation similar to ad spec pages.",
-      "properties": {
-        "format_id": {
-          "$ref": "/schemas/core/format-id.json",
-          "description": "Creative format defining the detailed card layout (typically format_card_detailed)"
-        },
-        "manifest": {
-          "type": "object",
-          "description": "Asset manifest for rendering the detailed card, structure defined by the format",
-          "additionalProperties": true
-        }
-      },
-      "required": [
-        "format_id",
-        "manifest"
-      ],
-      "additionalProperties": true
+      "$ref": "/schemas/core/format-card.json",
+      "description": "Optional detailed card with carousel and full specifications. Provides rich format documentation similar to ad spec pages."
     },
     "reported_metrics": {
       "type": "array",
@@ -863,20 +777,10 @@
       "description": "Optional v2 canonical-projection annotation. Always an object — bare-string shorthand (`canonical: \"image\"`) is not supported; the minimal form is `canonical: { \"kind\": \"image\" }`. Carries `kind` (which canonical the v1 format projects to) plus optional `asset_source` and `slots_override` for cases where the v1 format's shape doesn't follow the canonical's defaults (e.g., generative entries whose input is `generation_prompt: text` instead of `image_main: image`).\n\nWhen set, SDKs use this annotation as the authoritative v1 → v2 mapping for this format, bypassing the [v1 canonical mapping registry](/schemas/registries/v1-canonical-mapping.json) lookup. Combined with the slot-level `asset_group_id` declarations on each `assets[i]` entry, a v1 format declaration with `canonical` set is fully self-describing for v1↔v2 translation.\n\nResolution order for SDK projection from v1 wire shape to v2 (per RFC #3305 amendment #3767):\n1. If this `canonical` field is set, use it (seller-declared, highest priority). Apply `asset_source` and `slots_override` from the projection ref when present; otherwise inherit the canonical's defaults.\n2. Else, look up `format_id` in the canonical mapping registry's `format_id_glob` entries.\n3. Else, attempt structural match against the registry's `structural` entries (asset types, slot shape, vast_versions, etc.).\n4. Else, fail closed: SDK MUST NOT emit `format_options` for products carrying this format. Surface `FORMAT_PROJECTION_FAILED` on the response `errors[]` suggesting the seller add an explicit `canonical` annotation or file a registry entry.\n\nWhen `canonical.kind` is `custom`, the seller MUST also declare `canonical_format_shape` and `canonical_format_schema` (parallel to ProductFormatDeclaration's `format_shape` and `format_schema`) so buyer SDKs can fetch the seller's custom format schema.\n\nSee `canonical-projection-ref.json` for full projection semantics and examples (default-slot case, generative case, brief-driven case)."
     },
     "canonical_parameters": {
+      "$ref": "/schemas/core/authority-free-product-format-declaration.json",
       "deprecated": true,
       "x-removed-in": "4.0.0",
-      "description": "**DEPRECATED in 3.1. Removed at 4.0.** Use `v1_format_ref` on the v2 `ProductFormatDeclaration` instead — the seller authors a v2 declaration (in `Product.format_options` or `creative.supported_formats`) and links it back to this v1 format via `v1_format_ref: { agent_url, id }`. The directional link from v2 → v1 is the same fact as `canonical_parameters` without the parallel-shape drift surface (v1 file and `canonical_parameters` were two declarations of the same thing; hand-authored, drifting silently).\n\nMigration: every seller currently authoring `canonical_parameters` SHOULD migrate to authoring a v2 declaration on the corresponding product (or capability) with `v1_format_ref` pointing back at this v1 format. v1 files become pure v1 again — no v2-shape mirroring.\n\n*Legacy behavior, retained for 3.1–3.x backward compatibility:* When `canonical` is set, this field carries the full ProductFormatDeclaration that the SDK projects this v1 format into. The `format_kind` MUST equal the `canonical` field value (validators enforce). When set, this is the authoritative source for SDK v1→v2 projection — the registry's structural-match parameter inference is bypassed. SDKs reading 3.1 catalogs MUST continue to honor `canonical_parameters` when present; 4.0+ SDKs MAY reject the field. New code SHOULD NOT emit this field. Seller execution authority is never projected through this deprecated field, so tracker_execution_contract and tracker_execution_contract_digest are forbidden.\n\n**Drift contract (still normative while supported).** Hand-authored `canonical_parameters` MUST satisfy the *narrows* relation against this v1 format's `requirements` and `assets[*]` shape (see canonical-formats.mdx 'Narrows — formal definition'). SDKs that read this v1 file SHOULD lint-time check the equivalence at build/load and emit `FORMAT_PROJECTION_FAILED` if the two disagree.",
-      "allOf": [
-        { "$ref": "/schemas/core/product-format-declaration.json" },
-        {
-          "not": {
-            "anyOf": [
-              { "required": ["tracker_execution_contract"] },
-              { "required": ["tracker_execution_contract_digest"] }
-            ]
-          }
-        }
-      ]
+      "description": "**DEPRECATED in 3.1. Removed at 4.0.** Use `v1_format_ref` on the v2 `ProductFormatDeclaration` instead — the seller authors a v2 declaration (in `Product.format_options` or `creative.supported_formats`) and links it back to this v1 format via `v1_format_ref: { agent_url, id }`. The directional link from v2 → v1 is the same fact as `canonical_parameters` without the parallel-shape drift surface (v1 file and `canonical_parameters` were two declarations of the same thing; hand-authored, drifting silently).\n\nMigration: every seller currently authoring `canonical_parameters` SHOULD migrate to authoring a v2 declaration on the corresponding product (or capability) with `v1_format_ref` pointing back at this v1 format. v1 files become pure v1 again — no v2-shape mirroring.\n\n*Legacy behavior, retained for 3.1–3.x backward compatibility:* When `canonical` is set, this field carries the full ProductFormatDeclaration that the SDK projects this v1 format into. The `format_kind` MUST equal the `canonical` field value (validators enforce). When set, this is the authoritative source for SDK v1→v2 projection — the registry's structural-match parameter inference is bypassed. SDKs reading 3.1 catalogs MUST continue to honor `canonical_parameters` when present; 4.0+ SDKs MAY reject the field. New code SHOULD NOT emit this field. Seller execution authority is never projected through this deprecated field, so tracker_execution_contract and tracker_execution_contract_digest are forbidden.\n\n**Drift contract (still normative while supported).** Hand-authored `canonical_parameters` MUST satisfy the *narrows* relation against this v1 format's `requirements` and `assets[*]` shape (see canonical-formats.mdx 'Narrows — formal definition'). SDKs that read this v1 file SHOULD lint-time check the equivalence at build/load and emit `FORMAT_PROJECTION_FAILED` if the two disagree."
     }
   },
   "required": [

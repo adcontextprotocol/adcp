@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/purchase-opportunity-context.json",
+  "title": "Purchase Opportunity Context",
+  "description": "The opportunity context sent with a purchase. A `closed` status requires close reason `accepted_with_seller`, and `later_proposals` is allowed only when status is `open`.",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/opportunity-context.json"
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "closed"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "close_reason": {
+            "const": "accepted_with_seller"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "not": {
+          "properties": {
+            "status": {
+              "const": "open"
+            }
+          },
+          "required": [
+            "status"
+          ]
+        }
+      },
+      "then": {
+        "not": {
+          "required": [
+            "later_proposals"
+          ]
+        }
+      }
+    }
+  ]
+}

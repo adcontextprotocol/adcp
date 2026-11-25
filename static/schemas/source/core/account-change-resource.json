@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/account-change-resource.json",
+  "title": "Account Change Resource",
+  "description": "The stable identity of a changed resource: resource type, account ID, resource ID, and any parent IDs needed to disambiguate nested resources. Resource types are open for forward compatibility.",
+  "type": "object",
+  "properties": {
+    "type": {
+      "$ref": "/schemas/core/account-change-resource-type.json",
+      "description": "Open resource-type name such as account, media_buy, package, creative, creative_assignment, delivery_report, audience, event_source, catalog, account_financials, or invoice."
+    },
+    "account_id": {
+      "$ref": "/schemas/core/account-id.json",
+      "description": "Seller-assigned account containing the resource."
+    },
+    "resource_id": {
+      "$ref": "/schemas/core/account-change-resource-id.json",
+      "description": "Canonical identifier for the resource within its type. For an account change this equals account_id."
+    },
+    "parent_ids": {
+      "$ref": "/schemas/core/account-change-parent-ids.json",
+      "description": "Additional canonical parent identifiers needed to repair a nested resource, for example media_buy_id and package_id for a creative assignment. Keys and values MUST NOT contain sensitive payload data."
+    }
+  },
+  "required": [
+    "type",
+    "account_id",
+    "resource_id"
+  ],
+  "additionalProperties": true
+}

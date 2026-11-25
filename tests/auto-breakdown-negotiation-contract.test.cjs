@@ -4,6 +4,7 @@ const Ajv = require("ajv");
 const addFormats = require("ajv-formats");
 const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
+const { resolveSchema } = require("./helpers/named-scalar-schemas.cjs");
 
 const SCHEMA_ROOT = path.join(__dirname, "..", "static", "schemas", "source");
 
@@ -47,8 +48,8 @@ describe("automatic breakdown negotiation contract (RFC #6623)", () => {
     const response = readSchema(
       "/schemas/media-buy/get-media-buy-delivery-response.json"
     );
-    const byPackage =
-      response.properties.media_buy_deliveries.items.properties.by_package.items;
+    const byPackage = resolveSchema(response.properties.media_buy_deliveries.items)
+      .properties.by_package.items;
     byPackageExtension = byPackage.allOf.find((schema) => schema.properties);
 
     [validateRequest, validateByPackage] = await Promise.all([
@@ -108,8 +109,9 @@ describe("automatic breakdown negotiation contract (RFC #6623)", () => {
 
   for (const dimension of AUTO_BREAKDOWN_DIMENSIONS) {
     it(`request schema declares limit, sort_by, and sort_direction for ${dimension}`, () => {
-      const dimensionSchema =
-        requestJson.properties.reporting_dimensions.properties[dimension];
+      const dimensionSchema = resolveSchema(
+        requestJson.properties.reporting_dimensions.properties[dimension]
+      );
       assert.ok(dimensionSchema, `missing dimension schema for ${dimension}`);
       assert.ok(dimensionSchema.properties.limit, `missing limit for ${dimension}`);
       assert.equal(dimensionSchema.properties.limit.type, "integer");

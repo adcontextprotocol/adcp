@@ -44,8 +44,9 @@
     "ledger_snapshot_id": { "type": "string", "minLength": 1, "maxLength": 255, "description": "Opaque identity of the seller's consistent reporting-ledger snapshot. Every page reached from one periods cursor MUST return the same value." },
     "ledger_as_of": { "type": "string", "format": "date-time", "description": "Exclusive observation boundary for ledger_snapshot_id. Revisions committed later appear only in a later reconciliation." },
     "changes_checkpoint": { "type": "string", "minLength": 1, "maxLength": 2048, "description": "Opaque durable incremental-repair checkpoint for this periods snapshot. Consumers persist it only after consuming every page, then send it as changes_after. It is bound to authenticated caller, account, and filters and MUST order every committed obligation, revision, adjustment, materialization, consumer status statement, revision receipt, and adjustment receipt without gaps." },
-    "account_id": { "type": "string", "minLength": 1, "x-entity": "account", "description": "Resolved seller/storefront account identifier." },
+    "account_id": { "$ref": "/schemas/core/account-id.json", "description": "Resolved seller/storefront account identifier." },
     "scope": {
+      "title": "Reporting Status Evaluated Scope",
       "type": "object",
       "description": "Exact denominator evaluated for summary or periods health. complete is valid only when scope_closed is true.",
       "properties": {
@@ -58,12 +59,13 @@
           "type": "array",
           "description": "Exact independently reconciled configuration generations in the denominator. A generation derived from a reporting subscription is listed once per resolved offering, with offering_id, because one subscription version can resolve several offerings (match all, different products, or a resolution change).",
           "items": {
+            "title": "Reporting Configuration Generation Reference",
             "type": "object",
             "properties": {
-              "delivery_config_id": { "type": "string", "minLength": 1, "maxLength": 64, "x-entity": "reporting_delivery_config" },
+              "delivery_config_id": { "$ref": "/schemas/core/reporting-delivery-config-id.json" },
               "delivery_config_version": { "type": "integer", "minimum": 1 },
               "feed_purpose": { "$ref": "/schemas/core/reporting-delivery-offering.json#/definitions/ReportingFeedPurpose" },
-              "offering_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]{1,128}$", "x-entity": "reporting_offering", "x-status": "experimental", "x-added-in": "3.3.0", "description": "Present when and only when the generation is derived from a reporting subscription (media_buy.reporting_subscriptions): the offering its obligations in this entry resolved." }
+              "offering_id": { "$ref": "/schemas/core/reporting-delivery-offering-id.json", "x-status": "experimental", "x-added-in": "3.3.0", "description": "Present when and only when the generation is derived from a reporting subscription (media_buy.reporting_subscriptions): the offering its obligations in this entry resolved." }
             },
             "required": ["delivery_config_id", "delivery_config_version", "feed_purpose"],
             "additionalProperties": true
@@ -120,18 +122,18 @@
   "oneOf": [
     {
       "title": "Successful lookup",
-      "properties": { "status": { "type": "string", "const": "completed" } },
+      "properties": { "status": { "type": "string", "const": "completed", "default": "completed" } },
       "required": ["status"],
       "oneOf": [
         {
       "title": "Summary view",
-      "properties": { "view": { "type": "string", "const": "summary" } },
+      "properties": { "view": { "type": "string", "const": "summary", "default": "summary" } },
       "required": ["view", "ledger_snapshot_id", "ledger_as_of", "account_id", "scope", "health", "coverage", "data_through", "obligation_counts", "issues"],
       "not": { "anyOf": [{ "required": ["changes_checkpoint"], "properties": { "changes_checkpoint": {} } }, { "required": ["periods"], "properties": { "periods": {} } }, { "required": ["revisions"], "properties": { "revisions": {} } }, { "required": ["adjustments"], "properties": { "adjustments": {} } }, { "required": ["consumer_statuses"], "properties": { "consumer_statuses": {} } }, { "required": ["adjustment_receipts"], "properties": { "adjustment_receipts": {} } }, { "required": ["pagination"], "properties": { "pagination": {} } }, { "required": ["revision"], "properties": { "revision": {} } }, { "required": ["materializations"], "properties": { "materializations": {} } }, { "required": ["receipts"], "properties": { "receipts": {} } }] }
     },
     {
       "title": "Periods view",
-      "properties": { "view": { "type": "string", "const": "periods" }, "pagination": { "type": "object", "required": ["has_more", "total_count"] } },
+      "properties": { "view": { "type": "string", "const": "periods", "default": "periods" }, "pagination": { "type": "object", "required": ["has_more", "total_count"] } },
       "required": ["view", "ledger_snapshot_id", "ledger_as_of", "account_id", "scope", "periods", "revisions", "materializations", "receipts", "pagination"],
       "if": { "properties": { "health": { "const": "complete" } }, "required": ["health"] },
       "then": { "not": { "required": ["next_expected_at"], "properties": { "next_expected_at": {} } } },
@@ -139,7 +141,7 @@
     },
     {
       "title": "Revision view",
-      "properties": { "view": { "type": "string", "const": "revision" }, "pagination": { "type": "object", "required": ["has_more", "total_count"] } },
+      "properties": { "view": { "type": "string", "const": "revision", "default": "revision" }, "pagination": { "type": "object", "required": ["has_more", "total_count"] } },
       "required": ["view", "ledger_snapshot_id", "ledger_as_of", "account_id", "revision", "materializations", "receipts", "pagination"],
       "not": { "anyOf": [{ "required": ["changes_checkpoint"], "properties": { "changes_checkpoint": {} } }, { "required": ["scope"], "properties": { "scope": {} } }, { "required": ["health"], "properties": { "health": {} } }, { "required": ["periods"], "properties": { "periods": {} } }, { "required": ["revisions"], "properties": { "revisions": {} } }, { "required": ["subscription_coverage"], "properties": { "subscription_coverage": {} } }] }
         }
@@ -147,7 +149,7 @@
     },
     {
       "title": "Failed lookup",
-      "properties": { "status": { "type": "string", "const": "failed" } },
+      "properties": { "status": { "type": "string", "const": "failed", "default": "failed" } },
       "required": ["status"],
       "oneOf": [
         {
@@ -155,9 +157,9 @@
       "title": "Unavailable lookup",
       "type": "object",
       "properties": {
-        "status": { "type": "string", "const": "failed" },
-        "view": { "enum": ["summary", "periods", "revision"] },
-        "failure_kind": { "type": "string", "const": "lookup_unavailable" },
+        "status": { "type": "string", "const": "failed", "default": "failed" },
+        "view": { "$ref": "/schemas/enums/reporting-status-view.json" },
+        "failure_kind": { "type": "string", "const": "lookup_unavailable", "default": "lookup_unavailable" },
         "context": { "$ref": "/schemas/core/context.json" },
         "message": { "const": "Reporting status resource is unavailable." },
         "adcp_error": {
@@ -192,9 +194,9 @@
       "title": "Operational failure",
       "type": "object",
       "properties": {
-        "status": { "type": "string", "const": "failed" },
-        "view": { "enum": ["summary", "periods", "revision"] },
-        "failure_kind": { "type": "string", "const": "operational" },
+        "status": { "type": "string", "const": "failed", "default": "failed" },
+        "view": { "$ref": "/schemas/enums/reporting-status-view.json" },
+        "failure_kind": { "type": "string", "const": "operational", "default": "operational" },
         "context": { "$ref": "/schemas/core/context.json" },
         "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" }, "minItems": 1 }
       },

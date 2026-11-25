@@ -16,6 +16,7 @@
         "success": {
           "type": "boolean",
           "const": true,
+          "default": true,
           "description": "Indicates the update was applied successfully"
         },
         "standards_id": {
@@ -42,6 +43,7 @@
         "success": {
           "type": "boolean",
           "const": false,
+          "default": false,
           "description": "Indicates the update failed"
         },
         "errors": {

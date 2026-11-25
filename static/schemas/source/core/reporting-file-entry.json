@@ -9,7 +9,7 @@
     "object_ref": { "$ref": "/schemas/core/reporting-file-object-ref.json" },
     "native_version_ref": { "$ref": "/schemas/core/reporting-native-version-ref.json" },
     "size_bytes": { "type": "integer", "minimum": 0 },
-    "sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
+    "sha256": { "$ref": "/schemas/core/sha256-hex-digest.json" },
     "row_count": { "type": "integer", "minimum": 0 },
     "partition": {
       "type": "object",

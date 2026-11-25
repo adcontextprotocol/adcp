@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/audience-activation-direction.json",
+  "title": "Audience Activation Direction",
+  "description": "Direction in which audience data moves during activation: buyer_to_seller or seller_to_buyer.",
+  "type": "string",
+  "enum": [
+    "buyer_to_seller",
+    "seller_to_buyer"
+  ]
+}

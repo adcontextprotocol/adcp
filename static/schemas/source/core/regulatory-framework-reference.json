@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/regulatory-framework-reference.json",
+  "title": "Regulatory Framework Reference",
+  "description": "A regulation or standard, the jurisdictions where it applies, and what it requires.",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Name of the regulation or standard (e.g., 'US COPPA')."
+    },
+    "jurisdictions": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/country-code.json"
+      },
+      "description": "ISO 3166-1 alpha-2 codes where this framework applies."
+    },
+    "summary": {
+      "type": "string",
+      "description": "Brief summary of what the framework requires or prohibits."
+    },
+    "policy_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "x-entity": "governance_registry_policy"
+      },
+      "description": "Registry policy IDs that implement this framework."
+    }
+  },
+  "required": [
+    "name",
+    "summary"
+  ],
+  "additionalProperties": true
+}

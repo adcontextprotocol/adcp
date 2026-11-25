@@ -6,8 +6,7 @@
   "type": "object",
   "properties": {
     "task": {
-      "type": "string",
-      "enum": ["control_media_buy", "refine_proposals", "sync_creatives", "report_media_buy_issue"]
+      "$ref": "/schemas/enums/media-buy-action-task.json"
     },
     "action": { "type": "string" },
     "mode": { "$ref": "/schemas/enums/canonical-media-buy-action-mode.json" },

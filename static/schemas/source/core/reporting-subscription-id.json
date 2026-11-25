@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-subscription-id.json",
+  "title": "Reporting Subscription ID",
+  "description": "Identifier of a reporting subscription.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 64,
+  "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+  "x-entity": "reporting_subscription"
+}

@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/incomplete-scope-entry.json",
+  "title": "Incomplete Scope Entry",
+  "description": "A part of a response that is not yet complete: its scope, a description, and an optional estimated wait.",
+  "type": "object",
+  "properties": {
+    "scope": {
+      "$ref": "/schemas/enums/incomplete-scope.json"
+    },
+    "description": {
+      "$ref": "/schemas/core/incomplete-scope-description.json"
+    },
+    "estimated_wait": {
+      "$ref": "/schemas/core/duration.json"
+    }
+  },
+  "required": [
+    "scope",
+    "description"
+  ],
+  "additionalProperties": true
+}

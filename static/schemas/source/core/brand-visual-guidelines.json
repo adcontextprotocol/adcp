@@ -1,0 +1,117 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-visual-guidelines.json",
+  "title": "Brand Visual Guidelines",
+  "description": "Structured visual rules for generative creative systems. Defines how brand photography, graphics, typography, and composition should be produced to maintain brand consistency at scale.",
+  "type": "object",
+  "properties": {
+    "photography": {
+      "$ref": "/schemas/core/brand-photography-style.json"
+    },
+    "graphic_style": {
+      "$ref": "/schemas/core/brand-graphic-style.json"
+    },
+    "shapes": {
+      "$ref": "/schemas/core/brand-shapes.json"
+    },
+    "iconography": {
+      "$ref": "/schemas/core/brand-iconography.json"
+    },
+    "composition": {
+      "$ref": "/schemas/core/brand-composition-rules.json"
+    },
+    "border_radius": {
+      "$ref": "/schemas/core/brand-border-radius.json"
+    },
+    "elevation": {
+      "$ref": "/schemas/core/brand-elevation.json"
+    },
+    "spacing": {
+      "$ref": "/schemas/core/brand-spacing.json"
+    },
+    "graphic_elements": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/brand-graphic-element.json"
+      },
+      "description": "Reusable decorative elements that are part of the brand visual identity (e.g., torn paper edges, watermarks, dividers)"
+    },
+    "motion": {
+      "$ref": "/schemas/core/brand-motion-guidelines.json"
+    },
+    "logo_placement": {
+      "$ref": "/schemas/core/brand-logo-placement.json"
+    },
+    "colorways": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/brand-colorway.json"
+      },
+      "description": "Named color pairings for consistent foreground/background combinations"
+    },
+    "color_constraints": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/brand-color-constraint.json"
+      },
+      "description": "Machine-readable constraints for color usage and pairings, such as accent-only rules or forbidden foreground/background combinations."
+    },
+    "logo_usage_rules": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/brand-logo-usage-rule.json"
+      },
+      "description": "Machine-readable logo selection and placement constraints for minimum size, clear space, backgrounds, and contexts."
+    },
+    "mark_lockups": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/brand-mark-lockup.json"
+      },
+      "description": "Machine-readable co-brand, partner, sponsor, program, or secondary-mark lockup rules."
+    },
+    "type_scale": {
+      "type": "object",
+      "description": "Typography scale defining sizes and weights for different text roles. When sizes are in px, use base_width to indicate the reference canvas.",
+      "properties": {
+        "base_width": {
+          "type": "string",
+          "description": "Reference canvas width these sizes were designed for (e.g., '1080px'). Generative systems should scale proportionally for other canvas sizes."
+        },
+        "heading": {
+          "$ref": "/schemas/core/brand-type-scale-entry.json"
+        },
+        "subheading": {
+          "$ref": "/schemas/core/brand-type-scale-entry.json"
+        },
+        "body": {
+          "$ref": "/schemas/core/brand-type-scale-entry.json"
+        },
+        "caption": {
+          "$ref": "/schemas/core/brand-type-scale-entry.json"
+        },
+        "cta": {
+          "$ref": "/schemas/core/brand-type-scale-entry.json"
+        }
+      },
+      "additionalProperties": {
+        "$ref": "/schemas/core/brand-type-scale-entry.json"
+      }
+    },
+    "asset_libraries": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/brand-asset-library.json"
+      },
+      "description": "References to managed asset libraries (icon sets, illustration systems, image collections). URLs are intended for human access; agent-facing DAM integration is under investigation."
+    },
+    "restrictions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Visual prohibitions and guardrails (e.g., 'Never use black backgrounds', 'Do not crop the logo', 'No stock photography of people on phones')"
+    }
+  },
+  "additionalProperties": true
+}

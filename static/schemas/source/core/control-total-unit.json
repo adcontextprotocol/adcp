@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/control-total-unit.json",
+  "title": "Control Total Unit",
+  "description": "Profile-defined unit of a reporting control total, such as impressions or an ISO 4217 currency code.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 32
+}

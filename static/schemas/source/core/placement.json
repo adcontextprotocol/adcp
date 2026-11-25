@@ -6,85 +6,24 @@
   "type": "object",
   "definitions": {
     "ProductDoohScreenResolution": {
+      "$ref": "/schemas/core/dooh-screen-resolution.json",
       "title": "Product DOOH Screen Resolution",
-      "type": "object",
-      "description": "Physical screen resolution in pixels. Canonical format dimensions remain authoritative for creative acceptance and may describe a smaller content region within the physical screen.",
-      "properties": {
-        "width": { "type": "integer", "description": "Screen width in pixels.", "minimum": 1 },
-        "height": { "type": "integer", "description": "Screen height in pixels.", "minimum": 1 }
-      },
-      "required": ["width", "height"],
-      "additionalProperties": true
+      "description": "Physical screen resolution in pixels. Canonical format dimensions remain authoritative for creative acceptance and may describe a smaller content region within the physical screen."
     },
     "ProductDoohAddress": {
+      "$ref": "/schemas/core/dooh-address.json",
       "title": "Product DOOH Address",
-      "type": "object",
-      "description": "Structured street address for a DOOH/OOH placement, for display and geocoding fallback when coordinates are absent or imprecise.",
-      "properties": {
-        "line1": { "type": "string", "description": "Street address line (e.g., '89 E 42nd St')." },
-        "city": { "type": "string", "description": "City name." },
-        "region": { "type": "string", "description": "State, province, or region. ISO 3166-2 subdivision code preferred (e.g., 'US-NY')." },
-        "postal_code": { "type": "string", "description": "Postal or ZIP code." },
-        "country": { "type": "string", "pattern": "^[A-Z]{2}$", "description": "ISO 3166-1 alpha-2 country code." }
-      },
-      "additionalProperties": true
+      "description": "Structured street address for a DOOH/OOH placement, for display and geocoding fallback when coordinates are absent or imprecise."
     },
     "ProductDoohLocation": {
+      "$ref": "/schemas/core/dooh-location.json",
       "title": "Product DOOH Location",
-      "type": "object",
-      "description": "Disclosed geographic location of an installed DOOH/OOH placement, for buyer planning, mapping, and verification. Location metadata only: missing, imprecise, or later-corrected coordinates MUST NOT change placement_id or identifiers[]. All fields optional; disclose what the seller actually knows. Network products where per-screen location is not disclosed should use the product-level dooh_inventory_summary aggregate instead.",
-      "properties": {
-        "lat": {
-          "type": "number",
-          "minimum": -90,
-          "maximum": 90,
-          "description": "Latitude in decimal degrees (WGS 84)."
-        },
-        "lon": {
-          "type": "number",
-          "minimum": -180,
-          "maximum": 180,
-          "description": "Longitude in decimal degrees (WGS 84). Uses `lon`, matching OpenRTB 2.6 and OpenOOH geo field naming used by DOOH data partners and measurement currencies, rather than this spec's general targeting.json `lng` convention."
-        },
-        "address": { "$ref": "#/definitions/ProductDoohAddress" }
-      },
-      "additionalProperties": true
+      "description": "Disclosed geographic location of an installed DOOH/OOH placement, for buyer planning, mapping, and verification. Location metadata only: missing, imprecise, or later-corrected coordinates MUST NOT change placement_id or identifiers[]. All fields optional; disclose what the seller actually knows. Network products where per-screen location is not disclosed should use the product-level dooh_inventory_summary aggregate instead."
     },
     "ProductDoohPlacementAttributes": {
+      "$ref": "/schemas/core/canonical-dooh-placement-attributes.json",
       "title": "Product DOOH Placement Attributes",
-      "type": "object",
       "description": "DOOH inventory facts describing an installed surface and its scheduled loop, not creative acceptance. For kind: publisher_ref, product-level slot_duration_seconds and loop_duration_seconds override publisher defaults; omitted values inherit. Visual placements may declare screen_resolution and motion; audio-only placements omit those screen-specific fields. Repeated screen_resolution and motion values MUST equal publisher facts.",
-      "properties": {
-        "slot_duration_seconds": {
-          "type": "integer",
-          "description": "Scheduled duration of one ad slot in seconds. This is an inventory fact used for loop and share calculations, not the creative-duration contract.",
-          "minimum": 1
-        },
-        "loop_duration_seconds": {
-          "type": "integer",
-          "description": "Duration of the full ad loop rotation in seconds and the canonical source for loop duration.",
-          "minimum": 1
-        },
-        "screen_resolution": { "$ref": "#/definitions/ProductDoohScreenResolution" },
-        "motion": {
-          "$ref": "/schemas/enums/dooh-motion-type.json",
-          "description": "Physical motion capability of a visual DOOH screen, not an accepted-format declaration. Omit for audio-only placements."
-        },
-        "location": { "$ref": "#/definitions/ProductDoohLocation", "x-added-in": "3.3.0" },
-        "impression_basis": {
-          "$ref": "/schemas/enums/impression-estimation-basis.json",
-          "x-status": "experimental",
-          "x-added-in": "3.3.0",
-          "description": "Experimental (media_buy.dooh_impression_basis). Methodology tier the seller plans to estimate this placement's audience on, so a buyer can compare and filter products before buying. A product mixing screens on different tiers declares it per placement. Delivery reports the realised tiers, which can include the seller's model on a sensor-equipped screen while its sensor is not reporting. Sellers that emit it MUST list `media_buy.dooh_impression_basis` in `experimental_features`."
-        },
-        "audience_multiplier": {
-          "type": "number",
-          "minimum": 0,
-          "x-status": "experimental",
-          "x-added-in": "3.3.0",
-          "description": "Experimental (media_buy.dooh_impression_basis). Planning audience per play for this placement: the `impressions / plays` the seller's forecasts use. Optional on `currency_measured` placements."
-        }
-      },
       "x-adcp-validation": {
         "verifier_constraints": {
           "slot_fits_loop": {
@@ -94,21 +33,25 @@
             "evaluate_after": "publisher_ref_resolution"
           },
           "publisher_ref_resolution": {
-            "override_fields": ["slot_duration_seconds", "loop_duration_seconds"],
+            "override_fields": [
+              "slot_duration_seconds",
+              "loop_duration_seconds"
+            ],
             "inherit_when_omitted": true,
-            "must_equal_fields": ["screen_resolution", "motion"],
+            "must_equal_fields": [
+              "screen_resolution",
+              "motion"
+            ],
             "identifier_merge": "union_by_type_and_value"
           }
         },
         "spec": "docs/media-buy/product-discovery/media-products.mdx#dooh-placement-attributes"
-      },
-      "additionalProperties": true
+      }
     }
   },
   "properties": {
     "kind": {
-      "type": "string",
-      "enum": ["publisher_ref", "seller_inline"],
+      "$ref": "/schemas/enums/placement-authority.json",
       "description": "Placement authority discriminator. `publisher_ref` is publisher-catalog identity; `seller_inline` is sales-agent-authored identity."
     },
     "placement_id": {
@@ -117,8 +60,7 @@
       "x-entity": "placement"
     },
     "publisher_domain": {
-      "type": "string",
-      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+      "$ref": "/schemas/core/domain-name.json",
       "description": "For publisher_ref, the domain whose adagents.json declares the placement and part of canonical identity. For seller_inline, optional inventory-publisher attribution only; it does not grant the seller authority to mint IDs in that publisher's catalog namespace."
     },
     "seller_agent": {
@@ -134,8 +76,7 @@
       "description": "Detailed description of where and how the placement appears"
     },
     "mode": {
-      "type": "string",
-      "enum": ["targetable", "included"],
+      "$ref": "/schemas/enums/product-placement-mode.json",
       "description": "Required product-level relationship to this placement. targetable means the buyer may include the publisher-scoped ref in targeting_overlay.placement_selection; a creative may be routed there only after it is purchased. included means fixed product inventory: it cannot be independently selected, but across discovery, create, and update a selected request exactly equal to the product's complete included placement set is an inherent restatement and may be echoed on the package without overlay_support.placement_selection. A product containing any included placement MUST NOT declare overlay_support.placement_selection; partial selection requires a separately selectable product configuration. During the migration window ending 2026-11-25, buyers MAY tolerate legacy products that omit mode and treat them as targetable; after that date buyers SHOULD fail closed."
     },
     "tags": {
@@ -204,18 +145,7 @@
       "type": "array",
       "description": "Optional external inventory identifiers for this placement, using the same {type, value} shape as property identifiers. Externally governed IDs should be authority-prefixed (e.g., space:1234931339, geopath:30961, fcc:73953). Seller-local IDs are opaque values scoped by the surrounding publisher namespace. Useful for DOOH venue and installed-endpoint IDs, broadcast facility IDs, and any channel where placements map to externally registered inventory. For kind: publisher_ref, the effective identifier set is the union of the resolved publisher declaration and this product declaration, de-duplicated by exact (type, value); a product cannot suppress a publisher-declared identifier by omission.",
       "items": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "$ref": "/schemas/enums/identifier-types.json"
-          },
-          "value": {
-            "type": "string",
-            "description": "Identifier value, optionally authority-prefixed for externally governed IDs (e.g., space:1234931339)."
-          }
-        },
-        "required": ["type", "value"],
-        "additionalProperties": true
+        "$ref": "/schemas/core/identifier.json"
       },
       "uniqueItems": true,
       "minItems": 1

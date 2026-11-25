@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/context-match-cache-ttl.json",
+  "title": "Context Match Cache TTL",
+  "description": "Time in seconds a trusted-match router caches a context-match response. A value of 0 disables caching.",
+  "type": "integer",
+  "minimum": 0,
+  "maximum": 86400
+}

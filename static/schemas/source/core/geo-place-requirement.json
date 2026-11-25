@@ -10,20 +10,12 @@
       "description": "Required country/type pairs and optional exact catalog versions for one identifier system. Country keys prevent a false Cartesian product between countries and place types.",
       "properties": {
         "countries": {
-          "type": "object",
-          "propertyNames": { "pattern": "^[A-Z]{2}$" },
-          "additionalProperties": {
-            "type": "array",
-            "items": { "$ref": "/schemas/core/geo-place-type.json" },
-            "minItems": 1,
-            "uniqueItems": true
-          },
-          "minProperties": 1
+          "$ref": "/schemas/core/geo-country-place-types.json"
         },
         "system_versions": {
           "type": "array",
           "description": "Optional exact catalog versions that must remain selectable. Versions are opaque strings, not ordered ranges.",
-          "items": { "type": "string", "minLength": 1 },
+          "items": { "$ref": "/schemas/core/geo-place-system-version.json" },
           "minItems": 1,
           "uniqueItems": true
         }

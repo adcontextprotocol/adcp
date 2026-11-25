@@ -16,7 +16,7 @@
       "description": "Successful feed page.",
       "required": ["status", "changes", "cursor", "has_more", "available_since", "generated_at"],
       "properties": {
-        "status": {"type": "string", "const": "completed"}
+        "status": {"type": "string", "const": "completed", "default": "completed"}
       },
       "not": {"required": ["adcp_error"]}
     },
@@ -24,7 +24,7 @@
       "description": "Fatal feed failure, including CURSOR_EXPIRED. Both envelope and payload error layers are present.",
       "required": ["status", "adcp_error", "errors"],
       "properties": {
-        "status": {"type": "string", "const": "failed"},
+        "status": {"type": "string", "const": "failed", "default": "failed"},
         "errors": {"minItems": 1}
       }
     }
@@ -37,10 +37,8 @@
       "maxItems": 100
     },
     "cursor": {
-      "type": "string",
-      "description": "Opaque checkpoint strictly after the high-water scanned by this page. Always persist this value, including when changes is empty or has_more is false. A filtered empty page still advances past scanned nonmatching records.",
-      "minLength": 1,
-      "maxLength": 4096
+      "$ref": "/schemas/core/account-change-cursor.json",
+      "description": "Opaque checkpoint strictly after the high-water scanned by this page. Always persist this value, including when changes is empty or has_more is false. A filtered empty page still advances past scanned nonmatching records."
     },
     "has_more": {
       "type": "boolean",
@@ -99,7 +97,7 @@
           },
           "resource_types": {
             "type": "array",
-            "items": {"type": "string", "minLength": 1, "maxLength": 100, "pattern": "^[a-z][a-z0-9_.-]{0,99}$"},
+            "items": {"$ref": "/schemas/core/account-change-resource-type.json"},
             "maxItems": 50,
             "uniqueItems": true
           }

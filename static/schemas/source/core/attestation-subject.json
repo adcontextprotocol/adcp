@@ -8,43 +8,10 @@
   },
   "oneOf": [
     {
-      "title": "AttestationBrandSubject",
-      "type": "object",
-      "properties": {
-        "type": {
-          "type": "string",
-          "const": "brand"
-        },
-        "brand": {
-          "$ref": "/schemas/core/brand-ref.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
-        }
-      },
-      "required": ["type", "brand"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/attestation-brand-identity.json"
     },
     {
-      "title": "AttestationAgentSubject",
-      "type": "object",
-      "properties": {
-        "type": {
-          "type": "string",
-          "const": "agent"
-        },
-        "agent_url": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://",
-          "description": "Canonical HTTPS endpoint of the agent the claim concerns."
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
-        }
-      },
-      "required": ["type", "agent_url"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/attestation-agent-identity.json"
     },
     {
       "title": "AttestationResourceSubject",
@@ -52,7 +19,8 @@
       "properties": {
         "type": {
           "type": "string",
-          "const": "resource"
+          "const": "resource",
+          "default": "resource"
         },
         "resource_type": {
           "type": "string",
@@ -71,8 +39,7 @@
           "description": "Stable identifier for the subject within namespace. It MUST NOT be compared without resource_type and namespace."
         },
         "content_digest": {
-          "type": "string",
-          "pattern": "^sha256:[a-f0-9]{64}$",
+          "$ref": "/schemas/core/sha256-digest.json",
           "description": "Optional SHA-256 pin for the exact content or immutable snapshot identified by this resource subject. This is part of the complete typed subject identity and is distinct from AttestationReference.content_digest, which pins credential bytes."
         },
         "ext": {

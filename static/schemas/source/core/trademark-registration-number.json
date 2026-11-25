@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/trademark-registration-number.json",
+  "title": "Trademark Registration Number",
+  "description": "Registration number the trademark registry issued.",
+  "type": "string",
+  "maxLength": 100
+}

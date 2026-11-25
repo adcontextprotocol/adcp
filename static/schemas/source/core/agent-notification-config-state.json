@@ -6,14 +6,10 @@
   "type": "object",
   "properties": {
     "subscriber_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+      "$ref": "/schemas/core/subscriber-id.json"
     },
     "url": {
-      "type": "string",
-      "format": "uri"
+      "$ref": "/schemas/core/webhook-url.json"
     },
     "event_types": {
       "type": "array",

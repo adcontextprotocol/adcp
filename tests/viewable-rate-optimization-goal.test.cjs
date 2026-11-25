@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
+const { resolveScalar } = require('./helpers/named-scalar-schemas.cjs');
 
 const SCHEMA_ROOT = path.join(__dirname, '..', 'static', 'schemas', 'source');
 
@@ -83,14 +84,14 @@ for (const uri of GOAL_SCHEMAS) {
 test('seller optimization capabilities can declare viewable_rate and supported standards', async () => {
   const product = await loadSchema('/schemas/core/product.json');
   const metricOptimization = product.properties.metric_optimization.properties;
-  assert.ok(metricOptimization.supported_metrics.items.enum.includes('viewable_rate'));
+  assert.ok(resolveScalar(metricOptimization.supported_metrics.items).enum.includes('viewable_rate'));
   assert.equal(
     metricOptimization.supported_viewability_standards.items.$ref,
     '/schemas/enums/viewability-standard.json'
   );
 
   const capabilities = await loadSchema('/schemas/protocol/get-adcp-capabilities-response.json');
-  const rollup = JSON.stringify(capabilities).match(/"supported_optimization_metrics":\{[^}]*"enum":\[([^\]]*)\]/);
-  assert.ok(rollup, 'supported_optimization_metrics enum not found');
-  assert.match(rollup[1], /"viewable_rate"/);
+  const rollup = resolveScalar(capabilities.properties.media_buy.properties.supported_optimization_metrics.items);
+  assert.ok(rollup.enum, 'supported_optimization_metrics enum not found');
+  assert.ok(rollup.enum.includes('viewable_rate'));
 });

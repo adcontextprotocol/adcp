@@ -4,6 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { resolveSchema } = require('./helpers/named-scalar-schemas.cjs');
 
 const SCHEMA_ROOT = path.join(__dirname, '../static/schemas/source');
 
@@ -30,7 +31,7 @@ const packageRow = (by_package) => by_package.items.allOf.find((part) => part.pr
 
 function deliveryRowSchema() {
   return packageRow(
-    readSchema('/schemas/media-buy/get-media-buy-delivery-response.json').properties.media_buy_deliveries.items.properties
+    resolveSchema(readSchema('/schemas/media-buy/get-media-buy-delivery-response.json').properties.media_buy_deliveries.items).properties
       .by_package
   );
 }
@@ -40,7 +41,7 @@ test('projection is an optional ref on top-level by_package rows only', () => {
   assert.equal(row.properties.projection.$ref, '/schemas/core/delivery-projection.json');
   assert.ok(!(row.required || []).includes('projection'));
   const windows = packageRow(
-    readSchema('/schemas/media-buy/get-media-buy-delivery-response.json').properties.media_buy_deliveries.items.properties
+    resolveSchema(readSchema('/schemas/media-buy/get-media-buy-delivery-response.json').properties.media_buy_deliveries.items).properties
       .windows.items.properties.by_package
   );
   assert.equal(windows.properties.projection, undefined);

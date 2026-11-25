@@ -14,32 +14,8 @@
       "description": "Listing title (e.g., 'Spacious 3BR Apartment in Jordaan')."
     },
     "address": {
-      "type": "object",
-      "description": "Property address.",
-      "properties": {
-        "street": {
-          "type": "string",
-          "description": "Street address."
-        },
-        "city": {
-          "type": "string",
-          "description": "City name."
-        },
-        "region": {
-          "type": "string",
-          "description": "State, province, or region."
-        },
-        "postal_code": {
-          "type": "string",
-          "description": "Postal or ZIP code."
-        },
-        "country": {
-          "type": "string",
-          "pattern": "^[A-Z]{2}$",
-          "description": "ISO 3166-1 alpha-2 country code."
-        }
-      },
-      "additionalProperties": true
+      "$ref": "/schemas/core/postal-address.json",
+      "description": "Property address."
     },
     "price": {
       "$ref": "/schemas/core/price.json",
@@ -66,6 +42,7 @@
       "description": "Number of bathrooms (e.g., 2.5 for two full and one half bath)."
     },
     "area": {
+      "title": "Property Area",
       "type": "object",
       "description": "Property size.",
       "properties": {
@@ -88,24 +65,8 @@
       "description": "Property description."
     },
     "location": {
-      "type": "object",
-      "description": "Geographic coordinates of the property.",
-      "properties": {
-        "lat": {
-          "type": "number",
-          "minimum": -90,
-          "maximum": 90,
-          "description": "Latitude in decimal degrees (WGS 84)."
-        },
-        "lng": {
-          "type": "number",
-          "minimum": -180,
-          "maximum": 180,
-          "description": "Longitude in decimal degrees (WGS 84)."
-        }
-      },
-      "required": ["lat", "lng"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/geo-coordinates.json",
+      "description": "Geographic coordinates of the property."
     },
     "image_url": {
       "type": "string",

@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/preview-input.json",
+  "title": "Preview Input",
+  "description": "A named set of inputs for rendering a preview: macro values and an optional context description.",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Human-readable name for this input set (e.g., 'Sunny morning on mobile', 'Evening podcast ad', 'Desktop dark mode')"
+    },
+    "macros": {
+      "$ref": "/schemas/core/macro-values.json",
+      "description": "Macro values to use for this preview. Supports all universal macros from the format's supported_macros list."
+    },
+    "context_description": {
+      "type": "string",
+      "description": "Natural language description of the context for AI-generated content (e.g., 'User just searched for running shoes', 'Podcast discussing weather patterns')"
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "additionalProperties": true
+}

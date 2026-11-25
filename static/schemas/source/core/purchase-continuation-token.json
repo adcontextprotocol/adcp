@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/purchase-continuation-token.json",
+  "title": "Purchase Continuation Token",
+  "description": "Opaque, short-lived coordinator token from products_available.purchase_continuation.",
+  "type": "string",
+  "minLength": 16
+}

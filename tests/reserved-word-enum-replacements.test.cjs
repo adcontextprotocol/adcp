@@ -11,6 +11,7 @@ const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { schemaAt } = require('./helpers/named-scalar-schemas.cjs');
 
 const SCHEMA_ROOT = path.join(__dirname, '../static/schemas/source');
 
@@ -24,20 +25,32 @@ const REPLACEMENTS = [
   ],
   ['core/registry-event.json', '/$defs/compliancePayload/properties/tracks/additionalProperties', 'pass', 'passed'],
   ['error-details/rate-limited.json', '/properties/scope', 'global', 'all'],
-  ['core/signal-definition.json', '/properties/onboarder/properties/match_keys/items', 'name', 'full_name'],
-  ['core/signal-definition-enrichment.json', '/properties/onboarder/properties/match_keys/items', 'name', 'full_name'],
+  ['enums/signal-match-key.json', '', 'name', 'full_name'],
+];
+
+// Sites that carry a replaced value through a named schema.
+const NAMED_SITES = [
+  ['core/signal-definition.json', '/properties/onboarder/properties/match_keys/items', 'enums/signal-match-key.json'],
+  [
+    'core/signal-definition-enrichment.json',
+    '/properties/onboarder/properties/match_keys/items',
+    'enums/signal-match-key.json',
+  ],
 ];
 
 function readSchema(relativePath) {
   return JSON.parse(fs.readFileSync(path.join(SCHEMA_ROOT, relativePath), 'utf8'));
 }
 
+// Reads through each `$ref` on the way to the site; the site itself is returned as written.
 function at(document, pointer) {
-  return pointer
-    .split('/')
-    .slice(1)
-    .map(segment => segment.replaceAll('~1', '/').replaceAll('~0', '~'))
-    .reduce((node, segment) => node[segment], document);
+  return schemaAt(
+    document,
+    ...pointer
+      .split('/')
+      .slice(1)
+      .map(segment => segment.replaceAll('~1', '/').replaceAll('~0', '~')),
+  );
 }
 
 async function compile(schema) {
@@ -63,6 +76,12 @@ test('each replaced value is accepted beside its deprecated original', () => {
       { deprecated: true, 'x-deprecated-in': '3.3.0', 'x-removed-in': '4.0.0', 'x-superseded-by': newValue },
       `${site} enumMetadata.${oldValue}`,
     );
+  }
+});
+
+test('each site that carries a replaced value references its named schema', () => {
+  for (const [file, pointer, named] of NAMED_SITES) {
+    assert.equal(at(readSchema(file), pointer).$ref, `/schemas/${named}`, `${file}#${pointer}`);
   }
 });
 

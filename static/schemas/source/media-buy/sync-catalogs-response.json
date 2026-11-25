@@ -18,6 +18,7 @@
         "status": {
           "type": "string",
           "const": "completed",
+          "default": "completed",
           "description": "Availability and synchronous catalog results are terminal and complete."
         },
         "dry_run": {
@@ -36,11 +37,8 @@
                 "x-entity": "catalog"
               },
               "catalog_generation": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 255,
-                "description": "Opaque token for this catalog incarnation. Sellers declaring catalog_item_availability_updates MUST return it for every accessible buyer-managed catalog result, including discovery. It remains stable across ordinary upserts and feed refreshes, changes after deletion and recreation, and is never reused for the same resolved account and catalog_id.",
-                "x-entity": "catalog_generation"
+                "$ref": "/schemas/core/catalog-generation.json",
+                "description": "Opaque token for this catalog incarnation. Sellers declaring catalog_item_availability_updates MUST return it for every accessible buyer-managed catalog result, including discovery. It remains stable across ordinary upserts and feed refreshes, changes after deletion and recreation, and is never reused for the same resolved account and catalog_id."
               },
               "action": {
                 "$ref": "/schemas/enums/catalog-action.json",

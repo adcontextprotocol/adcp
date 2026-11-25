@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/signal-pricing-group.json",
+  "title": "Signal Pricing Group",
+  "description": "Seller-defined key that names a set of signals whose fees combine under one pricing group rule.",
+  "type": "string",
+  "minLength": 1
+}

@@ -25,11 +25,11 @@
         "list_type": {
           "type": "string",
           "const": "property",
+          "default": "property",
           "description": "The receipt describes a property list."
         },
         "effect": {
-          "type": "string",
-          "enum": ["include", "exclude"],
+          "$ref": "/schemas/enums/inventory-list-effect.json",
           "description": "Whether matching properties were retained as an allowlist or removed as a blocklist."
         },
         "agent_url": {
@@ -38,10 +38,8 @@
           "description": "Agent URL from the effective property-list targeting reference."
         },
         "list_id": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Identifier from the effective property-list targeting reference.",
-          "x-entity": "property_list"
+          "$ref": "/schemas/core/property-list-id.json",
+          "description": "Identifier from the effective property-list targeting reference."
         },
         "resolved_at": {
           "type": "string",
@@ -54,22 +52,8 @@
           "description": "When the seller intersected that snapshot with this product's then-current inventory."
         },
         "summary": {
-          "type": "object",
-          "description": "Partition of every entry in the resolved list snapshot against this product's common pre-list inventory baseline.",
-          "properties": {
-            "matched": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Resolved entries that matched at least one property in this product."
-            },
-            "unmatched": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Resolved entries that did not match a property in this product."
-            }
-          },
-          "required": ["matched", "unmatched"],
-          "additionalProperties": true
+          "$ref": "/schemas/core/inventory-list-application-summary.json",
+          "description": "Partition of every entry in the resolved list snapshot against this product's common pre-list inventory baseline."
         }
       },
       "required": [
@@ -91,11 +75,11 @@
         "list_type": {
           "type": "string",
           "const": "collection",
+          "default": "collection",
           "description": "The receipt describes a collection list."
         },
         "effect": {
-          "type": "string",
-          "enum": ["include", "exclude"],
+          "$ref": "/schemas/enums/inventory-list-effect.json",
           "description": "Whether matching collections were retained as an allowlist or removed as a blocklist."
         },
         "agent_url": {
@@ -104,10 +88,8 @@
           "description": "Agent URL from the effective collection-list targeting reference."
         },
         "list_id": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Identifier from the effective collection-list targeting reference.",
-          "x-entity": "collection_list"
+          "$ref": "/schemas/core/collection-list-id.json",
+          "description": "Identifier from the effective collection-list targeting reference."
         },
         "resolved_at": {
           "type": "string",
@@ -120,22 +102,8 @@
           "description": "When the seller intersected that snapshot with this product's then-current inventory."
         },
         "summary": {
-          "type": "object",
-          "description": "Partition of every entry in the resolved list snapshot against this product's common pre-list inventory baseline.",
-          "properties": {
-            "matched": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Resolved entries that matched at least one collection in this product."
-            },
-            "unmatched": {
-              "type": "integer",
-              "minimum": 0,
-              "description": "Resolved entries that did not match a collection in this product."
-            }
-          },
-          "required": ["matched", "unmatched"],
-          "additionalProperties": true
+          "$ref": "/schemas/core/inventory-list-application-summary.json",
+          "description": "Partition of every entry in the resolved list snapshot against this product's common pre-list inventory baseline."
         }
       },
       "required": [

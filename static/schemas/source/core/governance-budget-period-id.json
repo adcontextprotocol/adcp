@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/governance-budget-period-id.json",
+  "title": "Governance Budget Period ID",
+  "description": "Identifier of one budget period, unique within a plan and stable across syncs.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 64,
+  "pattern": "^[A-Za-z0-9_.:-]+$",
+  "x-entity": "governance_budget_period"
+}

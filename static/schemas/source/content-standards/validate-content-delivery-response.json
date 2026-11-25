@@ -11,10 +11,12 @@
   ],
   "oneOf": [
     {
+      "title": "Validate Content Delivery Success",
       "type": "object",
       "description": "Success response",
       "properties": {
         "summary": {
+          "title": "Content Delivery Validation Summary",
           "type": "object",
           "description": "Summary counts across all records",
           "properties": {
@@ -38,6 +40,7 @@
           "type": "array",
           "description": "Per-record evaluation results",
           "items": {
+            "title": "ContentDeliveryValidationResult",
             "type": "object",
             "properties": {
               "record_id": {
@@ -51,35 +54,16 @@
                 "type": "array",
                 "description": "Per-feature breakdown. When present, SHOULD include all failed and warning features. MAY include passed features. Oracle pattern: exposes verdict + rule pointer, never the seller's threshold or the caller's submitted value (the seller authored the content standards).",
                 "items": {
-                  "type": "object",
-                  "properties": {
-                    "feature_id": {
-                      "type": "string",
-                      "description": "Which feature was evaluated. Data features come from the content-standards feature catalog (e.g., 'brand_safety', 'brand_suitability', 'image_dpi'). Record-level structural checks use reserved namespaces: 'record:malformed_artifact', 'delivery:authorization'. Reserved prefixes: 'record:', 'delivery:'."
-                    },
-                    "status": {
-                      "$ref": "/schemas/enums/feature-check-status.json"
-                    },
-                    "policy_id": {
-                      "type": "string",
-                      "description": "Registry policy ID that triggered this result. Present when the result originates from a specific registry policy (e.g., GARM category, CSBS standard). Enables programmatic routing by looking up the policy in the registry.",
-                      "x-entity": "governance_registry_policy"
-                    },
-                    "explanation": {
-                      "type": "string",
-                      "description": "Directional human-readable explanation (e.g., 'Below minimum resolution for display placement'). Avoid quantitative thresholds — the evaluator is the oracle."
-                    },
-                    "confidence": {
-                      "type": "number",
-                      "minimum": 0,
-                      "maximum": 1,
-                      "description": "Optional evaluator confidence in this result (0-1). Distinguishes certain verdicts from ambiguous ones."
+                  "allOf": [
+                    {
+                      "$ref": "/schemas/core/feature-check-result.json"
                     }
-                  },
-                  "required": [
-                    "feature_id",
-                    "status"
-                  ]
+                  ],
+                  "properties": {
+                    "policy_id": {
+                      "x-entity": "governance_registry_policy"
+                    }
+                  }
                 }
               }
             },
@@ -102,28 +86,15 @@
       ]
     },
     {
-      "type": "object",
+      "allOf": [
+        {
+          "$ref": "/schemas/core/task-error-response.json"
+        }
+      ],
       "description": "Error response. A body that is also a valid success response is the success shape, even when it lists `errors`.",
       "not": {
         "$ref": "#/oneOf/0"
-      },
-      "properties": {
-        "errors": {
-          "type": "array",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          }
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
-        }
-      },
-      "required": [
-        "errors"
-      ]
+      }
     }
   ],
   "properties": {}

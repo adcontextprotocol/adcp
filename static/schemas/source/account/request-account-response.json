@@ -15,7 +15,7 @@
       "description": "The request was recorded, or an existing request for the same key was returned.",
       "required": ["status", "request"],
       "properties": {
-        "status": { "type": "string", "const": "completed" }
+        "status": { "type": "string", "const": "completed", "default": "completed" }
       },
       "not": { "required": ["adcp_error"] }
     },
@@ -23,7 +23,7 @@
       "description": "The call could not be processed. Both envelope and payload error layers are present.",
       "required": ["status", "adcp_error", "errors"],
       "properties": {
-        "status": { "type": "string", "const": "failed" },
+        "status": { "type": "string", "const": "failed", "default": "failed" },
         "errors": { "minItems": 1 }
       }
     }

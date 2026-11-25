@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/principal-id.json",
+  "title": "Principal ID",
+  "description": "Seller-issued opaque identifier of a principal record.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 255
+}

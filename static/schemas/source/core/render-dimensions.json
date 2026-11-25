@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/render-dimensions.json",
+  "title": "Render Dimensions",
+  "description": "Dimensions of a rendered piece: fixed, minimum, and maximum width and height, responsiveness, and aspect ratio. Units default to pixels.",
+  "type": "object",
+  "properties": {
+    "width": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Fixed width. Interpretation depends on unit (default: pixels)."
+    },
+    "height": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Fixed height. Interpretation depends on unit (default: pixels)."
+    },
+    "min_width": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Minimum width for responsive renders"
+    },
+    "min_height": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Minimum height for responsive renders"
+    },
+    "max_width": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Maximum width for responsive renders"
+    },
+    "max_height": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Maximum height for responsive renders"
+    },
+    "unit": {
+      "$ref": "/schemas/enums/dimension-unit.json",
+      "description": "Unit of measurement for width/height values. Defaults to 'px' when absent. Print formats use 'inches' or 'cm'."
+    },
+    "responsive": {
+      "title": "Responsive Dimension Flags",
+      "type": "object",
+      "description": "Indicates which dimensions are responsive/fluid",
+      "properties": {
+        "width": {
+          "type": "boolean"
+        },
+        "height": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "width",
+        "height"
+      ]
+    },
+    "aspect_ratio": {
+      "$ref": "/schemas/core/aspect-ratio.json",
+      "description": "Fixed aspect ratio constraint (e.g., '16:9', '4:3', '1:1', '1.91:1')"
+    }
+  }
+}

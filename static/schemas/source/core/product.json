@@ -302,21 +302,7 @@
           "type": "array",
           "description": "Metric kinds this product can optimize for. Buyers should only request metric goals for kinds listed here. **DEPRECATED values** (slated for removal at next major): `attention_seconds` and `attention_score` — declare vendor-attested attention/quality metrics via `vendor_metric_optimization.supported_metrics[]` with an explicit vendor binding instead. Sellers MAY reject the deprecated values with `TERMS_REJECTED` and a suggestion to use the `vendor_metric` kind.",
           "items": {
-            "type": "string",
-            "enum": [
-              "clicks",
-              "views",
-              "completed_views",
-              "viewed_seconds",
-              "viewable_rate",
-              "attention_seconds",
-              "attention_score",
-              "engagements",
-              "follows",
-              "saves",
-              "profile_visits",
-              "reach"
-            ]
+            "$ref": "/schemas/enums/optimization-metric.json"
           },
           "minItems": 1
         },
@@ -349,8 +335,7 @@
           "type": "array",
           "description": "Target kinds available for metric goals on this product. Values match target.kind on the optimization goal. Only these target kinds are accepted — goals with unlisted target kinds will be rejected. When omitted, buyers can set target-less metric goals (maximize volume within budget) but cannot set specific targets.",
           "items": {
-            "type": "string",
-            "enum": ["cost_per", "threshold_rate"]
+            "$ref": "/schemas/enums/metric-optimization-target-kind.json"
           }
         }
       },
@@ -371,6 +356,7 @@
       "description": "Assessment of whether the buyer's event source setup is sufficient for this product to optimize effectively. Only present when the seller can evaluate the buyer's account context. Buyers should check this before creating media buys with event-based optimization goals."
     },
     "conversion_tracking": {
+      "title": "Product Conversion Tracking",
       "type": "object",
       "description": "Conversion event tracking for this product. Presence indicates the product supports optimization_goals with kind: 'event'. Seller-level capabilities (supported event types, UID types, attribution windows) are declared in get_adcp_capabilities.",
       "properties": {
@@ -386,8 +372,7 @@
           "type": "array",
           "description": "Target kinds available for event goals on this product. Values match target.kind on the optimization goal. cost_per: target cost per conversion event. per_ad_spend: target return on ad spend (requires value_field on event sources). maximize_value: maximize total conversion value without a specific ratio target (requires value_field). Only these target kinds are accepted — goals with unlisted target kinds will be rejected. A goal without a target implicitly maximizes conversion count within budget — no declaration needed for that mode. When omitted, buyers can still set target-less event goals.",
           "items": {
-            "type": "string",
-            "enum": ["cost_per", "per_ad_spend", "maximize_value"]
+            "$ref": "/schemas/enums/conversion-optimization-target.json"
           },
           "minItems": 1
         },
@@ -399,36 +384,8 @@
       "additionalProperties": true
     },
     "catalog_match": {
-      "type": "object",
-      "description": "When the buyer provides a catalog on get_products, indicates which catalog items are eligible for this product. Only present for products where catalog matching is relevant (e.g., sponsored product listings, job boards, hotel ads).",
-      "properties": {
-        "matched_gtins": {
-          "type": "array",
-          "description": "GTINs from the buyer's catalog that are eligible on this product's inventory. Standard GTIN formats (GTIN-8 through GTIN-14). Only present for product-type catalogs with GTIN matching.",
-          "items": {
-            "type": "string",
-            "pattern": "^[0-9]{8,14}$"
-          }
-        },
-        "matched_ids": {
-          "type": "array",
-          "description": "Item IDs from the buyer's catalog that matched this product's inventory. The ID type depends on the catalog type and content_id_type (e.g., SKUs for product catalogs, job_ids for job catalogs, offering_ids for offering catalogs).",
-          "items": {
-            "type": "string"
-          }
-        },
-        "matched_count": {
-          "type": "integer",
-          "description": "Number of catalog items that matched this product's inventory.",
-          "minimum": 0
-        },
-        "submitted_count": {
-          "type": "integer",
-          "description": "Total catalog items evaluated from the buyer's catalog.",
-          "minimum": 0
-        }
-      },
-      "required": ["submitted_count"]
+      "$ref": "/schemas/core/catalog-match.json",
+      "description": "When the buyer provides a catalog on get_products, indicates which catalog items are eligible for this product. Only present for products where catalog matching is relevant (e.g., sponsored product listings, job boards, hotel ads)."
     },
     "brief_relevance": {
       "type": "string",
@@ -594,50 +551,7 @@
           "type": "array",
           "description": "TMP providers integrated with this product's inventory. Each entry identifies a provider by agent_url (from the registry) and declares what match types it supports for this product. The product-level context_match and identity_match booleans declare what the product supports overall; the per-provider booleans declare which provider handles each match type. Enables buyer discovery: 'find products where a specific provider does context matching.'",
           "items": {
-            "type": "object",
-            "properties": {
-              "agent_url": {
-                "type": "string",
-                "format": "uri",
-                "description": "Provider's agent URL from the registry. Canonical identifier for this TMP provider."
-              },
-              "context_match": {
-                "type": "boolean",
-                "description": "Whether this provider handles context match for this product.",
-                "default": false
-              },
-              "identity_match": {
-                "type": "boolean",
-                "description": "Whether this provider handles identity match for this product.",
-                "default": false
-              },
-              "countries": {
-                "type": "array",
-                "description": "ISO 3166-1 alpha-2 country codes this provider serves for identity match. The router uses this to select the correct regional provider based on the request's country field. Required when identity_match is true.",
-                "items": {
-                  "type": "string",
-                  "pattern": "^[A-Z]{2}$"
-                },
-                "minItems": 1
-              },
-              "uid_types": {
-                "type": "array",
-                "description": "Identity types this regional provider can resolve. The router filters providers whose uid_types includes the request's uid_type. Required when identity_match is true.",
-                "items": {
-                  "$ref": "/schemas/enums/uid-type.json"
-                },
-                "minItems": 1
-              }
-            },
-            "required": ["agent_url"],
-            "if": {
-              "properties": { "identity_match": { "const": true } },
-              "required": ["identity_match"]
-            },
-            "then": {
-              "required": ["agent_url", "countries", "uid_types"]
-            },
-            "additionalProperties": true
+            "$ref": "/schemas/core/tmp-provider.json"
           },
           "minItems": 1
         }
@@ -675,9 +589,7 @@
       "description": "Instructions for submitting physical creative materials (print, static OOH, cinema). Present only for products requiring physical delivery outside the digital creative assignment flow. Buyer agents MUST validate url and email domains against the seller's known domains (from adagents.json) before submitting materials. Never auto-submit without human confirmation.",
       "properties": {
         "url": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://",
+          "$ref": "/schemas/core/https-url.json",
           "description": "HTTPS URL for uploading or submitting physical creative materials"
         },
         "email": {

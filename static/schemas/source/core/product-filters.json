@@ -30,9 +30,8 @@
       "type": "array",
       "description": "Filter by currencies the buyer can use for the media product transaction, using ISO 4217 currency codes. Products match when they offer at least one product-level pricing_options entry in one of the requested currencies and any seller-applied or otherwise mandatory product-scoped signal charges are satisfiable in one of those currencies or have no incremental price. Mandatory custom signal pricing without currency is not satisfiable for this filter unless the seller can truthfully treat it as having no incremental price. Sellers MUST return only product pricing_options entries whose currency is in this list so buyers can select deterministically from discovery. This filter does not require pruning optional signal or vendor add-on pricing; buyers should avoid optional add-ons priced only in unsupported currencies.",
       "items": {
-        "type": "string",
-        "description": "ISO 4217 currency code (e.g., 'USD', 'EUR', 'GBP')",
-        "pattern": "^[A-Z]{3}$"
+        "$ref": "/schemas/core/currency-code.json",
+        "description": "ISO 4217 currency code (e.g., 'USD', 'EUR', 'GBP')"
       },
       "minItems": 1,
       "uniqueItems": true,
@@ -84,43 +83,15 @@
       "description": "Campaign end date (ISO 8601 date format: YYYY-MM-DD) for availability checks"
     },
     "budget_range": {
-      "type": "object",
-      "description": "Budget range to filter appropriate products",
-      "properties": {
-        "min": {
-          "type": "number",
-          "description": "Minimum budget amount",
-          "minimum": 0
-        },
-        "max": {
-          "type": "number",
-          "description": "Maximum budget amount",
-          "minimum": 0
-        },
-        "currency": {
-          "type": "string",
-          "description": "ISO 4217 currency code (e.g., 'USD', 'EUR', 'GBP')",
-          "pattern": "^[A-Z]{3}$"
-        }
-      },
-      "required": ["currency"],
-      "anyOf": [
-        {
-          "required": ["min"]
-        },
-        {
-          "required": ["max"]
-        }
-      ],
-      "additionalProperties": true
+      "$ref": "/schemas/core/budget-range.json",
+      "description": "Budget range to filter appropriate products"
     },
     "countries": {
       "type": "array",
       "description": "DEPRECATED legacy coverage filter. On compact discovery tasks use criteria.offer_filters.countries. Return products whose inventory covers at least one requested area; this does not impose delivery targeting or require selectable targeting support. Retained get_products handlers MUST preserve the original coverage predicate.",
       "deprecated": true,
       "items": {
-        "type": "string",
-        "pattern": "^[A-Z]{2}$"
+        "$ref": "/schemas/core/country-code.json"
       },
       "minItems": 1
     },
@@ -139,19 +110,7 @@
       "description": "DEPRECATED legacy coverage filter. On compact discovery tasks use criteria.offer_filters.metros. Return products whose inventory covers at least one requested area; this does not impose delivery targeting or require selectable targeting support. Retained get_products handlers MUST preserve the original coverage predicate.",
       "deprecated": true,
       "items": {
-        "type": "object",
-        "properties": {
-          "system": {
-            "$ref": "/schemas/enums/metro-system.json",
-            "description": "Metro classification system"
-          },
-          "code": {
-            "type": "string",
-            "description": "Metro code within the system (e.g., '501' for NYC DMA)"
-          }
-        },
-        "required": ["system", "code"],
-        "additionalProperties": true
+        "$ref": "/schemas/core/metro-area.json"
       },
       "minItems": 1
     },
@@ -214,44 +173,8 @@
       "minItems": 1
     },
     "trusted_match": {
-      "type": "object",
-      "description": "Filter products by Trusted Match Protocol capabilities. Only products with matching TMP support are returned.",
-      "properties": {
-        "providers": {
-          "type": "array",
-          "description": "Filter to products with specific TMP providers and match types. Each entry identifies a provider by agent_url and optionally requires specific match capabilities. Products must match at least one entry.",
-          "items": {
-            "type": "object",
-            "properties": {
-              "agent_url": {
-                "type": "string",
-                "format": "uri",
-                "description": "Provider's agent URL from the registry."
-              },
-              "context_match": {
-                "type": "boolean",
-                "description": "When true, require this provider to support context match."
-              },
-              "identity_match": {
-                "type": "boolean",
-                "description": "When true, require this provider to support identity match."
-              }
-            },
-            "required": ["agent_url"],
-            "additionalProperties": true
-          },
-          "minItems": 1
-        },
-        "response_types": {
-          "type": "array",
-          "description": "Filter to products supporting specific TMP response types (e.g., 'activation', 'creative', 'catalog_items'). Products must support at least one of the listed types.",
-          "items": {
-            "$ref": "/schemas/enums/response-type.json"
-          },
-          "minItems": 1
-        }
-      },
-      "additionalProperties": true
+      "$ref": "/schemas/core/trusted-match-filter.json",
+      "description": "Filter products by Trusted Match Protocol capabilities. Only products with matching TMP support are returned."
     },
     "audience_activation_methods": {
       "type": "array",
@@ -263,7 +186,7 @@
             "type": "object",
             "description": "Filter by AdCP audience sync path.",
             "properties": {
-              "pattern": { "type": "string", "const": "sync_audiences" }
+              "pattern": { "type": "string", "const": "sync_audiences", "default": "sync_audiences" }
             },
             "required": ["pattern"],
             "additionalProperties": true
@@ -272,15 +195,10 @@
             "type": "object",
             "description": "Filter by TMP identity-match path, optionally pinned to a specific buyer agent.",
             "properties": {
-              "pattern": { "type": "string", "const": "tmp_identity_match" },
+              "pattern": { "type": "string", "const": "tmp_identity_match", "default": "tmp_identity_match" },
               "buyer_agent": {
-                "type": "object",
-                "description": "Require this buyer agent on tmp_identity_match entries. Buyers typically filter on their own agent_url.",
-                "properties": {
-                  "agent_url": { "type": "string", "format": "uri" }
-                },
-                "required": ["agent_url"],
-                "additionalProperties": true
+                "$ref": "/schemas/core/buyer-agent-ref.json",
+                "description": "Require this buyer agent on tmp_identity_match entries. Buyers typically filter on their own agent_url."
               }
             },
             "required": ["pattern"],
@@ -290,7 +208,7 @@
             "type": "object",
             "description": "Filter by bucket-addressed file exchange, optionally pinning transport, directions, or vendor.",
             "properties": {
-              "pattern": { "type": "string", "const": "file_transfer" },
+              "pattern": { "type": "string", "const": "file_transfer", "default": "file_transfer" },
               "transport": {
                 "$ref": "/schemas/enums/cloud-storage-protocol.json",
                 "description": "Require this storage protocol (file_transfer only)."
@@ -299,8 +217,7 @@
                 "type": "array",
                 "description": "Require a non-empty intersection with the method's declared directions (file_transfer only).",
                 "items": {
-                  "type": "string",
-                  "enum": ["buyer_to_seller", "seller_to_buyer"]
+                  "$ref": "/schemas/enums/audience-activation-direction.json"
                 },
                 "minItems": 1,
                 "uniqueItems": true
@@ -317,7 +234,7 @@
             "type": "object",
             "description": "Filter by vendor-mediated dataset query path.",
             "properties": {
-              "pattern": { "type": "string", "const": "dataset_query" },
+              "pattern": { "type": "string", "const": "dataset_query", "default": "dataset_query" },
               "vendor": {
                 "$ref": "/schemas/core/brand-ref.json",
                 "description": "Require the method's vendor to match this reference."
@@ -330,7 +247,7 @@
             "type": "object",
             "description": "Filter by clean-room path.",
             "properties": {
-              "pattern": { "type": "string", "const": "clean_room" },
+              "pattern": { "type": "string", "const": "clean_room", "default": "clean_room" },
               "vendor": {
                 "$ref": "/schemas/core/brand-ref.json",
                 "description": "Require the method's vendor to match this reference."
@@ -343,7 +260,7 @@
             "type": "object",
             "description": "Filter by platform distribution path.",
             "properties": {
-              "pattern": { "type": "string", "const": "platform_distribution" },
+              "pattern": { "type": "string", "const": "platform_distribution", "default": "platform_distribution" },
               "vendor": {
                 "$ref": "/schemas/core/brand-ref.json",
                 "description": "Require the method's vendor to match this reference."
@@ -373,8 +290,7 @@
             "description": "Geographic targeting level (country, region, metro, postal_area)"
           },
           "country": {
-            "type": "string",
-            "pattern": "^[A-Z]{2}$",
+            "$ref": "/schemas/core/country-code.json",
             "description": "ISO 3166-1 alpha-2 country code. Required for native postal_area system filters; not applicable to country, region, or metro filters."
           },
           "system": {
@@ -466,9 +382,8 @@
         ],
         "properties": {
           "targeting_mode": {
-            "type": "string",
+            "$ref": "/schemas/enums/signal-targeting-mode.json",
             "description": "Desired use of this signal on the product. 'include' requires the product option to allow use in an any group. 'exclude' requires the product option to allow use in a none group.",
-            "enum": ["include", "exclude"],
             "default": "include"
           }
         }
@@ -489,109 +404,7 @@
       "description": "DEPRECATED legacy coverage filter. On compact discovery tasks use criteria.offer_filters.geo_proximity. Return products whose inventory covers at least one requested area; this does not impose delivery targeting or require selectable targeting support. Retained get_products handlers MUST preserve the original coverage predicate.",
       "deprecated": true,
       "items": {
-        "type": "object",
-        "properties": {
-          "lat": {
-            "type": "number",
-            "minimum": -90,
-            "maximum": 90,
-            "description": "Latitude in decimal degrees (WGS 84)"
-          },
-          "lng": {
-            "type": "number",
-            "minimum": -180,
-            "maximum": 180,
-            "description": "Longitude in decimal degrees (WGS 84)"
-          },
-          "label": {
-            "type": "string",
-            "description": "Human-readable label (e.g., 'Düsseldorf', 'Heathrow Airport')"
-          },
-          "travel_time": {
-            "type": "object",
-            "description": "Travel time limit for isochrone calculation",
-            "properties": {
-              "value": {
-                "type": "number",
-                "minimum": 1,
-                "description": "Travel time limit"
-              },
-              "unit": {
-                "$ref": "/schemas/enums/travel-time-unit.json"
-              }
-            },
-            "required": ["value", "unit"],
-            "additionalProperties": true
-          },
-          "transport_mode": {
-            "$ref": "/schemas/enums/transport-mode.json",
-            "description": "Transportation mode for isochrone calculation. Required when travel_time is provided."
-          },
-          "radius": {
-            "type": "object",
-            "description": "Simple radius from the point",
-            "properties": {
-              "value": {
-                "type": "number",
-                "exclusiveMinimum": 0,
-                "description": "Radius distance"
-              },
-              "unit": {
-                "$ref": "/schemas/enums/distance-unit.json",
-                "description": "Distance unit"
-              }
-            },
-            "required": ["value", "unit"],
-            "additionalProperties": true
-          },
-          "geometry": {
-            "type": "object",
-            "description": "Pre-computed GeoJSON geometry defining the proximity boundary",
-            "properties": {
-              "type": {
-                "type": "string",
-                "enum": ["Polygon", "MultiPolygon"],
-                "description": "GeoJSON geometry type"
-              },
-              "coordinates": {
-                "type": "array",
-                "description": "GeoJSON coordinates array"
-              }
-            },
-            "required": ["type", "coordinates"],
-            "additionalProperties": true
-          }
-        },
-        "oneOf": [
-          {
-            "required": ["lat", "lng", "travel_time", "transport_mode"],
-            "not": {
-              "anyOf": [
-                { "required": ["radius"] },
-                { "required": ["geometry"] }
-              ]
-            }
-          },
-          {
-            "required": ["lat", "lng", "radius"],
-            "not": {
-              "anyOf": [
-                { "required": ["travel_time"] },
-                { "required": ["geometry"] }
-              ]
-            }
-          },
-          {
-            "required": ["geometry"],
-            "not": {
-              "anyOf": [
-                { "required": ["travel_time"] },
-                { "required": ["radius"] }
-              ]
-            }
-          }
-        ],
-        "additionalProperties": true
+        "$ref": "/schemas/core/geo-proximity.json"
       },
       "minItems": 1
     },
@@ -658,8 +471,7 @@
         "type": "object",
         "properties": {
           "keyword": {
-            "type": "string",
-            "minLength": 1,
+            "$ref": "/schemas/core/keyword.json",
             "description": "The keyword to target"
           },
           "match_type": {

@@ -68,9 +68,8 @@
       "const": true
     },
     "cancellation_reason": {
-      "type": "string",
-      "description": "Reason for canceling this package.",
-      "maxLength": 500
+      "$ref": "/schemas/core/cancellation-reason.json",
+      "description": "Reason for canceling this package."
     },
     "catalogs": {
       "type": "array",
@@ -96,24 +95,7 @@
       "type": "array",
       "description": "Keyword targets to add or update on this package. Upserts by (keyword, match_type) identity: if the pair already exists, its bid_price is updated; if not, a new keyword target is added. Use targeting_overlay.keyword_targets in create_media_buy to set the initial list.",
       "items": {
-        "type": "object",
-        "properties": {
-          "keyword": {
-            "type": "string",
-            "minLength": 1,
-            "description": "The keyword to target"
-          },
-          "match_type": {
-            "$ref": "/schemas/enums/match-type.json"
-          },
-          "bid_price": {
-            "type": "number",
-            "minimum": 0,
-            "description": "Per-keyword bid price. Inherits currency and max_bid interpretation from the package's pricing option."
-          }
-        },
-        "required": ["keyword", "match_type"],
-        "additionalProperties": true
+        "$ref": "/schemas/core/keyword-target.json"
       },
       "minItems": 1
     },
@@ -121,19 +103,7 @@
       "type": "array",
       "description": "Keyword targets to remove from this package. Removes matching (keyword, match_type) pairs. If a specified pair is not present, sellers SHOULD treat it as a no-op for that entry.",
       "items": {
-        "type": "object",
-        "properties": {
-          "keyword": {
-            "type": "string",
-            "minLength": 1,
-            "description": "The keyword to stop targeting"
-          },
-          "match_type": {
-            "$ref": "/schemas/enums/match-type.json"
-          }
-        },
-        "required": ["keyword", "match_type"],
-        "additionalProperties": true
+        "$ref": "/schemas/core/keyword-target.json"
       },
       "minItems": 1
     },
@@ -141,19 +111,7 @@
       "type": "array",
       "description": "Negative keywords to add to this package. Appends to the existing negative keyword list — does not replace it. If a keyword+match_type pair already exists, sellers SHOULD treat it as a no-op for that entry. Use targeting_overlay.negative_keywords in create_media_buy to set the initial list.",
       "items": {
-        "type": "object",
-        "properties": {
-          "keyword": {
-            "type": "string",
-            "minLength": 1,
-            "description": "The keyword to exclude"
-          },
-          "match_type": {
-            "$ref": "/schemas/enums/match-type.json"
-          }
-        },
-        "required": ["keyword", "match_type"],
-        "additionalProperties": true
+        "$ref": "/schemas/core/negative-keyword.json"
       },
       "minItems": 1
     },
@@ -161,19 +119,7 @@
       "type": "array",
       "description": "Negative keywords to remove from this package. Removes matching keyword+match_type pairs from the existing list. If a specified pair is not present, sellers SHOULD treat it as a no-op for that entry.",
       "items": {
-        "type": "object",
-        "properties": {
-          "keyword": {
-            "type": "string",
-            "minLength": 1,
-            "description": "The keyword to stop excluding"
-          },
-          "match_type": {
-            "$ref": "/schemas/enums/match-type.json"
-          }
-        },
-        "required": ["keyword", "match_type"],
-        "additionalProperties": true
+        "$ref": "/schemas/core/negative-keyword.json"
       },
       "minItems": 1
     },
@@ -201,10 +147,7 @@
       "type": "array",
       "description": "Replace this package's inline creative assets. Native localization is not accepted on this path; use sync_creatives before assigning the library creative. When the seller also advertises creative.has_creative_library: true, new inline creatives enter the seller's creative library and can be reused by creative_id while retained; inline-only sellers may store them as package-scoped assets. Use creative_assignments instead for existing library creatives.",
       "items": {
-        "allOf": [
-          { "$ref": "/schemas/core/creative-asset.json" },
-          { "not": { "required": ["localization"] } }
-        ]
+        "$ref": "/schemas/core/inline-creative-asset.json"
       },
       "minItems": 1,
       "maxItems": 100

@@ -21,39 +21,18 @@
       "x-entity": "media_buy"
     },
     "currency": {
-      "type": "string",
-      "description": "ISO 4217 currency code for monetary values in this response (e.g., 'USD', 'EUR')",
-      "pattern": "^[A-Z]{3}$"
+      "$ref": "/schemas/core/currency-code.json",
+      "description": "ISO 4217 currency code for monetary values in this response (e.g., 'USD', 'EUR')"
     },
     "reporting_period": {
-      "type": "object",
-      "description": "Date range for the report.",
-      "properties": {
-        "start": {
-          "type": "string",
-          "format": "date-time",
-          "description": "ISO 8601 start timestamp"
-        },
-        "end": {
-          "type": "string",
-          "format": "date-time",
-          "description": "ISO 8601 end timestamp"
-        },
-        "timezone": {
-          "type": "string",
-          "description": "IANA timezone identifier for the reporting period (e.g., 'America/New_York', 'UTC'). Platforms report in their native timezone."
-        }
-      },
-      "required": [
-        "start",
-        "end"
-      ],
-      "additionalProperties": true
+      "$ref": "/schemas/core/delivery-reporting-period.json",
+      "description": "Date range for the report."
     },
     "creatives": {
       "type": "array",
       "description": "Creative delivery data with variant breakdowns",
       "items": {
+        "title": "Creative Delivery Record",
         "type": "object",
         "properties": {
           "creative_id": {
@@ -122,6 +101,7 @@
       }
     },
     "pagination": {
+      "title": "Creative Delivery Offset Pagination",
       "type": "object",
       "description": "Pagination information. Present when the request included pagination parameters. **Note:** `get_creative_delivery` uses page-based pagination (`limit`/`offset`) for historical reasons, distinct from the cursor-based [`PaginationResponse`](/schemas/v3/core/pagination-response.json) used by `list_*` tools. Field naming aligned with `PaginationResponse.total_count` in 3.1; the legacy `total` field is retained as a deprecated alias until 4.0. Sellers MUST populate both fields identically; buyers SHOULD prefer `total_count` (the canonical name) and ignore `total` if both are present.",
       "properties": {

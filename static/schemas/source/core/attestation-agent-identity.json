@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/attestation-agent-identity.json",
+  "title": "Attestation Agent Identity",
+  "description": "An attestation issuer identified by an agent URL.",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "const": "agent",
+      "default": "agent"
+    },
+    "agent_url": {
+      "$ref": "/schemas/core/https-url.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "type",
+    "agent_url"
+  ],
+  "additionalProperties": true
+}

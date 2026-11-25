@@ -8,6 +8,7 @@
     "asset_type": {
       "type": "string",
       "const": "vast",
+      "default": "vast",
       "description": "Discriminator identifying this as a VAST asset. See /schemas/creative/asset-types for the registry."
     },
     "vast_version": {
@@ -62,6 +63,7 @@
         "delivery_type": {
           "type": "string",
           "const": "url",
+          "default": "url",
           "description": "Discriminator indicating VAST is delivered via URL endpoint"
         },
         "url": {
@@ -82,6 +84,7 @@
         "delivery_type": {
           "type": "string",
           "const": "inline",
+          "default": "inline",
           "description": "Discriminator indicating VAST is delivered as inline XML content"
         },
         "content": {

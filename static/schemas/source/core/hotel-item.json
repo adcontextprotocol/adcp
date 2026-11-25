@@ -18,52 +18,12 @@
       "description": "Property description highlighting features and location."
     },
     "location": {
-      "type": "object",
-      "description": "Geographic coordinates of the property.",
-      "properties": {
-        "lat": {
-          "type": "number",
-          "minimum": -90,
-          "maximum": 90,
-          "description": "Latitude in decimal degrees (WGS 84)."
-        },
-        "lng": {
-          "type": "number",
-          "minimum": -180,
-          "maximum": 180,
-          "description": "Longitude in decimal degrees (WGS 84)."
-        }
-      },
-      "required": ["lat", "lng"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/geo-coordinates.json",
+      "description": "Geographic coordinates of the property."
     },
     "address": {
-      "type": "object",
-      "description": "Structured address for display and geocoding.",
-      "properties": {
-        "street": {
-          "type": "string",
-          "description": "Street address."
-        },
-        "city": {
-          "type": "string",
-          "description": "City name."
-        },
-        "region": {
-          "type": "string",
-          "description": "State, province, or region."
-        },
-        "postal_code": {
-          "type": "string",
-          "description": "Postal or ZIP code."
-        },
-        "country": {
-          "type": "string",
-          "pattern": "^[A-Z]{2}$",
-          "description": "ISO 3166-1 alpha-2 country code."
-        }
-      },
-      "additionalProperties": true
+      "$ref": "/schemas/core/postal-address.json",
+      "description": "Structured address for display and geocoding."
     },
     "star_rating": {
       "type": "integer",
@@ -98,13 +58,11 @@
       "minItems": 1
     },
     "check_in_time": {
-      "type": "string",
-      "pattern": "^[0-2][0-9]:[0-5][0-9]$",
+      "$ref": "#/definitions/clock_time",
       "description": "Standard check-in time in HH:MM format (e.g., '15:00')."
     },
     "check_out_time": {
-      "type": "string",
-      "pattern": "^[0-2][0-9]:[0-5][0-9]$",
+      "$ref": "#/definitions/clock_time",
       "description": "Standard check-out time in HH:MM format (e.g., '11:00')."
     },
     "tags": {
@@ -176,5 +134,13 @@
         "tags": ["budget", "beach"]
       }
     }
-  ]
+  ],
+  "definitions": {
+    "clock_time": {
+      "title": "Clock Time",
+      "description": "Local clock time in HH:MM form, such as 15:00.",
+      "type": "string",
+      "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+    }
+  }
 }

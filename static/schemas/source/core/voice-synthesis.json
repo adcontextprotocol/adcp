@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/voice-synthesis.json",
+  "title": "Voice Synthesis",
+  "description": "Text-to-speech voice synthesis configuration for AI-generated audio.",
+  "type": "object",
+  "properties": {
+    "provider": {
+      "type": "string"
+    },
+    "voice_id": {
+      "type": "string"
+    },
+    "rights_offering_id": {
+      "type": "string",
+      "x-entity": "rights_grant",
+      "description": "Optional stable rights offering identifier for this voice, as returned by get_rights. This is configuration-time advisory provenance, not the buyer-specific grant identifier returned by acquire_rights. Buyers resolve the offering to a grant through acquire_rights before synthesis."
+    },
+    "settings": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

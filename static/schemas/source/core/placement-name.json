@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/placement-name.json",
+  "title": "Placement Name",
+  "description": "Display name of a product placement.",
+  "type": "string",
+  "minLength": 1
+}

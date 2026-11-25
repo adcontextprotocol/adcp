@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/macro-declaration-id.json",
+  "title": "Macro Declaration ID",
+  "description": "Identifier of a macro declaration, unique within the containing asset.",
+  "type": "string",
+  "x-max-length-4.0": 255,
+  "pattern": "^[A-Za-z0-9_-]+$",
+  "minLength": 1,
+  "x-entity": "macro_declaration"
+}

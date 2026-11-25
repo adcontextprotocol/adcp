@@ -20,56 +20,14 @@
         "response_type": {
           "type": "string",
           "const": "single",
+          "default": "single",
           "description": "Discriminator indicating this is a single preview response"
         },
         "previews": {
           "type": "array",
           "description": "Array of preview variants. Each preview corresponds to an input set from the request. If no inputs were provided, returns a single default preview.",
           "items": {
-            "type": "object",
-            "properties": {
-              "preview_id": {
-                "type": "string",
-                "description": "Unique identifier for this preview variant"
-              },
-              "renders": {
-                "type": "array",
-                "description": "Array of rendered pieces for this preview variant. Most formats render as a single piece. Companion ad formats (video + banner), multi-placement formats, and adaptive formats render as multiple pieces.",
-                "items": {
-                  "$ref": "/schemas/creative/preview-render.json"
-                },
-                "minItems": 1
-              },
-              "input": {
-                "type": "object",
-                "description": "The input parameters that generated this preview variant. Echoes back the request input or shows defaults used.",
-                "properties": {
-                  "name": {
-                    "type": "string",
-                    "description": "Human-readable name for this variant"
-                  },
-                  "macros": {
-                    "type": "object",
-                    "description": "Macro values applied to this variant",
-                    "additionalProperties": {
-                      "type": "string"
-                    }
-                  },
-                  "context_description": {
-                    "type": "string",
-                    "description": "Context description applied to this variant"
-                  }
-                },
-                "required": [
-                  "name"
-                ]
-              }
-            },
-            "required": [
-              "preview_id",
-              "renders",
-              "input"
-            ]
+            "$ref": "/schemas/core/preview-variant.json"
           },
           "minItems": 1
         },
@@ -118,12 +76,14 @@
         "response_type": {
           "type": "string",
           "const": "batch",
+          "default": "batch",
           "description": "Discriminator indicating this is a batch preview response"
         },
         "results": {
           "type": "array",
           "description": "Array of preview results corresponding to each request in the same order. results[0] is the result for requests[0], results[1] for requests[1], etc. Order is guaranteed even when some requests fail. Each result contains either a successful preview response or an error.",
           "items": {
+            "title": "PreviewBatchResult",
             "type": "object",
             "properties": {
               "success": {
@@ -140,67 +100,8 @@
                 "description": "Actual render quality applied to every preview in this successful batch result. This field MUST be present when the effective item request supplied `quality`, whether directly or through the batch-level default, and SHOULD be present otherwise. It may differ from the requested value when the agent cannot provide that tier."
               },
               "response": {
-                "type": "object",
-                "description": "Preview data for successful requests",
-                "properties": {
-                  "previews": {
-                    "type": "array",
-                    "description": "Array of preview variants for this creative",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "preview_id": {
-                          "type": "string"
-                        },
-                        "renders": {
-                          "type": "array",
-                          "items": {
-                            "$ref": "/schemas/creative/preview-render.json"
-                          },
-                          "minItems": 1
-                        },
-                        "input": {
-                          "type": "object",
-                          "properties": {
-                            "name": {
-                              "type": "string"
-                            },
-                            "macros": {
-                              "type": "object",
-                              "additionalProperties": {
-                                "type": "string"
-                              }
-                            },
-                            "context_description": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "name"
-                          ]
-                        }
-                      },
-                      "required": [
-                        "preview_id",
-                        "renders",
-                        "input"
-                      ]
-                    },
-                    "minItems": 1
-                  },
-                  "interactive_url": {
-                    "type": "string",
-                    "format": "uri"
-                  },
-                  "expires_at": {
-                    "type": "string",
-                    "format": "date-time",
-                    "description": "When the preview URLs expire. **Optional** — omit for non-expiring preview URLs. See the single-preview branch's `expires_at` description for the full convention."
-                  }
-                },
-                "required": [
-                  "previews"
-                ]
+                "$ref": "/schemas/core/creative-preview.json",
+                "description": "Preview data for successful requests"
               },
               "errors": {
                 "type": "array",
@@ -222,6 +123,7 @@
                   "success": {
                     "type": "boolean",
                     "const": true,
+                    "default": true,
                     "description": "Indicates this preview request succeeded"
                   }
                 },
@@ -235,6 +137,7 @@
                   "success": {
                     "type": "boolean",
                     "const": false,
+                    "default": false,
                     "description": "Indicates this preview request failed"
                   }
                 },
@@ -277,6 +180,7 @@
         "response_type": {
           "type": "string",
           "const": "variant",
+          "default": "variant",
           "description": "Discriminator indicating this is a variant preview response"
         },
         "variant_id": {
@@ -357,6 +261,7 @@
         "response_type": {
           "type": "string",
           "const": "submitted",
+          "default": "submitted",
           "description": "Preview-response discriminator for the asynchronous arm."
         },
         "context": {

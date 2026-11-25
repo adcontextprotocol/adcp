@@ -7,10 +7,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { resolveSchema, schemaAt } = require('./helpers/named-scalar-schemas.cjs');
 
 const SRC = path.join(__dirname, '..', 'static', 'schemas', 'source');
 const load = (f) => JSON.parse(fs.readFileSync(path.join(SRC, f), 'utf8'));
-const at = (obj, keys) => keys.reduce((o, k) => o[k], obj);
+// Reads through each `$ref` on the way; the site at the end keeps its own annotations.
+const at = (obj, keys) => schemaAt(obj, ...keys);
 
 const WHOLE_FILE_3_3 = [
   // Account requests (account.requests, #8280).
@@ -199,7 +201,7 @@ test('3.3 properties carry x-added-in 3.3.0', () => {
 
 test('by_spot lifecycle fields carry x-added-in 3.3.0', () => {
   const resp = load('media-buy/get-media-buy-delivery-response.json');
-  const spot = resp.properties.media_buy_deliveries.items.properties.by_package.items.allOf[1].properties.by_spot.items.allOf[1].properties;
+  const spot = resolveSchema(resp.properties.media_buy_deliveries.items).properties.by_package.items.allOf[1].properties.by_spot.items.allOf[1].properties;
   for (const k of ['spot_status', 'scheduled_at', 'replaces_spot_id', 'break_position']) {
     assert.equal(spot[k]['x-added-in'], '3.3.0', k);
   }

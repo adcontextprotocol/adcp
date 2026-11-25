@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-color-surface.json",
+  "title": "Color Surface",
+  "description": "Usage surface that a brand color applies to, such as background or cta.",
+  "type": "string",
+  "enum": [
+    "background",
+    "foreground",
+    "text",
+    "logo_background",
+    "cta",
+    "accent",
+    "border",
+    "icon",
+    "graphic_element"
+  ]
+}

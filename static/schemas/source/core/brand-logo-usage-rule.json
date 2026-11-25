@@ -1,0 +1,122 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-logo-usage-rule.json",
+  "title": "Brand Logo Usage Rule",
+  "description": "Machine-readable logo selection and placement rule. Complements logos[].usage by making enforceable minimum size, clear-space, background, and context constraints queryable.",
+  "type": "object",
+  "properties": {
+    "logo_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Specific logo asset URL this rule applies to. Omit when the rule applies by variant or tags."
+    },
+    "logo_id": {
+      "$ref": "/schemas/core/brand-logo-id.json",
+      "description": "Stable `logos[].id` this rule applies to. Prefer this over logo_url when the rule targets a specific logo entry."
+    },
+    "logo_variant": {
+      "$ref": "/schemas/enums/logo-variant.json",
+      "description": "Logo variant this rule applies to."
+    },
+    "logo_tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "description": "Logo tags this rule applies to."
+    },
+    "contexts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Creative contexts where this rule applies."
+    },
+    "slots": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/enums/logo-slot.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Canonical renderer slots where this rule applies. Use this for deterministic logo-card, profile-mark, end-card, and lockup selection."
+    },
+    "minimum_size": {
+      "title": "Logo Minimum Size",
+      "type": "object",
+      "description": "Minimum rendered size needed for legibility.",
+      "properties": {
+        "width": {
+          "type": "string",
+          "description": "Minimum width, such as 48px or 12mm."
+        },
+        "height": {
+          "type": "string",
+          "description": "Minimum height, such as 18px or 6mm."
+        }
+      },
+      "additionalProperties": true
+    },
+    "clear_space": {
+      "type": "string",
+      "description": "Minimum clear space around the logo, expressed in brand terms or units."
+    },
+    "allowed_backgrounds": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/brand-color-ref.json"
+      },
+      "description": "Background color roles, values, or surfaces where this logo may be placed."
+    },
+    "forbidden_backgrounds": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/brand-color-ref.json"
+      },
+      "description": "Background color roles, values, or surfaces where this logo must not be placed."
+    },
+    "forbidden_contexts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Contexts where this logo must not be used, such as photography_without_knockout."
+    },
+    "severity": {
+      "$ref": "/schemas/core/brand-guideline-severity.json"
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable rationale or source-language summary for the rule."
+    }
+  },
+  "anyOf": [
+    {
+      "required": [
+        "logo_id"
+      ]
+    },
+    {
+      "required": [
+        "logo_url"
+      ]
+    },
+    {
+      "required": [
+        "logo_variant"
+      ]
+    },
+    {
+      "required": [
+        "logo_tags"
+      ]
+    },
+    {
+      "required": [
+        "slots"
+      ]
+    }
+  ],
+  "additionalProperties": true
+}

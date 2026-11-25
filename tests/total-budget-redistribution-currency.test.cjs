@@ -449,7 +449,10 @@ test('the committed currency is read from the only field the schemas require', (
 
   const requestCurrency = readJson('static/schemas/source/media-buy/update-media-buy-request.json').properties
     .total_budget;
-  assert.ok(requestCurrency.required.includes('currency'), 'the scenario cannot simply drop the field');
+  // total_budget references core/money.json (#8471), which requires currency.
+  assert.equal(requestCurrency.$ref, '/schemas/core/money.json');
+  const money = readJson('static/schemas/source/core/money.json');
+  assert.ok(money.required.includes('currency'), 'the scenario cannot simply drop the field');
   assert.match(requestCurrency.description, /currency MUST equal the existing media-buy currency/);
 });
 

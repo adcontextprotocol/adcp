@@ -36,6 +36,7 @@
       "description": "Required experience level."
     },
     "salary": {
+      "title": "Salary Range",
       "type": "object",
       "description": "Salary range. Specify min and/or max with currency and period.",
       "properties": {
@@ -50,8 +51,7 @@
           "description": "Maximum salary."
         },
         "currency": {
-          "type": "string",
-          "pattern": "^[A-Z]{3}$",
+          "$ref": "/schemas/core/currency-code.json",
           "description": "ISO 4217 currency code."
         },
         "period": {
