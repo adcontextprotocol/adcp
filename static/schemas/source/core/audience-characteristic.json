@@ -34,14 +34,12 @@
       ]
     },
     "range": {
-      "type": "object",
       "description": "Inclusive numeric interval. For dimension `age`, values are completed years and MUST be non-negative integers, and min MUST be less than or equal to max. JSON Schema enforces the age value and bound types; implementations enforce the relational min <= max constraint.",
-      "properties": {
-        "min": { "type": "number" },
-        "max": { "type": "number" }
-      },
-      "minProperties": 1,
-      "additionalProperties": true
+      "allOf": [
+        {
+          "$ref": "/schemas/core/open-ended-numeric-range.json"
+        }
+      ]
     },
     "taxonomy": {
       "title": "Audience Characteristic Taxonomy",

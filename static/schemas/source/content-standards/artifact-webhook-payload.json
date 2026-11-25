@@ -42,7 +42,7 @@
             "description": "Optional impression identifier for correlation with delivery reports"
           },
           "package_id": {
-            "type": "string",
+            "$ref": "/schemas/core/package-id.json",
             "description": "Package within the media buy this artifact relates to"
           }
         },
@@ -56,15 +56,18 @@
       "properties": {
         "total_artifacts": {
           "type": "integer",
-          "description": "Total artifacts in the delivery period"
+          "description": "Total artifacts in the delivery period",
+          "minimum": 0
         },
         "batch_number": {
           "type": "integer",
-          "description": "Current batch number (1-indexed)"
+          "description": "Current batch number (1-indexed)",
+          "minimum": 1
         },
         "total_batches": {
           "type": "integer",
-          "description": "Total batches for this delivery period"
+          "description": "Total batches for this delivery period",
+          "minimum": 1
         }
       }
     },

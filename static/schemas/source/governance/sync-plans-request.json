@@ -25,9 +25,8 @@
         "type": "object",
         "properties": {
           "plan_id": {
-            "type": "string",
-            "description": "Identifier for this plan, unique per owner principal. Two principals may use the same `plan_id`; neither can read, change or detect the other's plan.",
-            "x-entity": "governance_plan"
+            "$ref": "/schemas/core/governance-plan-id.json",
+            "description": "Identifier for this plan, unique per owner principal. Two principals may use the same `plan_id`; neither can read, change or detect the other's plan."
           },
           "brand": {
             "$ref": "/schemas/core/brand-ref.json",
@@ -358,8 +357,7 @@
               "member_plan_ids": {
                 "type": "array",
                 "items": {
-                  "type": "string",
-                  "x-entity": "governance_plan"
+                  "$ref": "/schemas/core/governance-plan-id.json"
                 },
                 "description": "Plan IDs governed by this portfolio plan. The governance agent validates member plan actions against portfolio constraints."
               },

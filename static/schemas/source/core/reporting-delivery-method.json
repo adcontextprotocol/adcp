@@ -7,7 +7,7 @@
   "type": "object",
   "oneOf": [
     {
-      "title": "File transfer",
+      "title": "Reporting file transfer",
       "type": "object",
       "properties": {
         "pattern": { "type": "string", "const": "file_transfer", "default": "file_transfer", "description": "Immutable file/object publication with a manifest-last commit boundary." },

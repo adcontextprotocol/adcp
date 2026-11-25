@@ -63,27 +63,7 @@
           "type": "array",
           "description": "Complete desired agent-level subscriber set. The same caller-scoping, proof-of-control, secret handling, and replacement rules as sync_agent_notification_configs apply.",
           "items": {
-            "allOf": [
-              {
-                "$ref": "/schemas/core/agent-notification-config.json"
-              },
-              {
-                "if": {
-                  "required": [
-                    "authentication"
-                  ]
-                },
-                "then": {
-                  "properties": {
-                    "authentication": {
-                      "required": [
-                        "credentials"
-                      ]
-                    }
-                  }
-                }
-              }
-            ]
+            "$ref": "/schemas/core/agent-notification-config-registration.json"
           },
           "maxItems": 16
         },

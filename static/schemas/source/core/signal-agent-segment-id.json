@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/signal-agent-segment-id.json",
+  "title": "Signal Agent Segment ID",
+  "description": "Opaque, provider-scoped handle that a signal agent issues for a resolved signal segment. Pass it verbatim; do not reconstruct it from the signal's values.",
+  "type": "string",
+  "minLength": 1
+}

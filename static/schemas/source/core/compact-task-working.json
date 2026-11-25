@@ -10,7 +10,7 @@
   ],
   "properties": {
     "percentage": { "$ref": "/schemas/core/percentage.json" },
-    "current_step": { "type": "string", "maxLength": 500 },
+    "current_step": { "$ref": "/schemas/core/task-current-step.json" },
     "total_steps": { "type": "integer", "minimum": 1 },
     "step_number": { "type": "integer", "minimum": 1 },
     "context": { "$ref": "/schemas/core/context.json" },

@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/feature-value.json",
+  "title": "Feature Value",
+  "description": "The value of an evaluated feature: a boolean for a binary feature, a number for a quantitative feature, or a string for a categorical feature.",
+  "oneOf": [
+    { "type": "boolean" },
+    { "type": "number" },
+    { "type": "string" }
+  ]
+}

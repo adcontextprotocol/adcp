@@ -10,15 +10,19 @@
       "$ref": "/schemas/enums/pricing-model.json"
     },
     "currency": { "$ref": "/schemas/core/currency-code.json" },
-    "fixed_price": { "type": "number", "minimum": 0 },
-    "floor_price": { "type": "number", "minimum": 0 },
+    "fixed_price": {
+      "$ref": "/schemas/core/fixed-price.json"
+    },
+    "floor_price": {
+      "$ref": "/schemas/core/floor-price.json"
+    },
     "price_guidance": { "$ref": "/schemas/pricing-options/price-guidance.json" },
-    "min_spend_per_package": { "type": "number", "minimum": 0 },
+    "min_spend_per_package": {
+      "$ref": "/schemas/core/min-spend-per-package.json"
+    },
     "price_breakdown": { "$ref": "/schemas/pricing-options/price-breakdown.json" },
     "eligible_adjustments": {
-      "type": "array",
-      "items": { "$ref": "/schemas/enums/adjustment-kind.json" },
-      "uniqueItems": true
+      "$ref": "/schemas/core/eligible-adjustments.json"
     },
     "parameters": { "title": "Pricing Option Parameters", "type": "object", "additionalProperties": true },
     "event_type": { "$ref": "/schemas/enums/event-type.json" },
@@ -32,11 +36,31 @@
     { "not": { "required": ["fixed_price", "floor_price"] } },
     {
       "if": { "properties": { "pricing_model": { "const": "cpa" } }, "required": ["pricing_model"] },
-      "then": { "required": ["event_type", "fixed_price"] }
+      "then": {
+        "required": ["event_type", "fixed_price"],
+        "properties": { "fixed_price": { "exclusiveMinimum": 0 } }
+      }
     },
     {
       "if": { "properties": { "pricing_model": { "const": "revenue_share" } }, "required": ["pricing_model"] },
-      "then": { "required": ["event_type", "event_source_id", "commission_rate", "commission_basis_description"] }
+      "then": {
+        "required": ["event_type", "event_source_id", "commission_rate", "commission_basis_description"],
+        "allOf": [
+          {
+            "if": { "properties": { "event_type": { "const": "custom" } }, "required": ["event_type"] },
+            "else": { "not": { "required": ["custom_event_name"] } }
+          },
+          {
+            "not": {
+              "anyOf": [
+                { "required": ["fixed_price"] },
+                { "required": ["floor_price"] },
+                { "required": ["price_guidance"] }
+              ]
+            }
+          }
+        ]
+      }
     },
     {
       "if": { "properties": { "pricing_model": { "enum": ["cpv", "cpp", "time"] } }, "required": ["pricing_model"] },

@@ -1,0 +1,665 @@
+# Delta manifest (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  One definition per object: signals and audiences alignment. Signal handles, listing names and descriptions, signal definition
+  fields, categorical targeting values, activation methods, demographic executions, deployment targets, and the wholesale
+  signal each have one definition; the corrections below follow published 3.2.12 text, and every other change is a $ref to
+  an identical definition.
+changes:
+- location: core/signal-agent-segment-id.json#
+  keyword: minLength
+  new: 1
+  direction: tighten
+  side: both
+  note: >-
+    core/signal-agent-segment-id.json, new: the signal agent segment handle of the get_signals catalog entry, the four wholesale
+    signal.* payloads, activate_signal, the product signal targeting option, and package signal targeting (was {type: string}
+    at each). Correction under DR-0036: 3.2.12 core/wholesale-feed-event.json sets "signal_agent_segment_id": { "type": "string",
+    "description": "Opaque activation handle returned by the signals agent.", "minLength": 1 } on the wholesale signal (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/wholesale-feed-event.json#L602-L606),
+    which has "the same wire shape as an item in get_signals.signals[]" (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/wholesale-feed-event.json#L586);
+    activate_signal passes that handle verbatim, and every other site carries the same handle (x-entity signal_activation_id).
+    Register entries for each site that 3.2.12 published. Witness: activate_signal signal_agent_segment_id = "" (tighten).
+- location: core/incomplete-scope-description.json#
+  keyword: minLength
+  new: 1
+  direction: tighten
+  side: both
+  note: >-
+    signals/get-signals-response.json#/properties/incomplete/items/properties/description -> core/incomplete-scope-description.json.
+    Correction under DR-0036: 3.2.12 media-buy/list-products-response.json sets "description": { "type": "string", "minLength":
+    1 } on the same incomplete-scope entry (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/media-buy/list-products-response.json#L61-L64),
+    and get_products and get_signals describe it with the same words. Register entry. Hand-checked (the tool builds no get_signals
+    witness): a completed get_signals response with incomplete [{scope: signals, description: ""}] is valid on base and invalid
+    on head ("must NOT have fewer than 1 characters"); restoring {type: string} at the site makes it valid again, and a non-empty
+    description is valid on head.
+- location: core/signal-catalog-entry.json#/properties/data_provider
+  keyword: minLength
+  new: 1
+  direction: tighten
+  side: both
+  note: >-
+    core/signal-listing.json#/properties/description and core/signal-catalog-entry.json#/properties/description -> core/signal-description.json
+    (was {type: string}): the listing form of the signal definition, which product signal targeting options and the get_signals
+    catalog entry compose. Correction under DR-0036: 3.2.12 core/signal-definition.json sets "description": { "type": "string",
+    "description": "Detailed description of what this signal represents and how it's derived", "maxLength": 2000 } (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/signal-definition.json#L19-L23),
+    and 3.2.12 core/wholesale-feed-event.json, whose signal entry composes the listing, sets "description": { "type": "string",
+    "description": "Detailed signal description", "minLength": 1 } (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/wholesale-feed-event.json#L612-L616).
+    Register entries for both sites. Witness: a product signal targeting option with description = "" (tighten).
+- location: core/signal-catalog-entry.json#/properties/deployments
+  keyword: minItems
+  new: 1
+  direction: tighten
+  side: both
+  note: >-
+    Appendix B row 27: core/signal-catalog-entry.json deployments takes the bound of the wholesale signal before that signal
+    references the entry. Correction under DR-0036: 3.2.12 core/wholesale-feed-event.json sets it on the wholesale signal
+    (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/wholesale-feed-event.json#L661-L666),
+    "One signal entry using the same wire shape as an item in get_signals.signals[]" (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/wholesale-feed-event.json#L586).
+    Register entry for get_signals signals[] deployments. Witness: signals[0].deployments = [] (tighten).
+- location: core/signal-description.json#
+  keyword: maxLength
+  new: 2000
+  direction: tighten
+  side: both
+  note: >-
+    core/signal-listing.json#/properties/description and core/signal-catalog-entry.json#/properties/description -> core/signal-description.json
+    (was {type: string}): the listing form of the signal definition, which product signal targeting options and the get_signals
+    catalog entry compose. Correction under DR-0036: 3.2.12 core/signal-definition.json sets "description": { "type": "string",
+    "description": "Detailed description of what this signal represents and how it's derived", "maxLength": 2000 } (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/signal-definition.json#L19-L23),
+    and 3.2.12 core/wholesale-feed-event.json, whose signal entry composes the listing, sets "description": { "type": "string",
+    "description": "Detailed signal description", "minLength": 1 } (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/wholesale-feed-event.json#L612-L616).
+    Register entries for both sites. Witness: a product signal targeting option with description = "" (tighten).
+- location: core/signal-description.json#
+  keyword: minLength
+  new: 1
+  direction: tighten
+  side: both
+  note: >-
+    core/signal-listing.json#/properties/name and core/signal-catalog-entry.json#/properties/name -> core/signal-name.json
+    (was {type: string}): the listing form of the signal definition, which product signal targeting options and the get_signals
+    catalog entry compose. Correction under DR-0036: 3.2.12 core/signal-definition.json sets "name": { "type": "string", "description":
+    "Human-readable signal name", "minLength": 1, "maxLength": 255 } (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/signal-definition.json#L13-L18),
+    and 3.2.12 core/wholesale-feed-event.json, whose signal entry composes the listing, sets "name": { "type": "string", "description":
+    "Human-readable signal name", "minLength": 1 } (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/wholesale-feed-event.json#L607-L611).
+    Register entries for both sites. Witness: a product signal targeting option with name = "" (tighten).
+- location: core/signal-name.json#
+  keyword: maxLength
+  new: 255
+  direction: tighten
+  side: both
+  note: >-
+    core/signal-listing.json#/properties/name and core/signal-catalog-entry.json#/properties/name -> core/signal-name.json
+    (was {type: string}): the listing form of the signal definition, which product signal targeting options and the get_signals
+    catalog entry compose. Correction under DR-0036: 3.2.12 core/signal-definition.json sets "name": { "type": "string", "description":
+    "Human-readable signal name", "minLength": 1, "maxLength": 255 } (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/signal-definition.json#L13-L18),
+    and 3.2.12 core/wholesale-feed-event.json, whose signal entry composes the listing, sets "name": { "type": "string", "description":
+    "Human-readable signal name", "minLength": 1 } (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/wholesale-feed-event.json#L607-L611).
+    Register entries for both sites. Witness: a product signal targeting option with name = "" (tighten).
+- location: core/signal-name.json#
+  keyword: minLength
+  new: 1
+  direction: tighten
+  side: both
+  note: >-
+    Appendix B row 27: core/signal-catalog-entry.json data_provider takes the bound of the wholesale signal before that signal
+    references the entry. Correction under DR-0036: 3.2.12 core/wholesale-feed-event.json sets it on the wholesale signal
+    (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/wholesale-feed-event.json#L646-L649),
+    "One signal entry using the same wire shape as an item in get_signals.signals[]" (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/wholesale-feed-event.json#L586).
+    Register entry for get_signals signals[] data_provider. Witness: signals[0].data_provider = "" (tighten).
+- location: core/sharing-principal-identity.json#
+  keyword: maxLength
+  old: 128
+  new: 512
+  direction: loosen
+  side: both
+  note: >-
+    core/audience-activation-method.json dataset_query consumer_identities[].identity -> core/sharing-principal-identity.json,
+    in the new local definition dataset_query_consumer_identity ("Dataset Query Consumer Identity"). A loosening: the principal
+    identity takes the 512-character bound that 3.2.12 publishes for the same data-sharing principal identity in core/reporting-dataset-share-destination.json
+    recipient (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/reporting-dataset-share-destination.json#L74-L78).
+    Witness: consumer_identities[0].identity of 129 characters (base rejects, head accepts).
+- location: core/cloud-region.json#
+  keyword: minLength
+  new: 1
+  direction: tighten
+  side: both
+  note: >-
+    core/audience-activation-method.json dataset_query consumer_identities[].region -> core/cloud-region.json (was {type:
+    string, maxLength: 128}). Correction under DR-0036: 3.2.12 core/reporting-dataset-share-destination.json sets "region":
+    { "type": "string", "minLength": 1, "maxLength": 128 } on the region of the same identity, cloud, and region triple of
+    a data-sharing principal (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/reporting-dataset-share-destination.json#L82-L86).
+    The audience activation method is experimental (x-status), so the additive-minor lint does not compare it and no register
+    entry is needed. Witness: consumer_identities[0] = {cloud: aws, region: "", identity: x} (tighten).
+- location: core/product-id.json#
+  keyword: minLength
+  new: 1
+  direction: tighten
+  side: none
+  note: >-
+    core/wholesale-feed-event.json product.created, product.updated, product.priced, and product.removed payload product_id
+    -> core/product-id.json (was {type: string}). Correction under DR-0036: 3.2.12 core/canonical-product.json sets "product_id":
+    { "type": "string", "minLength": 1, "x-entity": "product" } (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/canonical-product.json#L8-L12),
+    and 3.2.12 core/product.json says sellers reuse that ID "across reads and wholesale-feed webhooks" (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/product.json#L10).
+    Register entries for the four payloads. Witness: a product.removed event with payload.product_id = "" (tighten).
+- location: core/signal-definition-enrichment.json#
+  keyword: properties
+  new:
+    enum:
+    - explicit_consent
+    - manifestly_made_public
+    - substantial_public_interest
+    - vital_interests
+  direction: tighten
+  side: none
+  note: >-
+    core/wholesale-feed-event.json#/$defs/signal -> core/signal-catalog-entry.json, the get_signals catalog entry. The wholesale
+    signal gains the enrichment's art9_basis definition through core/signal-definition-enrichment.json, which the entry composes.
+    Basis (DR-0036, a schema of the major that defines the concept): 3.2.12 core/wholesale-feed-event.json describes the wholesale
+    signal as "One signal entry using the same wire shape as an item in get_signals.signals[]." (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/wholesale-feed-event.json#L586),
+    and 3.2.12 get_signals signals[] items compose core/signal-definition-enrichment.json (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/signals/get-signals-response.json#L26).
+    Witness from the tool (tighten).
+- location: core/signal-definition-enrichment.json#
+  keyword: properties
+  new:
+    type:
+    - boolean
+  direction: tighten
+  side: none
+  note: >-
+    core/wholesale-feed-event.json#/$defs/signal -> core/signal-catalog-entry.json, the get_signals catalog entry. The wholesale
+    signal gains the enrichment's audience_expansion and device_expansion definition through core/signal-definition-enrichment.json,
+    which the entry composes. Basis (DR-0036, a schema of the major that defines the concept): 3.2.12 core/wholesale-feed-event.json
+    describes the wholesale signal as "One signal entry using the same wire shape as an item in get_signals.signals[]." (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/wholesale-feed-event.json#L586),
+    and 3.2.12 get_signals signals[] items compose core/signal-definition-enrichment.json (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/signals/get-signals-response.json#L26).
+    Witness from the tool (tighten).
+- location: core/signal-definition-enrichment.json#
+  keyword: properties
+  new:
+    minItems: 1
+    type:
+    - array
+    items:
+      enum:
+      - consent
+      - contract
+      - legal_obligation
+      - legitimate_interest
+  direction: tighten
+  side: none
+  note: >-
+    core/wholesale-feed-event.json#/$defs/signal -> core/signal-catalog-entry.json, the get_signals catalog entry. The wholesale
+    signal gains the enrichment's consent_basis definition through core/signal-definition-enrichment.json, which the entry
+    composes. Basis (DR-0036, a schema of the major that defines the concept): 3.2.12 core/wholesale-feed-event.json describes
+    the wholesale signal as "One signal entry using the same wire shape as an item in get_signals.signals[]." (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/wholesale-feed-event.json#L586),
+    and 3.2.12 get_signals signals[] items compose core/signal-definition-enrichment.json (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/signals/get-signals-response.json#L26).
+    Witness from the tool (tighten).
+- location: core/signal-definition-enrichment.json#
+  keyword: properties
+  new:
+    minItems: 1
+    type:
+    - array
+    items:
+      pattern: ^[A-Z]{2}$
+      type:
+      - string
+  direction: tighten
+  side: none
+  note: >-
+    core/wholesale-feed-event.json#/$defs/signal -> core/signal-catalog-entry.json, the get_signals catalog entry. The wholesale
+    signal gains the enrichment's countries definition through core/signal-definition-enrichment.json, which the entry composes.
+    Basis (DR-0036, a schema of the major that defines the concept): 3.2.12 core/wholesale-feed-event.json describes the wholesale
+    signal as "One signal entry using the same wire shape as an item in get_signals.signals[]." (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/wholesale-feed-event.json#L586),
+    and 3.2.12 get_signals signals[] items compose core/signal-definition-enrichment.json (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/signals/get-signals-response.json#L26).
+    Witness from the tool (tighten).
+- location: core/signal-definition-enrichment.json#
+  keyword: properties
+  new:
+    format: uri
+    type:
+    - string
+  direction: tighten
+  side: none
+  note: >-
+    core/wholesale-feed-event.json#/$defs/signal -> core/signal-catalog-entry.json, the get_signals catalog entry. The wholesale
+    signal gains the enrichment's criteria_url definition through core/signal-definition-enrichment.json, which the entry
+    composes. Basis (DR-0036, a schema of the major that defines the concept): 3.2.12 core/wholesale-feed-event.json describes
+    the wholesale signal as "One signal entry using the same wire shape as an item in get_signals.signals[]." (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/wholesale-feed-event.json#L586),
+    and 3.2.12 get_signals signals[] items compose core/signal-definition-enrichment.json (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/signals/get-signals-response.json#L26).
+    Witness from the tool (tighten).
+- location: core/signal-definition-enrichment.json#
+  keyword: properties
+  new:
+    minItems: 1
+    type:
+    - array
+    items:
+      enum:
+      - app_behavior
+      - app_usage
+      - credit_data
+      - email
+      - geo_location
+      - loyalty_card
+      - offline_survey
+      - offline_transaction
+      - online_ecommerce
+      - online_survey
+      - panel
+      - public_record_census
+      - public_record_other
+      - public_record_voter_file
+      - transaction
+      - tv_ott_or_stb_device
+      - web_usage
+  direction: tighten
+  side: none
+  note: >-
+    core/wholesale-feed-event.json#/$defs/signal -> core/signal-catalog-entry.json, the get_signals catalog entry. The wholesale
+    signal gains the enrichment's data_sources definition through core/signal-definition-enrichment.json, which the entry
+    composes. Basis (DR-0036, a schema of the major that defines the concept): 3.2.12 core/wholesale-feed-event.json describes
+    the wholesale signal as "One signal entry using the same wire shape as an item in get_signals.signals[]." (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/wholesale-feed-event.json#L586),
+    and 3.2.12 get_signals signals[] items compose core/signal-definition-enrichment.json (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/signals/get-signals-response.json#L26).
+    Witness from the tool (tighten).
+- location: core/signal-definition-enrichment.json#
+  keyword: properties
+  new:
+    required:
+    - channels
+    type:
+    - object
+    properties:
+      ccpa_opt_out_url:
+        format: uri
+        pattern: ^https://
+        type:
+        - string
+      channels:
+        minItems: 1
+        type:
+        - array
+        contains:
+          required:
+          - rights
+          type:
+          - object
+          properties:
+            rights:
+              $at: >-
+                core/data-subject-rights-routing.json#/properties/channels/contains/properties/rights
+        items:
+          required:
+          - rights
+          type:
+          - object
+          anyOf:
+          - $at: core/data-subject-rights-channel.json#/anyOf/0
+          - $at: core/data-subject-rights-channel.json#/anyOf/1
+          properties:
+            countries:
+              $at: core/data-subject-rights-channel.json#/properties/countries
+            email:
+              $at: core/data-subject-rights-channel.json#/properties/email
+            languages:
+              $at: core/data-subject-rights-channel.json#/properties/languages
+            rights:
+              $at: core/data-subject-rights-channel.json#/properties/rights
+            url:
+              $at: core/https-url.json#
+      response_sla_days:
+        maximum: 90
+        minimum: 1
+        type:
+        - integer
+      upstream_source_domain:
+        maxLength: 253
+        pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$
+        type:
+        - string
+  direction: tighten
+  side: none
+  note: >-
+    core/wholesale-feed-event.json#/$defs/signal -> core/signal-catalog-entry.json, the get_signals catalog entry. The wholesale
+    signal gains the enrichment's criteria_url definition through core/signal-definition-enrichment.json, which the entry
+    composes. Basis (DR-0036, a schema of the major that defines the concept): 3.2.12 core/wholesale-feed-event.json describes
+    the wholesale signal as "One signal entry using the same wire shape as an item in get_signals.signals[]." (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/wholesale-feed-event.json#L586),
+    and 3.2.12 get_signals signals[] items compose core/signal-definition-enrichment.json (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/signals/get-signals-response.json#L26).
+    Witness from the tool (tighten).
+- location: core/signal-definition-enrichment.json#
+  keyword: properties
+  new:
+    type:
+    - string
+  direction: tighten
+  side: none
+  note: >-
+    core/wholesale-feed-event.json#/$defs/signal -> core/signal-catalog-entry.json, the get_signals catalog entry. The wholesale
+    signal gains the entry's source_audience_id definition (new in 3.3, experimental). Basis (DR-0036, a schema of the major
+    that defines the concept): 3.2.12 core/wholesale-feed-event.json describes the wholesale signal as "One signal entry using
+    the same wire shape as an item in get_signals.signals[]." (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/wholesale-feed-event.json#L586),
+    and 3.2.12 get_signals signals[] items compose core/signal-definition-enrichment.json (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/signals/get-signals-response.json#L26).
+    Witness: a signal.created payload.signal with source_audience_id = 1 (tighten).
+- location: core/signal-definition-enrichment.json#
+  keyword: properties
+  new:
+    enum:
+    - annually
+    - bi_annually
+    - bi_monthly
+    - daily
+    - intra_day
+    - monthly
+    - quarterly
+    - weekly
+  direction: tighten
+  side: none
+  note: >-
+    core/wholesale-feed-event.json#/$defs/signal -> core/signal-catalog-entry.json, the get_signals catalog entry. The wholesale
+    signal gains the enrichment's refresh_cadence definition through core/signal-definition-enrichment.json, which the entry
+    composes. Basis (DR-0036, a schema of the major that defines the concept): 3.2.12 core/wholesale-feed-event.json describes
+    the wholesale signal as "One signal entry using the same wire shape as an item in get_signals.signals[]." (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/wholesale-feed-event.json#L586),
+    and 3.2.12 get_signals signals[] items compose core/signal-definition-enrichment.json (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/signals/get-signals-response.json#L26).
+    Witness from the tool (tighten).
+- location: core/signal-definition-enrichment.json#
+  keyword: properties
+  new:
+    enum:
+    - declared
+    - derived
+    - inferred
+    - modeled
+    - observed
+  direction: tighten
+  side: none
+  note: >-
+    core/wholesale-feed-event.json#/$defs/signal -> core/signal-catalog-entry.json, the get_signals catalog entry. The wholesale
+    signal gains the enrichment's methodology definition through core/signal-definition-enrichment.json, which the entry composes.
+    Basis (DR-0036, a schema of the major that defines the concept): 3.2.12 core/wholesale-feed-event.json describes the wholesale
+    signal as "One signal entry using the same wire shape as an item in get_signals.signals[]." (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/wholesale-feed-event.json#L586),
+    and 3.2.12 get_signals signals[] items compose core/signal-definition-enrichment.json (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/signals/get-signals-response.json#L26).
+    Witness from the tool (tighten).
+- location: core/signal-definition-enrichment.json#
+  keyword: properties
+  new:
+    required:
+    - ai_act_risk_class
+    - method
+    - seed_source
+    - training_data_jurisdictions
+    type:
+    - object
+    properties:
+      ai_act_risk_class:
+        enum:
+        - high_risk
+        - limited
+        - minimal
+      disclosure:
+        required:
+        - required
+        type:
+        - object
+        if:
+          required:
+          - required
+          properties:
+            required:
+              $at: core/signal-modeling-disclosure.json#/allOf/0/if/properties/required
+        properties:
+          jurisdictions:
+            minItems: 1
+            type:
+            - array
+            items:
+              $at: core/signal-modeling-disclosure.json#/properties/jurisdictions/items
+          notes:
+            maxLength: 2000
+            type:
+            - string
+          required:
+            type:
+            - boolean
+        then:
+          required:
+          - jurisdictions
+      method:
+        enum:
+        - embedding
+        - lookalike
+        - rules
+        - supervised
+      seed_source:
+        required:
+        - provider_signed
+        - type
+        type:
+        - object
+        properties:
+          provider_signed:
+            type:
+            - boolean
+          type:
+            enum:
+            - behavioral
+            - declared_survey
+            - first_party_crm
+            - panel
+            - transactional
+      training_data_jurisdictions:
+        minItems: 1
+        type:
+        - array
+        items:
+          pattern: ^[A-Z]{2}$
+          type:
+          - string
+  direction: tighten
+  side: none
+  note: >-
+    core/wholesale-feed-event.json#/$defs/signal -> core/signal-catalog-entry.json, the get_signals catalog entry. The wholesale
+    signal gains the enrichment's audience_expansion and device_expansion definition through core/signal-definition-enrichment.json,
+    which the entry composes. Basis (DR-0036, a schema of the major that defines the concept): 3.2.12 core/wholesale-feed-event.json
+    describes the wholesale signal as "One signal entry using the same wire shape as an item in get_signals.signals[]." (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/wholesale-feed-event.json#L586),
+    and 3.2.12 get_signals signals[] items compose core/signal-definition-enrichment.json (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/signals/get-signals-response.json#L26).
+    Witness from the tool (tighten).
+- location: core/signal-definition-enrichment.json#
+  keyword: properties
+  new:
+    required:
+    - match_keys
+    type:
+    - object
+    properties:
+      match_keys:
+        minItems: 1
+        type:
+        - array
+        items:
+          enum:
+          - address
+          - cookie_id
+          - customer_id
+          - email
+          - full_name
+          - ip
+          - lat_long
+          - mobile_id
+          - name
+          - phone
+          - postal
+      pre_onboarding_audience_expansion:
+        type:
+        - boolean
+      pre_onboarding_device_expansion:
+        type:
+        - boolean
+      pre_onboarding_precision_level:
+        enum:
+        - business
+        - geography
+        - household
+        - individual
+  direction: tighten
+  side: none
+  note: >-
+    core/wholesale-feed-event.json#/$defs/signal -> core/signal-catalog-entry.json, the get_signals catalog entry. The wholesale
+    signal gains the enrichment's audience_expansion and device_expansion definition through core/signal-definition-enrichment.json,
+    which the entry composes. Basis (DR-0036, a schema of the major that defines the concept): 3.2.12 core/wholesale-feed-event.json
+    describes the wholesale signal as "One signal entry using the same wire shape as an item in get_signals.signals[]." (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/wholesale-feed-event.json#L586),
+    and 3.2.12 get_signals signals[] items compose core/signal-definition-enrichment.json (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/signals/get-signals-response.json#L26).
+    Witness from the tool (tighten).
+- location: core/signal-definition-enrichment.json#
+  keyword: properties
+  new:
+    minItems: 1
+    type:
+    - array
+    items:
+      type:
+      - string
+  direction: tighten
+  side: none
+  note: >-
+    core/wholesale-feed-event.json#/$defs/signal -> core/signal-catalog-entry.json, the get_signals catalog entry. The wholesale
+    signal gains the enrichment's dts_compliant_version definition through core/signal-definition-enrichment.json, which the
+    entry composes. Basis (DR-0036, a schema of the major that defines the concept): 3.2.12 core/wholesale-feed-event.json
+    describes the wholesale signal as "One signal entry using the same wire shape as an item in get_signals.signals[]." (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/wholesale-feed-event.json#L586),
+    and 3.2.12 get_signals signals[] items compose core/signal-definition-enrichment.json (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/signals/get-signals-response.json#L26).
+    Witness from the tool (tighten).
+- location: core/signal-definition-enrichment.json#
+  keyword: properties
+  new:
+    maxLength: 500
+    type:
+    - string
+  direction: tighten
+  side: none
+  note: >-
+    core/wholesale-feed-event.json#/$defs/signal -> core/signal-catalog-entry.json, the get_signals catalog entry. The wholesale
+    signal gains the enrichment's segmentation_criteria definition through core/signal-definition-enrichment.json, which the
+    entry composes. Basis (DR-0036, a schema of the major that defines the concept): 3.2.12 core/wholesale-feed-event.json
+    describes the wholesale signal as "One signal entry using the same wire shape as an item in get_signals.signals[]." (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/wholesale-feed-event.json#L586),
+    and 3.2.12 get_signals signals[] items compose core/signal-definition-enrichment.json (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/signals/get-signals-response.json#L26).
+    Witness from the tool (tighten).
+- location: core/signal-catalog-entry.json#
+  keyword: properties
+  new:
+    enum:
+    - failed
+    - processing
+    - ready
+  direction: tighten
+  side: none
+  note: >-
+    core/wholesale-feed-event.json#/$defs/signal -> core/signal-catalog-entry.json, the get_signals catalog entry. The wholesale
+    signal gains the entry's signal_status definition (new in 3.3, experimental). Basis (DR-0036, a schema of the major that
+    defines the concept): 3.2.12 core/wholesale-feed-event.json describes the wholesale signal as "One signal entry using
+    the same wire shape as an item in get_signals.signals[]." (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/wholesale-feed-event.json#L586),
+    and 3.2.12 get_signals signals[] items compose core/signal-definition-enrichment.json (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/signals/get-signals-response.json#L26).
+    Witness: a signal.created payload.signal with signal_status = "unknown" (tighten).
+- location: core/signal-catalog-entry.json#
+  keyword: properties
+  new:
+    type:
+    - string
+  direction: tighten
+  side: none
+  note: >-
+    core/wholesale-feed-event.json#/$defs/signal -> core/signal-catalog-entry.json, the get_signals catalog entry. The wholesale
+    signal gains the enrichment's dts_compliant_version definition through core/signal-definition-enrichment.json, which the
+    entry composes. Basis (DR-0036, a schema of the major that defines the concept): 3.2.12 core/wholesale-feed-event.json
+    describes the wholesale signal as "One signal entry using the same wire shape as an item in get_signals.signals[]." (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/wholesale-feed-event.json#L586),
+    and 3.2.12 get_signals signals[] items compose core/signal-definition-enrichment.json (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/signals/get-signals-response.json#L26).
+    Witness from the tool (tighten).
+- location: core/signal-definition-enrichment.json#
+  keyword: properties
+  new:
+    required:
+    - ref
+    - values
+    type:
+    - object
+    properties:
+      etag:
+        type:
+        - string
+      parent_match_behavior:
+        enum:
+        - descendants_supported
+        - exact_only
+        - unknown
+      ref:
+        format: uri
+        type:
+        - string
+      segtax:
+        minimum: 1
+        type:
+        - integer
+      value_mappings:
+        minItems: 1
+        type:
+        - array
+        items:
+          required:
+          - taxonomy_value_id
+          - value
+          type:
+          - object
+          properties:
+            modifiers:
+              $at: core/signal-taxonomy-value-mapping.json#/properties/modifiers
+            path:
+              $at: core/signal-taxonomy-value-mapping.json#/properties/path
+            taxonomy_value_id:
+              $at: core/signal-taxonomy-node-id.json#
+            value:
+              $at: core/signal-taxonomy-value-mapping.json#/properties/value
+      values:
+        minItems: 1
+        type:
+        - array
+        items:
+          required:
+          - id
+          type:
+          - object
+          properties:
+            id:
+              $at: core/signal-taxonomy-node-id.json#
+            modifiers:
+              $at: core/signal-taxonomy-value.json#/properties/modifiers
+            path:
+              $at: core/signal-taxonomy-value.json#/properties/path
+      version:
+        type:
+        - string
+  direction: tighten
+  side: none
+  note: >-
+    core/wholesale-feed-event.json#/$defs/signal -> core/signal-catalog-entry.json, the get_signals catalog entry. The wholesale
+    signal gains the enrichment's criteria_url definition through core/signal-definition-enrichment.json, which the entry
+    composes. Basis (DR-0036, a schema of the major that defines the concept): 3.2.12 core/wholesale-feed-event.json describes
+    the wholesale signal as "One signal entry using the same wire shape as an item in get_signals.signals[]." (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/wholesale-feed-event.json#L586),
+    and 3.2.12 get_signals signals[] items compose core/signal-definition-enrichment.json (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/signals/get-signals-response.json#L26).
+    Witness from the tool (tighten).
+- location: core/collection-id.json#
+  keyword: maxLength
+  new: 255
+  direction: tighten
+  side: none
+  note: >-
+    core/wholesale-feed-event.json collection_card.removed payload collection_id -> core/collection-id.json. Basis (DR-0036):
+    no 3.2.12 site bounds a collection ID's length; 3.3.0-beta.1 through rc.3 publish "collection_id": { "type": "string",
+    "minLength": 1, "maxLength": 255, "x-entity": "collection" } in core/canonical-installment-ref.json (https://github.com/adcontextprotocol/adcp/blob/c0dfa90c28bcb768f70b4da1dfc3ca057050fa0a/dist/schemas/3.3.0-beta.1/core/canonical-installment-ref.json#L19-L23),
+    the prerelease text the register already cites for core/collection-id.json. Witness: payload.collection_id of 256 characters.
+- location: core/collection-id.json#
+  keyword: minLength
+  new: 1
+  direction: tighten
+  side: none
+  note: >-
+    core/wholesale-feed-event.json collection_card.removed payload collection_id -> core/collection-id.json (was {type: string,
+    x-entity: collection}; x-entity stays at the site). The branch is new in 3.3, so the additive-minor lint does not compare
+    it. Basis (DR-0036): 3.2.12 core/collection-ref.json sets "collection_id": { "type": "string", "minLength": 1, ... "x-entity":
+    "collection" } (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/collection-ref.json#L13-L18).
+    Witness: payload.collection_id = "".

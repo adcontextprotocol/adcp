@@ -29,11 +29,8 @@
       "$ref": "/schemas/core/targeting-geo-value-labels.json"
     },
     "geo_metros": {
-      "title": "Targeting Geo Metros",
-      "type": "array",
-      "description": "Restrict delivery to specific metro areas. Each entry specifies the classification system and target values. Seller must declare supported systems in get_adcp_capabilities.",
-      "items": { "$ref": "/schemas/core/geo-metro.json" },
-      "minItems": 1
+      "$ref": "/schemas/core/targeting-geo-metros.json",
+      "description": "Restrict delivery to specific metro areas. Each entry specifies the classification system and target values. Seller must declare supported systems in get_adcp_capabilities."
     },
     "geo_metros_exclude": {
       "$ref": "/schemas/core/targeting-geo-metros-exclude.json"
@@ -75,13 +72,9 @@
       "description": "Basic Boolean grouping for seller-offered signals. v1 supports a required top-level operator 'all' and child groups with operator 'any' for include groups or 'none' for exclusion groups. Example semantics: group 1 any(A, B) plus group 2 none(C, D) means (A OR B) AND NOT (C OR D). Signal entries reference named signal definitions with signal_ref scope 'product' for product-local signal options or scope 'data_provider' for external signals published in adagents.json signals[]. For simple include-only targeting, send one child group with operator 'any'. Sellers SHOULD reject entries that are not available for the product through inline signal_targeting_options or get_signals, are not active for the account, or exceed the product's signal_targeting_allowed/signal_targeting_rules/product terms. Signal targeting limits are product-scoped, not declared in get_adcp_capabilities, because products may be backed by different ad servers. Sellers MUST echo applied signal_targeting_groups on the resulting package state, including fixed/default selections. Sellers MAY return REQUOTE_REQUIRED when a targeting mutation changes commercial terms."
     },
     "signal_targeting": {
-      "type": "array",
+      "$ref": "/schemas/core/signal-targeting-list.json",
       "description": "DEPRECATED. Use signal_targeting_groups for package-level signal targeting. Legacy flat signal_targeting remains accepted during the SignalRef migration window but cannot express grouped include/exclude composition or product-scoped pricing.",
-      "deprecated": true,
-      "items": {
-        "$ref": "/schemas/core/signal-targeting.json"
-      },
-      "minItems": 1
+      "deprecated": true
     },
     "demographics": {
       "$ref": "/schemas/core/demographic-targeting-intent.json",
@@ -152,29 +145,16 @@
       "$ref": "/schemas/core/targeting-geo-proximity.json"
     },
     "language": {
-      "title": "Targeting Languages",
-      "type": "array",
-      "description": "Restrict to users with specific language preferences using canonical BCP 47 language ranges. Each buyer range is evaluated against a user's language-preference tag with RFC 4647 section 3.3.1 Basic Filtering: 'fr' matches 'fr', 'fr-CA', and 'fr-FR', while 'fr-CA' matches 'fr-CA' and more-specific descendants but not 'fr' or 'fr-FR'. Values use OR logic.",
-      "items": {
-        "$ref": "/schemas/core/locale-tag.json"
-      },
-      "minItems": 1
+      "$ref": "/schemas/core/targeting-languages.json",
+      "description": "Restrict to users with specific language preferences using canonical BCP 47 language ranges. Each buyer range is evaluated against a user's language-preference tag with RFC 4647 section 3.3.1 Basic Filtering: 'fr' matches 'fr', 'fr-CA', and 'fr-FR', while 'fr-CA' matches 'fr-CA' and more-specific descendants but not 'fr' or 'fr-FR'. Values use OR logic."
     },
     "keyword_targets": {
-      "title": "Targeting Keywords",
-      "type": "array",
-      "description": "Keyword targeting for search and retail media platforms. Restricts delivery to queries matching the specified keywords. Each keyword is identified by the tuple (keyword, match_type) — the same keyword string with different match types are distinct targets. Sellers SHOULD reject duplicate (keyword, match_type) pairs within a single request. Seller must declare support in get_adcp_capabilities.",
-      "items": {
-        "$ref": "/schemas/core/keyword-target.json"
-      },
-      "minItems": 1
+      "$ref": "/schemas/core/targeting-keywords.json",
+      "description": "Keyword targeting for search and retail media platforms. Restricts delivery to queries matching the specified keywords. Each keyword is identified by the tuple (keyword, match_type) — the same keyword string with different match types are distinct targets. Sellers SHOULD reject duplicate (keyword, match_type) pairs within a single request. Seller must declare support in get_adcp_capabilities."
     },
     "negative_keywords": {
-      "title": "Targeting Negative Keywords",
-      "type": "array",
-      "description": "Keywords to exclude from delivery. Queries matching these keywords will not trigger the ad. Each negative keyword is identified by the tuple (keyword, match_type). Seller must declare support in get_adcp_capabilities.",
-      "items": { "$ref": "/schemas/core/negative-keyword.json" },
-      "minItems": 1
+      "$ref": "/schemas/core/targeting-negative-keywords.json",
+      "description": "Keywords to exclude from delivery. Queries matching these keywords will not trigger the ad. Each negative keyword is identified by the tuple (keyword, match_type). Seller must declare support in get_adcp_capabilities."
     }
   },
   "not": {

@@ -1,0 +1,119 @@
+# Delta manifest (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  One definition per object: properties and identifiers, the remaining sites. The corrections the review chose, each
+  on a bound the published text of the major sets; every other change is a $ref to an identical definition.
+changes:
+  - location: core/collection-list-id.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: both
+    note: >-
+      delete_collection_list request and response, update_collection_list request: list_id ->
+      core/collection-list-id.json. Basis: 3.2.12 core/collection-list-ref.json list_id "minLength": 1,
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/collection-list-ref.json#L13-L17
+      (register entries).
+  - location: core/property-list-id.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: both
+    note: >-
+      delete_property_list request and response, update_property_list request: list_id -> core/property-list-id.json.
+      Basis: 3.2.12 core/property-list-ref.json list_id "minLength": 1,
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/property-list-ref.json#L13-L17
+      (register entries).
+  - location: core/collection-id.json#
+    keyword: maxLength
+    new: 255
+    direction: tighten
+    side: both
+    note: >-
+      core/collection-ref.json collection_id and the get_collection_list resolved entry's collection_id ->
+      new:core/collection-id.json; core/canonical-installment-ref.json already stated 255. Basis: 3.3.0-beta.1
+      core/canonical-installment-ref.json collection_id "maxLength": 255,
+      https://github.com/adcontextprotocol/adcp/blob/c0dfa90c28bcb768f70b4da1dfc3ca057050fa0a/dist/schemas/3.3.0-beta.1/core/canonical-installment-ref.json#L19-L24
+      (register entries).
+  - location: core/collection-id.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: response
+    note: >-
+      get_collection_list resolved entry collection_id -> new:core/collection-id.json (core/collection-ref.json already
+      stated it). Basis: 3.2.12 core/collection-ref.json collection_id "minLength": 1,
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/collection-ref.json#L13-L18
+      (register entry).
+  - location: core/domain-name.json#
+    keyword: maxLength
+    new: 253
+    direction: tighten
+    side: response
+    note: >-
+      get_collection_list resolved entry publisher_domain -> core/domain-name.json. Basis: the RFC 1035 limit 3.2.8
+      published on upstream_source_domain, "maxLength": 253,
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.8/core/signal-definition.json#L453-L457
+      (register entry, as for every other publisher_domain site).
+  - location: core/domain-name.json#
+    keyword: pattern
+    new: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$
+    direction: tighten
+    side: response
+    note: >-
+      get_collection_list resolved entry publisher_domain -> core/domain-name.json. Basis: 3.2.12
+      core/collection-ref.json states the lowercase domain pattern on the publisher_domain that scopes a collection ID,
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$",
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/collection-ref.json#L8-L12;
+      the 63-character label limit is RFC 1035's, as at every domain-name site.
+  - location: core/installment-id.json#
+    keyword: maxLength
+    new: 255
+    direction: tighten
+    side: both
+    note: >-
+      core/installment-id.json takes maxLength 255 in place of its x-max-length-4.0 mark; it reaches
+      core/installment-ref.json and the core/installment.json installment_id and derivative_of.installment_id, now
+      $refs. core/canonical-installment-ref.json already stated 255. Basis: 3.3.0-beta.1
+      core/canonical-installment-ref.json installment_id "maxLength": 255,
+      https://github.com/adcontextprotocol/adcp/blob/c0dfa90c28bcb768f70b4da1dfc3ca057050fa0a/dist/schemas/3.3.0-beta.1/core/canonical-installment-ref.json#L32-L38
+      (register entries).
+  - location: core/installment-id.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: both
+    note: >-
+      core/installment.json installment_id and derivative_of.installment_id -> core/installment-id.json. Basis: 3.2.12
+      core/installment-ref.json installment_id "minLength": 1,
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/installment-ref.json#L11-L16
+      (register entries).
+  - location: core/installment.json#/properties/guest_talent
+    keyword: minItems
+    new: 1
+    direction: tighten
+    side: both
+    note: >-
+      core/installment.json guest_talent. Basis: 3.3.0-beta.1 core/canonical-installment.json, the compact view of the
+      same installment, guest_talent "minItems": 1,
+      https://github.com/adcontextprotocol/adcp/blob/c0dfa90c28bcb768f70b4da1dfc3ca057050fa0a/dist/schemas/3.3.0-beta.1/core/canonical-installment.json#L70-L77
+      (register entry).
+  - location: core/installment.json#/properties/topics
+    keyword: minItems
+    new: 1
+    direction: tighten
+    side: both
+    note: >-
+      core/installment.json topics. Basis: 3.3.0-beta.1 core/canonical-installment.json topics "minItems": 1,
+      https://github.com/adcontextprotocol/adcp/blob/c0dfa90c28bcb768f70b4da1dfc3ca057050fa0a/dist/schemas/3.3.0-beta.1/core/canonical-installment.json#L58-L65
+      (register entry).
+  - location: core/feature-check-result.json#/properties/requirement/properties/allowed_values
+    keyword: minItems
+    new: 1
+    direction: tighten
+    side: response
+    note: >-
+      The echoed feature requirement (validate_property_delivery features[].requirement and the content standards
+      feature results) writes allowed_values as core/feature-requirement.json does. Basis: 3.2.12
+      core/feature-requirement.json allowed_values "minItems": 1,
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/feature-requirement.json#L20-L25
+      (register entry).

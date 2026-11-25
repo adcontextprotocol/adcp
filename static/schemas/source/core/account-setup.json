@@ -10,7 +10,7 @@
       "description": "URL where the human can complete the required action (credit application, legal agreement, add funds)."
     },
     "message": {
-      "type": "string",
+      "$ref": "/schemas/core/account-setup-message.json",
       "description": "Human-readable description of what's needed."
     },
     "expires_at": {

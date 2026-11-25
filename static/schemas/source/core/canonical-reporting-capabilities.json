@@ -25,7 +25,12 @@
         "type": "object",
         "properties": {
           "vendor": { "$ref": "/schemas/core/brand-key.json" },
-          "metric_id": { "$ref": "/schemas/core/vendor-metric-id.json" }
+          "metric_id": {
+            "$ref": "/schemas/core/vendor-metric-id.json"
+          },
+          "vendor_relationship": {
+            "$ref": "/schemas/enums/vendor-relationship.json"
+          }
         },
         "required": ["vendor", "metric_id"],
         "additionalProperties": true

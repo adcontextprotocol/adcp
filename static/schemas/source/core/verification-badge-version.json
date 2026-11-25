@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/verification-badge-version.json",
+  "title": "Verification Badge AdCP Version",
+  "description": "AdCP version in MAJOR.MINOR form that an AgenticAdvertising.org Verified badge applies to, such as 3.2.",
+  "type": "string",
+  "pattern": "^[1-9][0-9]*\\.[0-9]+$"
+}

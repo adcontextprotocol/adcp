@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/signal-incomplete-scope.json",
+  "title": "Signal Incomplete Scope",
+  "description": "Part of a get_signals response that a signal agent could not complete.",
+  "type": "string",
+  "enum": [
+    "signals",
+    "pricing",
+    "wholesale_feed"
+  ],
+  "enumDescriptions": {
+    "signals": "Not all matching signals were returned.",
+    "pricing": "Signals were returned, but pricing is absent or unconfirmed.",
+    "wholesale_feed": "In wholesale mode, full feed enumeration could not complete in the time budget."
+  }
+}

@@ -10,10 +10,8 @@
       "description": "Domain where the adagents.json declaring this collection is hosted."
     },
     "collection_id": {
-      "type": "string",
-      "minLength": 1,
-      "description": "Collection ID from the publisher's adagents.json collection catalog.",
-      "x-entity": "collection"
+      "$ref": "/schemas/core/collection-id.json",
+      "description": "Collection ID from the publisher's adagents.json collection catalog."
     }
   },
   "required": ["publisher_domain", "collection_id"],

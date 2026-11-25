@@ -31,7 +31,8 @@
       "items": { "$ref": "/schemas/core/sha256-digest.json" },
       "minItems": 1,
       "uniqueItems": true,
-      "description": "Portable-attestation reference digests available through the evidence provider; credential bodies are not inlined into product discovery."
+      "description": "Portable-attestation reference digests available through the evidence provider; credential bodies are not inlined into product discovery.",
+      "maxItems": 10
     },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },

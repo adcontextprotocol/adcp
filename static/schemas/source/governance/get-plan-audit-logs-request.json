@@ -14,8 +14,7 @@
     "plan_ids": {
       "type": "array",
       "items": {
-        "type": "string",
-        "x-entity": "governance_plan"
+        "$ref": "/schemas/core/governance-plan-id.json"
       },
       "minItems": 1,
       "description": "Plan IDs to retrieve. For a single plan, pass a one-element array. Plans uniquely scope account and operator; do not include a separate `account` field — the governance agent resolves account from each plan."
@@ -23,8 +22,7 @@
     "portfolio_plan_ids": {
       "type": "array",
       "items": {
-        "type": "string",
-        "x-entity": "governance_plan"
+        "$ref": "/schemas/core/governance-plan-id.json"
       },
       "minItems": 1,
       "description": "Portfolio plan IDs. The governance agent expands each to its member_plan_ids and returns combined audit data."

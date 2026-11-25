@@ -6,14 +6,12 @@
   "type": "object",
   "properties": {
     "width": {
-      "type": "integer",
-      "description": "Screen width in pixels.",
-      "minimum": 1
+      "$ref": "/schemas/core/pixel-length.json",
+      "description": "Screen width in pixels."
     },
     "height": {
-      "type": "integer",
-      "description": "Screen height in pixels.",
-      "minimum": 1
+      "$ref": "/schemas/core/pixel-length.json",
+      "description": "Screen height in pixels."
     }
   },
   "required": [

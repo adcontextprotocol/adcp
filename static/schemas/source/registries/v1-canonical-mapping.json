@@ -61,8 +61,8 @@
                       "dimensions": {
                         "type": "object",
                         "properties": {
-                          "width": { "type": "integer" },
-                          "height": { "type": "integer" }
+                          "width": { "$ref": "/schemas/core/dimension-length.json" },
+                          "height": { "$ref": "/schemas/core/dimension-length.json" }
                         }
                       }
                     },

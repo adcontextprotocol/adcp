@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/account-anchored-notification-type.json",
+  "title": "Account-Anchored Notification Type",
+  "description": "Notification types whose lifecycle outlives any single media buy and that an account-level notification config may subscribe to. A subset of the values in enums/notification-type.json: media-buy-anchored and caller-anchored types are not in it.",
+  "type": "string",
+  "enum": [
+    "creative.status_changed",
+    "creative.assignment_changed",
+    "indicators.changed",
+    "creative.purged",
+    "creative.staged_update_changed",
+    "account.status_changed",
+    "account.change_recorded",
+    "product.created",
+    "product.updated",
+    "product.priced",
+    "product.removed",
+    "signal.created",
+    "signal.updated",
+    "signal.priced",
+    "signal.removed",
+    "wholesale_feed.bulk_change",
+    "collection_card.updated",
+    "collection_card.removed",
+    "collection_catalog.bulk_change",
+    "reporting.delivery_ready",
+    "reporting.status_changed",
+    "reporting.ledger_changed",
+    "proposal.created",
+    "proposal.offered"
+  ]
+}

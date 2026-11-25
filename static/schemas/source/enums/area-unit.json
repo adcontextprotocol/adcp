@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/area-unit.json",
+  "title": "Area Unit",
+  "description": "Units of area measurement.",
+  "type": "string",
+  "enum": ["sqft", "sqm"],
+  "enumDescriptions": {
+    "sqft": "Square feet",
+    "sqm": "Square meters"
+  }
+}

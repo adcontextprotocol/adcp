@@ -42,24 +42,15 @@
         "type": "object",
         "properties": {
           "scope": {
-            "type": "string",
-            "enum": [
-              "signals",
-              "pricing",
-              "wholesale_feed"
-            ],
+            "$ref": "/schemas/enums/signal-incomplete-scope.json",
             "description": "'signals': not all matching signals were returned. 'pricing': signals returned but pricing is absent or unconfirmed. 'wholesale_feed': in wholesale mode, full feed enumeration could not complete in the time budget."
           },
           "description": {
-            "type": "string",
+            "$ref": "/schemas/core/incomplete-scope-description.json",
             "description": "Human-readable explanation of what is missing and why."
           },
           "estimated_wait": {
-            "allOf": [
-              {
-                "$ref": "/schemas/core/duration.json"
-              }
-            ],
+            "$ref": "/schemas/core/duration.json",
             "description": "How much additional time would resolve this scope. Allows the caller to decide whether to retry with a larger time_budget."
           }
         },

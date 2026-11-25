@@ -30,22 +30,18 @@
       "description": "Postal address for invoicing and legal correspondence",
       "properties": {
         "street": {
-          "type": "string",
-          "description": "Street address including building number",
-          "maxLength": 200
+          "$ref": "/schemas/core/address-street.json",
+          "description": "Street address including building number"
         },
         "city": {
-          "type": "string",
-          "maxLength": 100
+          "$ref": "/schemas/core/address-city.json"
         },
         "postal_code": {
-          "type": "string",
-          "maxLength": 20
+          "$ref": "/schemas/core/address-postal-code.json"
         },
         "region": {
-          "type": "string",
-          "description": "State, province, or region",
-          "maxLength": 100
+          "$ref": "/schemas/core/address-region.json",
+          "description": "State, province, or region"
         },
         "country": {
           "$ref": "/schemas/core/country-code.json",

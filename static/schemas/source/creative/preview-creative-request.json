@@ -144,6 +144,7 @@
       "type": "array",
       "description": "Array of preview requests (1-50 items). Required when request_type is 'batch'. Each item follows the single request structure.",
       "items": {
+        "title": "Preview Creative Batch Item",
         "type": "object",
         "properties": {
           "target_capability_id": {

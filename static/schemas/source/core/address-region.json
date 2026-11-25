@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/address-region.json",
+  "title": "Address Region",
+  "description": "The state, province, or region of a postal address.",
+  "type": "string",
+  "maxLength": 100
+}

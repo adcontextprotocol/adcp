@@ -19,7 +19,7 @@
           "description": "Optional seller-assigned account context for the paying principal. This intentionally carries only an account_id so the canonical economic principal remains paying_principal.brand.",
           "properties": {
             "account_id": {
-              "type": "string",
+              "$ref": "/schemas/core/account-id.json",
               "description": "Seller-assigned account identifier for the paying principal.",
               "x-entity": "account"
             }
@@ -96,7 +96,7 @@
             "type": "object",
             "properties": {
               "country": {
-                "type": "string",
+                "$ref": "/schemas/core/country-code.json",
                 "description": "ISO 3166-1 alpha-2 country code."
               },
               "region": {
@@ -137,14 +137,8 @@
           "description": "HTTPS URL of the declaring agent or service."
         },
         "role": {
-          "type": "string",
-          "enum": [
-            "brand_agent",
-            "seller",
-            "network",
-            "platform"
-          ],
-          "description": "Role of the declaring party."
+          "description": "Role of the declaring party.",
+          "$ref": "#/definitions/declarer_role"
         }
       },
       "required": [
@@ -161,5 +155,17 @@
     "context_use",
     "disclosure_obligation"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "definitions": {
+    "declarer_role": {
+      "title": "SI Sponsored Context Declarer Role",
+      "type": "string",
+      "enum": [
+        "brand_agent",
+        "seller",
+        "network",
+        "platform"
+      ]
+    }
+  }
 }

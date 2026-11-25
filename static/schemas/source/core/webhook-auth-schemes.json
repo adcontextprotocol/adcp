@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/webhook-auth-schemes.json",
+  "title": "Webhook Authentication Schemes",
+  "description": "The one legacy authentication scheme a webhook authentication block selects: Bearer or HMAC-SHA256.",
+  "type": "array",
+  "items": {
+    "$ref": "/schemas/enums/auth-scheme.json"
+  },
+  "minItems": 1,
+  "maxItems": 1
+}

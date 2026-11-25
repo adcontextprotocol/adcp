@@ -6,7 +6,7 @@
   "type": "object",
   "properties": {
     "field": {
-      "type": "string"
+      "$ref": "/schemas/enums/task-sort-field.json"
     },
     "direction": {
       "$ref": "/schemas/enums/sort-direction.json"

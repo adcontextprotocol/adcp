@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/targeting-capability-flag.json",
+  "title": "Targeting Capability Flag",
+  "description": "A targeting capability that is either declared or omitted. The only valid value is true: in product overlay support it means the dimension or feature can be selected on packages later, and in a buyer requirement it means it must remain selectable. Omit the field otherwise.",
+  "type": "boolean",
+  "const": true
+}

@@ -11,7 +11,7 @@
       "description": "Zero-based index of the corresponding item_availability_updates entry."
     },
     "catalog_id": {
-      "type": "string",
+      "$ref": "/schemas/core/catalog-id.json",
       "description": "Catalog ID from the request.",
       "x-entity": "catalog"
     },
@@ -20,7 +20,7 @@
       "description": "Catalog generation from the request."
     },
     "item_id": {
-      "type": "string",
+      "$ref": "/schemas/core/catalog-item-id.json",
       "description": "Item ID from the request.",
       "x-entity": "catalog_item"
     },

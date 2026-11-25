@@ -16,7 +16,7 @@
       "x-entity": "vendor_pricing_option"
     },
     "signal_agent_segment_id": {
-      "type": "string",
+      "$ref": "/schemas/core/signal-agent-segment-id.json",
       "description": "Optional opaque resolved-segment or seller execution handle for this signal. Omit when signal_ref plus the value expression is sufficient for the seller to resolve the signal. Include when the product option exposes a separate runtime or activation handle, and pass it verbatim. Buyers SHOULD prefer an exposed segment handle over reconstructing condition identity from categorical values because the handle can carry provider namespace and methodology distinctions.",
       "x-entity": "signal_activation_id"
     },

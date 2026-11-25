@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-tone.json",
+  "title": "Brand Tone",
+  "description": "Structured brand voice and messaging guidelines for copy generation. Each field is a legacy plain value or localized values; localized lists are selected as a whole.",
+  "type": "object",
+  "properties": {
+    "voice": {
+      "$ref": "/schemas/core/brand-localized-scalar.json",
+      "description": "High-level voice descriptor, such as comma-separated adjectives ('enthusiastic, warm, competitive'): a legacy plain string or localized values."
+    },
+    "attributes": {
+      "$ref": "/schemas/core/brand-localized-string-list.json",
+      "description": "Personality traits that characterize the brand voice, used as prompt guidance. Localized lists are selected as a whole."
+    },
+    "dos": {
+      "$ref": "/schemas/core/brand-localized-string-list.json",
+      "description": "Guidance for copy generation - what TO do: approved messaging approaches, content themes, and reference points. Localized lists are selected as a whole."
+    },
+    "donts": {
+      "$ref": "/schemas/core/brand-localized-string-list.json",
+      "description": "Guardrails to avoid brand violations - what NOT to do: prohibited topics, competitor references, and phrasings to avoid. Localized lists are selected as a whole."
+    }
+  }
+}

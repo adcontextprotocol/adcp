@@ -7,23 +7,11 @@
   "type": "object",
   "oneOf": [
     {
-      "title": "AdCP audience sync",
-      "description": "Push membership to the destination's sync_audiences task.",
-      "type": "object",
-      "properties": {
-        "pattern": {
-          "type": "string",
-          "const": "sync_audiences",
-          "default": "sync_audiences"
-        }
-      },
-      "required": [
-        "pattern"
-      ],
-      "additionalProperties": true
+      "$ref": "/schemas/core/sync-audiences-method.json",
+      "description": "Push membership to the destination's sync_audiences task."
     },
     {
-      "title": "File transfer",
+      "title": "Signal file transfer",
       "description": "Write a membership file to a destination bucket over the storage protocol.",
       "type": "object",
       "properties": {
@@ -49,7 +37,7 @@
       "additionalProperties": true
     },
     {
-      "title": "Dataset query",
+      "title": "Signal dataset query",
       "description": "Publish a grantee-identified share on the vendor for the destination to read.",
       "type": "object",
       "properties": {
@@ -71,28 +59,11 @@
       "not": { "required": ["consumer_identities"] }
     },
     {
-      "title": "Clean room",
-      "description": "Land output in the vendor's clean room.",
-      "type": "object",
-      "properties": {
-        "pattern": {
-          "type": "string",
-          "const": "clean_room",
-          "default": "clean_room"
-        },
-        "vendor": {
-          "$ref": "/schemas/core/brand-ref.json",
-          "description": "Vendor whose rails are used."
-        }
-      },
-      "required": [
-        "pattern",
-        "vendor"
-      ],
-      "additionalProperties": true
+      "$ref": "/schemas/core/clean-room-method.json",
+      "description": "Land output in the vendor's clean room."
     },
     {
-      "title": "Platform distribution",
+      "title": "Signal platform distribution",
       "description": "Initiate distribution on the vendor's rails to the destination.",
       "type": "object",
       "properties": {

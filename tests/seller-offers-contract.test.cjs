@@ -269,7 +269,7 @@ describe("seller offers (media_buy.seller_offers)", () => {
       }
       assert.ok(!type.enum.includes("proposal.opportunity_offered"));
       for (const uri of [
-        "/schemas/core/notification-config.json",
+        readSchema("/schemas/core/notification-config.json").properties.event_types.items.$ref,
         "/schemas/core/agent-notification-config.json",
       ]) {
         assert.ok(

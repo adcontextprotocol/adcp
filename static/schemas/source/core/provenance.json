@@ -59,21 +59,12 @@
       "description": "Party declaring this provenance. Identifies who attached the provenance claim, enabling receiving parties to assess trust.",
       "properties": {
         "agent_url": {
-          "type": "string",
-          "format": "uri",
+          "$ref": "/schemas/core/https-url.json",
           "description": "URL of the agent or service that declared this provenance"
         },
         "role": {
-          "type": "string",
-          "enum": ["creator", "advertiser", "agency", "platform", "tool"],
           "description": "Role of the declaring party in the supply chain",
-          "enumDescriptions": {
-            "creator": "The party that created or generated the content",
-            "advertiser": "The brand or advertiser that owns the content",
-            "agency": "Agency acting on behalf of the advertiser",
-            "platform": "Ad platform or publisher that processed the content",
-            "tool": "Automated tool or service that attached provenance metadata"
-          }
+          "$ref": "#/definitions/declarant_role"
         }
       },
       "required": ["role"]
@@ -186,7 +177,7 @@
             "type": "object",
             "properties": {
               "country": {
-                "type": "string",
+                "$ref": "/schemas/core/country-code.json",
                 "description": "ISO 3166-1 alpha-2 country code (e.g., 'US', 'DE', 'CN')",
                 "x-max-length-4.0": 128
               },
@@ -280,6 +271,26 @@
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "definitions": {
+    "declarant_role": {
+      "title": "Provenance Declarant Role",
+      "type": "string",
+      "enum": [
+        "creator",
+        "advertiser",
+        "agency",
+        "platform",
+        "tool"
+      ],
+      "enumDescriptions": {
+        "creator": "The party that created or generated the content",
+        "advertiser": "The brand or advertiser that owns the content",
+        "agency": "Agency acting on behalf of the advertiser",
+        "platform": "Ad platform or publisher that processed the content",
+        "tool": "Automated tool or service that attached provenance metadata"
+      }
     }
   }
 }

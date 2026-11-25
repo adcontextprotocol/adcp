@@ -428,6 +428,7 @@ schema_removals_not_checked:
       legacy_hmac_fallback_removed_in_4_0.
     sites:
       - "core/agent-notification-config.json#/properties/authentication"
+      - "core/agent-notification-config-state.json#/properties/authentication"
       - "core/notification-config.json#/properties/authentication"
       - "core/push-notification-config.json#/properties/authentication"
       - "core/reporting-webhook.json#/properties/authentication"
@@ -535,11 +536,7 @@ schema_removals_not_checked:
       is marked x-removed-in "5.0.0", not 4.0, because brand.json is read without
       version negotiation, so it is outside this 4.0 registry by design.
     sites:
-      - "brand/get-brand-identity-response.json#/oneOf/0/properties/colors/properties/primary/oneOf/0"
-      - "brand/get-brand-identity-response.json#/oneOf/0/properties/colors/properties/secondary/oneOf/0"
-      - "brand/get-brand-identity-response.json#/oneOf/0/properties/colors/properties/accent/oneOf/0"
-      - "brand/get-brand-identity-response.json#/oneOf/0/properties/colors/properties/background/oneOf/0"
-      - "brand/get-brand-identity-response.json#/oneOf/0/properties/colors/properties/text/oneOf/0"
+      - "core/color-value.json#/oneOf/0"
       - "error-details/requote-required.json#/properties/envelope_field/oneOf/0"
       - "core/creative-asset.json#/properties/assets/patternProperties/^/oneOf/0"
       - "core/creative-assets.json#/patternProperties/^/anyOf/0"
@@ -566,3 +563,15 @@ schema_removals_not_checked:
       - "enums/binary-verdict.json#/enumMetadata/pass"
       - "enums/signal-match-key.json#/enumMetadata/name"
       - "error-details/rate-limited.json#/properties/scope/enumMetadata/global"
+
+  - change: "The success flag where the envelope status reports the outcome"
+    issue: 8969
+    reason: >-
+      update_content_standards and provide_performance_feedback repeat the
+      outcome that the envelope status carries. Senders keep sending success
+      through 3.x because 3.x receivers may read it, so a 3.x run cannot grade
+      its use.
+    sites:
+      - "content-standards/update-content-standards-response.json#/oneOf/0/properties/success"
+      - "content-standards/update-content-standards-response.json#/oneOf/1/properties/success"
+      - "media-buy/provide-performance-feedback-response.json#/oneOf/0/properties/success"

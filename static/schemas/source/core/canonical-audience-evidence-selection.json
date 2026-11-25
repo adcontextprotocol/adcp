@@ -11,7 +11,15 @@
     "content_digest": { "$ref": "/schemas/core/sha256-digest.json" },
     "decision_use": { "$ref": "/schemas/enums/audience-evidence-decision-use.json" },
     "evidence": { "$ref": "/schemas/core/canonical-audience-evidence.json" },
-    "verified_attestation_digests": { "type": "array", "items": { "$ref": "/schemas/core/sha256-digest.json" }, "minItems": 1, "uniqueItems": true },
+    "verified_attestation_digests": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/sha256-digest.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "maxItems": 10
+    },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "required": ["evidence_id", "snapshot_id", "version", "content_digest", "decision_use"],

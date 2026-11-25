@@ -36,11 +36,15 @@
       ]
     },
     "geo_metros": {
-      "title": "Targeting Geo Metros",
-      "type": ["array", "null"],
-      "description": "Restrict delivery to specific metro areas. Each entry specifies the classification system and target values. Seller must declare supported systems in get_adcp_capabilities.",
-      "items": { "$ref": "/schemas/core/geo-metro.json" },
-      "minItems": 1
+      "anyOf": [
+        {
+          "$ref": "/schemas/core/targeting-geo-metros.json"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Restrict delivery to specific metro areas. Each entry specifies the classification system and target values. Seller must declare supported systems in get_adcp_capabilities."
     },
     "geo_metros_exclude": {
       "anyOf": [
@@ -121,11 +125,16 @@
       ]
     },
     "signal_targeting": {
-      "type": ["array", "null"],
+      "anyOf": [
+        {
+          "$ref": "/schemas/core/signal-targeting-list.json"
+        },
+        {
+          "type": "null"
+        }
+      ],
       "description": "DEPRECATED. Use signal_targeting_groups for package-level signal targeting. Legacy flat signal_targeting remains accepted during the SignalRef migration window but cannot express grouped include/exclude composition or product-scoped pricing.",
-      "deprecated": true,
-      "items": { "$ref": "/schemas/core/signal-targeting.json" },
-      "minItems": 1
+      "deprecated": true
     },
     "demographics": {
       "anyOf": [
@@ -272,32 +281,55 @@
       ]
     },
     "language": {
-      "title": "Targeting Languages",
-      "type": ["array", "null"],
-      "description": "Restrict to users with specific language preferences using canonical BCP 47 language ranges. Each buyer range is evaluated against a user's language-preference tag with RFC 4647 section 3.3.1 Basic Filtering: 'fr' matches 'fr', 'fr-CA', and 'fr-FR', while 'fr-CA' matches 'fr-CA' and more-specific descendants but not 'fr' or 'fr-FR'. Values use OR logic.",
-      "items": { "$ref": "/schemas/core/locale-tag.json" },
-      "minItems": 1
+      "anyOf": [
+        {
+          "$ref": "/schemas/core/targeting-languages.json"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Restrict to users with specific language preferences using canonical BCP 47 language ranges. Each buyer range is evaluated against a user's language-preference tag with RFC 4647 section 3.3.1 Basic Filtering: 'fr' matches 'fr', 'fr-CA', and 'fr-FR', while 'fr-CA' matches 'fr-CA' and more-specific descendants but not 'fr' or 'fr-FR'. Values use OR logic."
     },
     "keyword_targets": {
-      "title": "Targeting Keywords",
-      "type": ["array", "null"],
-      "description": "Keyword targeting for search and retail media platforms. Restricts delivery to queries matching the specified keywords. Each keyword is identified by the tuple (keyword, match_type) — the same keyword string with different match types are distinct targets. Sellers SHOULD reject duplicate (keyword, match_type) pairs within a single request. Seller must declare support in get_adcp_capabilities.",
-      "items": {
-        "$ref": "/schemas/core/keyword-target.json"
-      },
-      "minItems": 1
+      "anyOf": [
+        {
+          "$ref": "/schemas/core/targeting-keywords.json"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Keyword targeting for search and retail media platforms. Restricts delivery to queries matching the specified keywords. Each keyword is identified by the tuple (keyword, match_type) — the same keyword string with different match types are distinct targets. Sellers SHOULD reject duplicate (keyword, match_type) pairs within a single request. Seller must declare support in get_adcp_capabilities."
     },
     "negative_keywords": {
-      "title": "Targeting Negative Keywords",
-      "type": ["array", "null"],
-      "description": "Keywords to exclude from delivery. Queries matching these keywords will not trigger the ad. Each negative keyword is identified by the tuple (keyword, match_type). Seller must declare support in get_adcp_capabilities.",
-      "items": { "$ref": "/schemas/core/negative-keyword.json" },
-      "minItems": 1
+      "anyOf": [
+        {
+          "$ref": "/schemas/core/targeting-negative-keywords.json"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Keywords to exclude from delivery. Queries matching these keywords will not trigger the ad. Each negative keyword is identified by the tuple (keyword, match_type). Seller must declare support in get_adcp_capabilities."
     }
   },
   "allOf": [
     { "$ref": "/schemas/core/targeting-unknown-age-eligibility-constraint.json" },
     { "$ref": "/schemas/core/targeting-verified-age-basis-constraint.json" }
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "x-adcp-validation": {
+    "disjoint_place_fields": {
+      "include": "geo_places",
+      "exclude": "geo_places_exclude",
+      "identity": [
+        "country",
+        "system",
+        "place_type",
+        "value"
+      ]
+    },
+    "description": "JSON Schema draft-07 cannot compare values across sibling arrays. Conformance tooling MUST reject any place identity present in both geo_places and geo_places_exclude. Catalog version is deliberately not part of place identity: a stable ID cannot be both included and excluded by assigning different versions."
+  }
 }

@@ -10,7 +10,7 @@
       "description": "Error code for programmatic handling"
     },
     "message": {
-      "type": "string",
+      "$ref": "/schemas/core/error-message.json",
       "description": "Detailed error message"
     },
     "details": {

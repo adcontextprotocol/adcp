@@ -168,7 +168,8 @@ test('adagents inline file carrying a non-HTTPS authoritative location is still 
 });
 
 const URL_REFERENCE = { type: 'url', value: 'https://example.com/article' };
-// Both requests reference core/calibration-exemplars.json, which holds the pass and fail unions.
+// Both requests reference core/calibration-exemplars.json, whose pass and fail
+// items are the core/calibration-exemplar.json union.
 const EXEMPLAR_SITES = [
   ['create', 'content-standards/create-content-standards-request.json'],
   ['update', 'content-standards/update-content-standards-request.json'],
@@ -176,7 +177,7 @@ const EXEMPLAR_SITES = [
   label: `${verb} request ${side} exemplar`,
   side,
   site: `${file}#/properties/calibration_exemplars`,
-  branches: `core/calibration-exemplars.json#/properties/${side}/items/oneOf`,
+  branches: 'core/calibration-exemplar.json#/oneOf',
 })));
 
 for (const { label, side, site, branches } of EXEMPLAR_SITES) {

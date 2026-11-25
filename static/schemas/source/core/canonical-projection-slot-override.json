@@ -11,7 +11,14 @@
       "description": "Asset group identifier from `asset-group-vocabulary.json` (e.g., `generation_prompt`, `creative_brief`, `image_main`, `video_main`)."
     },
     "asset_type": {
-      "type": "string",
+      "anyOf": [
+        {
+          "$ref": "/schemas/enums/canonical-slot-asset-type.json"
+        },
+        {
+          "type": "string"
+        }
+      ],
       "description": "Asset type — `image`, `video`, `audio`, `text`, `html`, `javascript`, `url`, `zip`, `brief`, `catalog`, `published_post`, or another canonical slot asset type."
     },
     "required": {

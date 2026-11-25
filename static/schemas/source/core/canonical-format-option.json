@@ -41,7 +41,7 @@
     "format_kind": {
       "$ref": "/schemas/core/canonical-format-kind.json"
     },
-    "params": { "type": "object", "additionalProperties": true },
+    "params": { "$ref": "/schemas/core/format-params.json" },
     "format_shape": { "type": "string", "minLength": 1 },
     "format_schema": { "$ref": "/schemas/core/platform-extension-ref.json" }
   },

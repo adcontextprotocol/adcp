@@ -54,16 +54,7 @@
                 "type": "array",
                 "description": "Per-feature breakdown. When present, SHOULD include all failed and warning features. MAY include passed features. Oracle pattern: exposes verdict + rule pointer, never the seller's threshold or the caller's submitted value (the seller authored the content standards).",
                 "items": {
-                  "allOf": [
-                    {
-                      "$ref": "/schemas/core/feature-check-result.json"
-                    }
-                  ],
-                  "properties": {
-                    "policy_id": {
-                      "x-entity": "governance_registry_policy"
-                    }
-                  }
+                  "$ref": "/schemas/core/content-standards-feature-check-result.json"
                 }
               }
             },

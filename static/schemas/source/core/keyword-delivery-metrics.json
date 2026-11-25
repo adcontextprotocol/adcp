@@ -8,19 +8,16 @@
       "$ref": "/schemas/core/delivery-metrics.json"
     },
     {
+      "$ref": "/schemas/core/keyword-match.json"
+    },
+    {
       "type": "object",
       "properties": {
         "keyword": {
-          "type": "string",
           "description": "The targeted keyword"
-        },
-        "match_type": {
-          "$ref": "/schemas/enums/match-type.json"
         }
       },
       "required": [
-        "keyword",
-        "match_type",
         "spend"
       ]
     }

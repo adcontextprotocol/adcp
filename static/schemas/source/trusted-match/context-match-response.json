@@ -12,11 +12,8 @@
   "x-status": "experimental",
   "definitions": {
     "targeting_kvs": {
-      "type": "array",
-      "description": "Provider-local key-value pairs for ad-server targeting. The router preserves each pair unchanged and attributes it by provider_id; the publisher maps the tuple (provider_id, key) to a local ad-server destination.",
-      "items": {
-        "$ref": "/schemas/core/trusted-match-targeting-kv.json"
-      }
+      "$ref": "/schemas/core/trusted-match-targeting-kvs.json",
+      "description": "Provider-local key-value pairs for ad-server targeting. The router preserves each pair unchanged and attributes it by provider_id; the publisher maps the tuple (provider_id, key) to a local ad-server destination."
     }
   },
   "properties": {
@@ -41,11 +38,8 @@
       "description": "Merged non-keyed response-level signals. Provider-local targeting pairs do not pass through this object; the router emits them only in signals_by_provider.",
       "properties": {
         "segments": {
-          "type": "array",
-          "description": "Contextual segment identifiers combined across provider responses.",
-          "items": {
-            "type": "string"
-          }
+          "$ref": "/schemas/core/trusted-match-segments.json",
+          "description": "Contextual segment identifiers combined across provider responses."
         }
       },
       "additionalProperties": true

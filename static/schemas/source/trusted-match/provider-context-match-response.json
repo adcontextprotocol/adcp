@@ -12,11 +12,8 @@
   "x-status": "experimental",
   "definitions": {
     "targeting_kvs": {
-      "type": "array",
-      "description": "Provider-local key-value pairs for ad-server targeting. The router preserves each pair unchanged under the emitting provider's registered provider_id.",
-      "items": {
-        "$ref": "/schemas/core/trusted-match-targeting-kv.json"
-      }
+      "$ref": "/schemas/core/trusted-match-targeting-kvs.json",
+      "description": "Provider-local key-value pairs for ad-server targeting. The router preserves each pair unchanged under the emitting provider's registered provider_id."
     }
   },
   "properties": {
@@ -45,11 +42,8 @@
       "description": "Provider-origin response-level signals. Targeting pairs use the provider's local key vocabulary; the router preserves and attributes them rather than passing them through as flattened publisher targeting.",
       "properties": {
         "segments": {
-          "type": "array",
-          "description": "Contextual segment identifiers.",
-          "items": {
-            "type": "string"
-          }
+          "$ref": "/schemas/core/trusted-match-segments.json",
+          "description": "Contextual segment identifiers."
         },
         "targeting_kvs": {
           "$ref": "#/definitions/targeting_kvs"

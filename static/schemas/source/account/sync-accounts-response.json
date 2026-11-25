@@ -51,8 +51,9 @@
                 "description": "Current canonical brand reference for the account."
               },
               "operator": {
-                "type": "string",
-                "description": "Current canonical operator domain. When an identity change is pending or rejected, this remains the current value rather than echoing the requested value."
+                "$ref": "/schemas/core/domain-name.json",
+                "description": "Current canonical operator domain. When an identity change is pending or rejected, this remains the current value rather than echoing the requested value.",
+                "x-entity": "operator"
               },
               "operator_unit": {
                 "$ref": "/schemas/core/operator-unit.json",
@@ -298,27 +299,19 @@
     {
       "title": "SyncAccountsError",
       "description": "Operation failed completely, no accounts were processed",
-      "type": "object",
-      "properties": {
-        "errors": {
-          "type": "array",
-          "description": "Operation-level errors (e.g., authentication failure, service unavailable)",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          },
-          "minItems": 1
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
+      "allOf": [
+        {
+          "$ref": "/schemas/core/task-error-response.json"
         }
-      },
+      ],
       "required": [
         "errors"
       ],
-      "additionalProperties": true,
+      "properties": {
+        "errors": {
+          "description": "Operation-level errors (e.g., authentication failure, service unavailable)"
+        }
+      },
       "not": {
         "anyOf": [
           {

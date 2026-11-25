@@ -22,7 +22,7 @@
       "description": "Method used to produce this forecast"
     },
     "currency": {
-      "type": "string",
+      "$ref": "/schemas/core/currency-code.json",
       "description": "ISO 4217 currency code for monetary values in this forecast (spend, budget)"
     },
     "demographic_system": {

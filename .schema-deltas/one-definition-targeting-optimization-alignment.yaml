@@ -1,0 +1,35 @@
+# Delta manifest (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  One definition per object: targeting and optimization alignment. Targeting capability flags, metro systems,
+  keyword match types, browser families, transport modes, daypart timezone modes, IANA timezone lists, Trusted
+  Match targeting KVs and segments, and five targeting dimensions each have one definition; the corrections below
+  follow published 3.2.12 text or guard 3.3 fields, and every other change is a $ref to an identical definition.
+changes:
+  - location: core/keyword.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: response
+    note: >-
+      core/keyword-delivery-metrics.json#/allOf/1/properties/keyword -> core/keyword.json, as negative keywords,
+      keyword targets, and the product filter keywords already reference. Correction under DR-0036: 3.2.12 bounds
+      the keyword of a package keyword target in core/targeting.json keyword_targets[] ("keyword": { "type":
+      "string", "minLength": 1, "description": "The keyword to target" },
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/targeting.json#L503-L507),
+      and a keyword delivery row reports "The targeted keyword" of one keyword and match-type pair. Register entry
+      core/keyword-delivery-metrics.json /allOf/1/properties/keyword.
+  - location: core/package-id.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: response
+    note: >-
+      trusted-match/identity-match-response.json and trusted-match/provider-identity-match-response.json
+      eligible_package_ids[] -> core/package-id.json. Correction under DR-0036: 3.2.12 bounds the package ID in
+      media-buy/package-control.json ("package_id": { "type": "string", "minLength": 1, "x-entity": "package" },
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/media-buy/package-control.json#L8-L12),
+      the quote the register already holds for core/package-id.json. Same concept: Trusted Match packages are media
+      buy packages (3.2.12 trusted-match/offer.json package_id, "Package identifier from the media buy.",
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/trusted-match/offer.json#L11).
+      Both responses are x-status experimental, so lint-additive-minor does not compare them and no register entry
+      is needed.

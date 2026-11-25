@@ -62,10 +62,7 @@
           "description": "Endpoint for reporting usage against these rights"
         },
         "rights_constraint": {
-          "allOf": [
-            { "$ref": "/schemas/core/rights-constraint.json" },
-            { "required": ["rights_holder", "grant_status", "content_digest", "attestation_refs"] }
-          ],
+          "$ref": "/schemas/core/attested-rights-constraint.json",
           "description": "Pre-built rights constraint for embedding in creative manifests. Populated from the agreed terms — the buyer does not need to construct it manually."
         },
         "context": {
@@ -192,25 +189,14 @@
     },
     {
       "title": "AcquireRightsError",
-      "properties": {
-        "errors": {
-          "type": "array",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          },
-          "minItems": 1
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
+      "allOf": [
+        {
+          "$ref": "/schemas/core/task-error-response.json"
         }
-      },
+      ],
       "required": [
         "errors"
       ],
-      "additionalProperties": true,
       "not": {
         "anyOf": [
           {

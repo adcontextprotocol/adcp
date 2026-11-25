@@ -25,21 +25,8 @@
           "maxLength": 500
         },
         "total_budget": {
-          "type": "object",
-          "description": "Total committed budget",
-          "properties": {
-            "amount": {
-              "type": "number",
-              "minimum": 0
-            },
-            "currency": {
-              "type": "string",
-              "description": "ISO 4217 currency code",
-              "minLength": 3,
-              "maxLength": 3
-            }
-          },
-          "required": ["amount", "currency"]
+          "$ref": "/schemas/core/money.json",
+          "description": "Total committed budget"
         },
         "flight_start": {
           "type": "string",

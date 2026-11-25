@@ -72,19 +72,7 @@
               "default": "property"
             },
             "claim": {
-              "type": "object",
-              "properties": {
-                "property": {
-                  "$ref": "/schemas/core/brand-property.json",
-                  "description": "Shape matches brand.json properties[] entry."
-                },
-                "use_case": {
-                  "$ref": "/schemas/core/brand-claim-use-case.json",
-                  "description": "Optional caller-declared use case."
-                }
-              },
-              "required": ["property"],
-              "additionalProperties": true
+              "$ref": "/schemas/core/brand-claim-property.json"
             }
           },
           "required": ["claim_type", "claim"],

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/dimension-length.json",
+  "title": "Dimension Length",
+  "description": "A positive length along one axis, such as a width or a height. It is measured in the unit the enclosing object declares, pixels when it declares none.",
+  "type": "number",
+  "exclusiveMinimum": 0
+}

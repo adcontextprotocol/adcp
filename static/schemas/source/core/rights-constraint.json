@@ -10,20 +10,8 @@
       "description": "Rights grant identifier from the acquire_rights response"
     },
     "rights_agent": {
-      "type": "object",
-      "description": "The agent that granted these rights",
-      "properties": {
-        "url": {
-          "type": "string",
-          "format": "uri",
-          "description": "MCP endpoint URL of the rights agent"
-        },
-        "id": {
-          "type": "string",
-          "description": "Agent identifier"
-        }
-      },
-      "required": ["url", "id"]
+      "$ref": "/schemas/core/brand-agent.json",
+      "description": "The agent that granted these rights: the brand.json agents[] entry with type rights."
     },
     "rights_holder": {
       "$ref": "/schemas/core/brand-ref.json",

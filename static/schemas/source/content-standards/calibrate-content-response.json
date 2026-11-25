@@ -29,16 +29,7 @@
           "type": "array",
           "description": "Per-feature breakdown with explanations. Mirrors validate_content_delivery feature shape so calibration loops can correlate against production verdicts by policy_id.",
           "items": {
-            "allOf": [
-              {
-                "$ref": "/schemas/core/feature-check-result.json"
-              }
-            ],
-            "properties": {
-              "policy_id": {
-                "x-entity": "governance_registry_policy"
-              }
-            }
+            "$ref": "/schemas/core/content-standards-feature-check-result.json"
           }
         },
         "context": {

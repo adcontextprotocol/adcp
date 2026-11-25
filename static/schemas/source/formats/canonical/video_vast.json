@@ -18,10 +18,7 @@
       "$ref": "/schemas/core/aspect-ratio.json"
     },
     "vast_versions": {
-      "type": "array",
-      "items": { "$ref": "/schemas/enums/vast-version.json" },
-      "minItems": 1,
-      "uniqueItems": true,
+      "$ref": "/schemas/core/vast-versions.json",
       "description": "VAST versions accepted by this product format option. The asset still declares exactly one `vast_version`; compatibility requires membership in this set and the seller-wide execution set."
     },
     "vast_version": {

@@ -1,0 +1,7 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/deployment-account.json",
+  "title": "Deployment Account",
+  "description": "Account identifier on the platform or agent that is a signal deployment target.",
+  "type": "string"
+}

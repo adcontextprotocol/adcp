@@ -6,19 +6,19 @@
   "type": "object",
   "properties": {
     "street": {
-      "type": "string",
+      "$ref": "/schemas/core/address-street.json",
       "description": "Street address (e.g., '123 Main St')."
     },
     "city": {
-      "type": "string",
+      "$ref": "/schemas/core/address-city.json",
       "description": "City name."
     },
     "region": {
-      "type": "string",
+      "$ref": "/schemas/core/address-region.json",
       "description": "State, province, or region. ISO 3166-2 subdivision code preferred (e.g., 'NL-NH', 'US-CA')."
     },
     "postal_code": {
-      "type": "string",
+      "$ref": "/schemas/core/address-postal-code.json",
       "description": "Postal or ZIP code."
     },
     "country": {

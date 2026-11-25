@@ -154,7 +154,8 @@ test('creative.staged_update_changed is a separate experimental event that subsc
   );
   assert.equal(validate({ ...base, notification_type: 'creative.status_changed' }), false);
 
-  for (const file of ['core/notification-config.json', 'core/agent-notification-config.json']) {
+  const accountLevelTypes = schema('core/notification-config.json').properties.event_types.items.$ref.slice('/schemas/'.length);
+  for (const file of [accountLevelTypes, 'core/agent-notification-config.json']) {
     assert.ok(
       JSON.stringify(schema(file)).includes('creative.staged_update_changed'),
       `${file} accepts the new event type on a subscription`

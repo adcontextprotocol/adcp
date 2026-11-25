@@ -172,7 +172,7 @@ describe('product discovery MCP schema parity', () => {
     // unchanged: 146,682 bytes / 143.24 KiB measured, bounded at 144 KiB.
     // Giving each cross-document reference target a document of its own
     // adds those documents as definitions, with the same content once refs
-    // are expanded: 142,737 bytes / 139.39 KiB measured.
+    // are expanded: 143,454 bytes / 140.09 KiB measured.
     expect(totalBytes).toBeLessThanOrEqual(144 * 1024);
 
     const list = tools.find(tool => tool.name === 'list_products')!.inputSchema as JsonSchema;

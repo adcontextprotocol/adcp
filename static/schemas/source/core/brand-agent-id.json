@@ -2,8 +2,8 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/brand-agent-id.json",
   "title": "Brand Agent ID",
-  "description": "Identifier of an agent entry in a brand.json.",
+  "description": "Identifier of an agent entry in a brand.json: lowercase letters, digits, and underscores, at most 100 characters.",
   "type": "string",
-  "x-max-length-4.0": 255,
-  "pattern": "^[a-z0-9_]+$"
+  "pattern": "^[a-z0-9_]+$",
+  "maxLength": 100
 }

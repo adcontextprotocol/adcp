@@ -8,10 +8,7 @@
   "type": "object",
   "properties": {
     "subscription_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^(?!\\.{1,2}$)[A-Za-z0-9_.:-]{1,64}$",
+      "$ref": "/schemas/core/reporting-subscription-id.json",
       "x-entity": "reporting_subscription",
       "description": "Caller-selected stable key, unique within the authenticated principal and not equal to any delivery_config_id the caller uses on any account with this seller. Never . or .., because it may appear in a destination path."
     },

@@ -56,17 +56,8 @@
       "$ref": "/schemas/core/media-buy-failed-result.json"
     },
     {
-      "allOf": [{ "$ref": "/schemas/core/task-submitted.json" }],
-      "title": "Control Submitted",
-      "type": "object",
-      "properties": {
-        "status": { "type": "string", "const": "submitted", "default": "submitted" },
-        "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" } },
-        "context": { "$ref": "/schemas/core/context.json" },
-        "ext": { "$ref": "/schemas/core/ext.json" }
-      },
-      "required": ["status"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/task-submitted-response.json",
+      "title": "Control Submitted"
     }
   ]
 }

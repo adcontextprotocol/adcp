@@ -11,7 +11,7 @@
       "type": "object",
       "properties": {
         "creative_id": {
-          "type": "string",
+          "$ref": "/schemas/core/creative-id.json",
           "description": "Creative identifier matching the creative assignment",
           "x-entity": "creative"
         },

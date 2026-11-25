@@ -16,11 +16,11 @@
           "description": "Discriminator indicating this is a platform-based deployment"
         },
         "platform": {
-          "type": "string",
+          "$ref": "/schemas/core/deployment-platform.json",
           "description": "Platform identifier for DSPs (e.g., 'the-trade-desk', 'amazon-dsp')"
         },
         "account": {
-          "type": "string",
+          "$ref": "/schemas/core/deployment-account.json",
           "description": "Optional account identifier on the platform"
         }
       },
@@ -44,7 +44,7 @@
           "description": "URL identifying the deployment agent (for sales agents, etc.)"
         },
         "account": {
-          "type": "string",
+          "$ref": "/schemas/core/deployment-account.json",
           "description": "Optional account identifier on the agent"
         },
         "delivery_method": {
@@ -54,14 +54,7 @@
           "description": "Optional operator pin for provider-initiated delivery to this agent destination. The signal agent MUST use a matching rail or fail this destination with UNSUPPORTED_FEATURE, never falling back. Agents that do not list signals.delivery_methods MUST reject a pin. Without a pin it chooses from the pattern+vendor intersection. Applies to activate_signal only; ignored on get_signals destinations, where it neither filters nor errors. Experimental (signals.delivery_methods).",
           "properties": {
             "pattern": {
-              "type": "string",
-              "enum": [
-                "sync_audiences",
-                "file_transfer",
-                "dataset_query",
-                "clean_room",
-                "platform_distribution"
-              ],
+              "$ref": "/schemas/enums/signal-delivery-pattern.json",
               "description": "Delivery pattern (see core/signal-delivery-method.json). tmp_identity_match is not one."
             },
             "vendor": {

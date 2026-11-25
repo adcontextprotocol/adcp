@@ -129,39 +129,7 @@
               "type": "array",
               "description": "Array of preview entries, one per requested capability. Array order matches creative_manifests. Canonical responses use capability_id for explicit correlation.",
               "items": {
-                "type": "object",
-                "properties": {
-                  "preview_id": {
-                    "type": "string",
-                    "description": "Unique identifier for this preview"
-                  },
-                  "format_id": {
-                    "$ref": "/schemas/core/format-id.json",
-                    "deprecated": true,
-                    "description": "Deprecated named-format correlation for a legacy target_format_ids request."
-                  },
-                  "capability_id": {
-                    "$ref": "/schemas/core/creative-capability-id.json",
-                    "description": "Canonical creative capability this preview was generated through. Matches one requested target_capability_ids entry."
-                  },
-                  "renders": {
-                    "type": "array",
-                    "description": "Array of rendered pieces for this format's preview. Most formats render as a single piece. Companion ad formats render as multiple pieces.",
-                    "items": {
-                      "$ref": "/schemas/creative/preview-render.json"
-                    },
-                    "minItems": 1
-                  },
-                  "input": {
-                    "$ref": "/schemas/core/preview-input.json",
-                    "description": "The input parameters that generated this preview. For multi-format responses, this is always a default input."
-                  }
-                },
-                "required": ["preview_id", "renders", "input"],
-                "anyOf": [
-                  { "required": ["capability_id"] },
-                  { "required": ["format_id"] }
-                ]
+                "$ref": "/schemas/core/capability-preview-variant.json"
               },
               "minItems": 1
             },
@@ -177,8 +145,7 @@
             }
           },
           "required": [
-            "previews",
-            "expires_at"
+            "previews"
           ]
         },
         "preview_error": {
@@ -524,27 +491,19 @@
     {
       "title": "BuildCreativeError",
       "description": "Error response — creative generation failed. Multi-capability requests (`target_capability_ids[]`) are atomic: a single output failing means the entire batch returns an error response. Deprecated target_format_ids requests retain equivalent compatibility behavior.",
-      "type": "object",
-      "properties": {
-        "errors": {
-          "type": "array",
-          "description": "Array of errors explaining why creative generation failed. For a canonical multi-output request, an output-scoped failure MUST set `error.field` to `target_capability_ids[N]` and SHOULD include the rejected value in `error.details.capability_id`. Whole-batch failures may omit output attribution. Deprecated target_format_ids requests retain legacy attribution during the 3.x compatibility window.",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          },
-          "minItems": 1
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
+      "allOf": [
+        {
+          "$ref": "/schemas/core/task-error-response.json"
         }
-      },
+      ],
       "required": [
         "errors"
       ],
-      "additionalProperties": true,
+      "properties": {
+        "errors": {
+          "description": "Array of errors explaining why creative generation failed. For a canonical multi-output request, an output-scoped failure MUST set `error.field` to `target_capability_ids[N]` and SHOULD include the rejected value in `error.details.capability_id`. Whole-batch failures may omit output attribution. Deprecated target_format_ids requests retain legacy attribution during the 3.x compatibility window."
+        }
+      },
       "not": {
         "anyOf": [
           {
@@ -581,26 +540,9 @@
       }
     },
     {
-      "allOf": [{ "$ref": "/schemas/core/task-submitted.json" }],
+      "allOf": [{ "$ref": "/schemas/core/task-submitted-response.json" }],
       "title": "BuildCreativeSubmitted",
-      "description": "Async task envelope returned when build_creative cannot be confirmed before the response — for example, when a slow generative pipeline or multi-minute LLM workflow is queued. The buyer invokes get_task_status with task_id or receives a webhook when the task completes; the creative_manifest(s) land in the terminal result, not this envelope.",
-      "type": "object",
-      "properties": {
-        "errors": {
-          "type": "array",
-          "description": "Optional advisory errors accompanying the submitted envelope. Use only for non-blocking warnings (e.g., throttled_severity advisories, governance observations). Terminal failures belong in the error branch, not here.",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          }
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
-        }
-      },
-      "additionalProperties": true
+      "description": "Async task envelope returned when build_creative cannot be confirmed before the response — for example, when a slow generative pipeline or multi-minute LLM workflow is queued. The buyer invokes get_task_status with task_id or receives a webhook when the task completes; the creative_manifest(s) land in the terminal result, not this envelope."
     }
   ],
   "properties": {}

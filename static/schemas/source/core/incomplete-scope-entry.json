@@ -6,13 +6,16 @@
   "type": "object",
   "properties": {
     "scope": {
-      "$ref": "/schemas/enums/incomplete-scope.json"
+      "$ref": "/schemas/enums/incomplete-scope.json",
+      "description": "'products': not all inventory sources were searched. 'pricing': products returned but pricing is absent or unconfirmed. 'forecast': products returned but forecast data is absent. 'proposals': proposals were not generated or are incomplete. 'wholesale_feed': in wholesale mode, full feed enumeration could not complete in the time budget — symmetric with get_signals' 'wholesale_feed' scope so sellers have a precise way to declare wholesale-incomplete on the products surface."
     },
     "description": {
-      "$ref": "/schemas/core/incomplete-scope-description.json"
+      "$ref": "/schemas/core/incomplete-scope-description.json",
+      "description": "Human-readable explanation of what is missing and why."
     },
     "estimated_wait": {
-      "$ref": "/schemas/core/duration.json"
+      "$ref": "/schemas/core/duration.json",
+      "description": "How much additional time is expected to resolve this scope. Allows the buyer to decide whether to make a new attempt with a larger time_budget; its presence is not an automatic-retry instruction."
     }
   },
   "required": [

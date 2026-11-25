@@ -108,10 +108,16 @@ describe('get_creative_features retry and reconciliation contract', () => {
     assert.equal(validate({ ...submitted, vendor_cost: 0.025 }), false);
 
     // core/task-submitted.json carries status: submitted and the required
-    // task_id; the variant composes it instead of restating it.
+    // task_id; the variant composes it, through the shared submitted envelope
+    // (core/compact-task-submitted.json, the protocol envelope around
+    // core/task-submitted-response.json), instead of restating it.
     const submittedVariant = readSchema('creative/get-creative-features-async-response-submitted.json');
     assert.equal(submittedVariant.required, undefined);
-    assert.ok(submittedVariant.allOf.some((member) => member.$ref === '/schemas/core/task-submitted.json'));
+    assert.ok(submittedVariant.allOf.some((member) => member.$ref === '/schemas/core/compact-task-submitted.json'));
+    const envelope = readSchema('core/compact-task-submitted.json');
+    assert.ok(envelope.allOf.some((member) => member.$ref === '/schemas/core/task-submitted-response.json'));
+    assert.ok(readSchema('core/task-submitted-response.json').allOf
+      .some((member) => member.$ref === '/schemas/core/task-submitted.json'));
   });
 
   it('keeps success, error, and submitted arms mutually exclusive', () => {

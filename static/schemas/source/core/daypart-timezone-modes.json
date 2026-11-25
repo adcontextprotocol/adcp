@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/daypart-timezone-modes.json",
+  "title": "Daypart Timezone Modes",
+  "description": "Daypart timezone modes, each listed once.",
+  "type": "array",
+  "items": {
+    "$ref": "/schemas/enums/daypart-timezone-mode.json"
+  },
+  "minItems": 1,
+  "uniqueItems": true
+}

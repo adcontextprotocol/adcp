@@ -11,10 +11,7 @@
       "description": "Deprecated one-element alias for `vast_versions`. Producers use either the singular legacy alias or the plural 3.2 field, never both."
     },
     "vast_versions": {
-      "type": "array",
-      "items": { "$ref": "/schemas/enums/vast-version.json" },
-      "minItems": 1,
-      "uniqueItems": true,
+      "$ref": "/schemas/core/vast-versions.json",
       "description": "Accepted VAST version set for this asset requirement."
     },
     "media_file_requirements": {

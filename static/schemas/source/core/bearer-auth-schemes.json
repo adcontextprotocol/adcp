@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/bearer-auth-schemes.json",
+  "title": "Bearer Authentication Schemes",
+  "description": "The scheme list of an authentication block that accepts only a Bearer credential: exactly one entry, Bearer.",
+  "type": "array",
+  "items": {
+    "type": "string",
+    "const": "Bearer"
+  },
+  "minItems": 1,
+  "maxItems": 1
+}

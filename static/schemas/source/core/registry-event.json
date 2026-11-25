@@ -119,25 +119,8 @@
         "event_type": { "type": "string", "const": "property.merged", "default": "property.merged" },
         "entity_type": { "type": "string", "const": "property" },
         "payload": {
-          "type": "object",
-          "required": ["alias_rid", "canonical_rid"],
-          "properties": {
-            "alias_rid": {
-              "type": "string",
-              "format": "uuid",
-              "description": "Retired property_rid that now aliases to canonical_rid."
-            },
-            "canonical_rid": {
-              "type": "string",
-              "format": "uuid",
-              "description": "Canonical property_rid that consumers should retain."
-            },
-            "evidence": {
-              "type": "string",
-              "description": "Registry evidence source for the merge, such as adagents_json or manual_review."
-            }
-          },
-          "additionalProperties": true
+          "$ref": "#/$defs/ridMergePayload",
+          "description": "Property merge: alias_rid is the retired property_rid, and canonical_rid the property_rid consumers should retain."
         }
       },
       "required": ["event_type"]
@@ -221,25 +204,8 @@
         "event_type": { "type": "string", "const": "collection.merged", "default": "collection.merged" },
         "entity_type": { "type": "string", "const": "collection" },
         "payload": {
-          "type": "object",
-          "required": ["alias_rid", "canonical_rid"],
-          "properties": {
-            "alias_rid": {
-              "type": "string",
-              "format": "uuid",
-              "description": "Retired collection_rid that now aliases to canonical_rid."
-            },
-            "canonical_rid": {
-              "type": "string",
-              "format": "uuid",
-              "description": "Canonical collection_rid that consumers should retain."
-            },
-            "evidence": {
-              "type": "string",
-              "description": "Registry evidence source for the merge, such as adagents_json or manual_review."
-            }
-          },
-          "additionalProperties": true
+          "$ref": "#/$defs/ridMergePayload",
+          "description": "Collection merge: alias_rid is the retired collection_rid, and canonical_rid the collection_rid consumers should retain."
         }
       },
       "required": ["event_type"]
@@ -346,9 +312,10 @@
             "verified_specialisms": {
               "type": "array",
               "items": { "type": "string" },
-              "minItems": 1
+              "minItems": 1,
+              "uniqueItems": true
             },
-            "adcp_version": { "type": "string" },
+            "adcp_version": { "$ref": "/schemas/core/verification-badge-version.json" },
             "grading_profile": {
               "$ref": "/schemas/enums/verification-grading-profile.json",
               "description": "Grading profile that produced the badge. Historical events emitted before profile selection may omit this field and are Legacy."
@@ -371,7 +338,7 @@
             "agent_url": { "type": "string", "format": "uri" },
             "role": { "$ref": "#/$defs/badgeRole" },
             "reason": { "type": "string" },
-            "adcp_version": { "type": "string" },
+            "adcp_version": { "$ref": "/schemas/core/verification-badge-version.json" },
             "grading_profile": {
               "$ref": "/schemas/enums/verification-grading-profile.json",
               "description": "Grading profile in force when the badge was lost. Historical events emitted before profile selection may omit this field and are Legacy."
@@ -396,27 +363,7 @@
       "properties": {
         "event_type": { "type": "string", "const": "publisher.adagents_changed", "default": "publisher.adagents_changed" },
         "entity_type": { "type": "string", "const": "publisher" },
-        "payload": {
-          "allOf": [
-            { "$ref": "#/$defs/publisherAdagentsPayload" },
-            {
-              "type": "object",
-              "properties": {
-                "properties_added": { "type": "integer", "minimum": 0 },
-                "properties_removed": { "type": "integer", "minimum": 0 },
-                "agents_added": {
-                  "type": "array",
-                  "items": { "type": "string", "format": "uri" }
-                },
-                "agents_removed": {
-                  "type": "array",
-                  "items": { "type": "string", "format": "uri" }
-                },
-                "changed_fields": { "$ref": "#/$defs/changedFields" }
-              }
-            }
-          ]
-        }
+        "payload": { "$ref": "#/$defs/publisherAdagentsPayload" }
       },
       "required": ["event_type"]
     },
@@ -797,6 +744,31 @@
     "storyboardStatus": {
       "type": "string",
       "enum": ["passing", "failing", "partial", "untested", "skipped", "not_selected", "unknown"]
+    },
+    "ridMergePayload": {
+      "type": "object",
+      "description": "A registry ID merge: the retired ID now aliases to the canonical one.",
+      "required": [
+        "alias_rid",
+        "canonical_rid"
+      ],
+      "properties": {
+        "alias_rid": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Retired registry ID that now aliases to canonical_rid."
+        },
+        "canonical_rid": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Canonical registry ID that consumers should retain."
+        },
+        "evidence": {
+          "type": "string",
+          "description": "Registry evidence source for the merge, such as adagents_json or manual_review."
+        }
+      },
+      "additionalProperties": true
     }
   }
 }

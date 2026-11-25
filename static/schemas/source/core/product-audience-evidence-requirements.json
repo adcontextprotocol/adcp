@@ -56,25 +56,7 @@
     "accepted_attestation_issuers": {
       "type": "array",
       "items": {
-        "discriminator": { "propertyName": "type" },
-        "oneOf": [
-          {
-            "type": "object",
-            "properties": {
-              "type": { "type": "string", "const": "brand", "default": "brand" },
-              "brand": { "$ref": "/schemas/core/brand-key.json" },
-              "ext": { "$ref": "/schemas/core/ext.json" }
-            },
-            "required": ["type", "brand"],
-            "additionalProperties": true
-          },
-          {
-            "$ref": "/schemas/core/attestation-agent-identity.json"
-          },
-          {
-            "$ref": "/schemas/core/attestation-origin-issuer.json"
-          }
-        ]
+        "$ref": "/schemas/core/attestation-issuer-key.json"
       },
       "minItems": 1,
       "uniqueItems": true

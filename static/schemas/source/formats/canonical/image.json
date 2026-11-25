@@ -95,13 +95,11 @@
       "description": "Default slots for image canonical. Buyer ships an image asset (file or hosted URL) plus optional headline, body text, primary text (long-form caption), CTA (typically constrained to an enum via `cta_values`), and clickthrough URL. Products MAY override the default — make `headline` required, narrow `cta` to a value enum, or remove slots the surface doesn't consume."
     },
     "width": {
-      "type": "integer",
-      "minimum": 1,
+      "$ref": "/schemas/core/pixel-length.json",
       "description": "Logical render width in pixels — use for fixed-size slots (e.g., a 300×250 IAB MREC). When `pixel_ratios` is absent, the required image asset width is the same value (1x). When `pixel_ratios` is present, an accepted asset's intrinsic width is `width × pixel_ratio`. For multi-size flexible slots, use `sizes[]`; for responsive slots, use the min/max fields. The three size modes are mutually exclusive."
     },
     "height": {
-      "type": "integer",
-      "minimum": 1,
+      "$ref": "/schemas/core/pixel-length.json",
       "description": "Logical render height in pixels. Intrinsic asset height is `height × pixel_ratio`, where the ratio defaults to 1 when `pixel_ratios` is absent. See `width` for size-mode mutual exclusion."
     },
     "sizes": {

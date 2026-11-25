@@ -46,7 +46,7 @@ const responseSchema = ajv.getSchema('/schemas/media-buy/list-collections-respon
 test('the three card event types appear in every enumeration of webhook types', () => {
   const lists = {
     'enums/notification-type.json': read('enums/notification-type.json').enum,
-    'core/notification-config.json event_types': read('core/notification-config.json').properties.event_types.items.enum,
+    'core/notification-config.json event_types': resolveScalar(read('core/notification-config.json').properties.event_types.items).enum,
     'wholesale_feed_webhooks.event_types': resolveScalar(read('protocol/get-adcp-capabilities-response.json')
       .properties.wholesale_feed_webhooks.properties.event_types.items).enum,
     'core/wholesale-feed-event.json event_type': resolveScalar(read('core/wholesale-feed-event.json').properties.event_type).enum,

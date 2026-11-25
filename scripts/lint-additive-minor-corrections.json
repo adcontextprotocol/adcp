@@ -39,18 +39,6 @@
       "reason": "Applies the bound the published text sets. task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. The task tasks/get retrieves; it requires task_id."
     },
     {
-      "file": "core/tasks-get-response.json",
-      "pointer": "/properties/task_id",
-      "bound": "minLength",
-      "value": 1,
-      "release": "3.3.0",
-      "source": {
-        "path": "static/schemas/source/core/protocol-envelope.json",
-        "quote": "Unique identifier for tracking asynchronous operations. Present when a task requires extended processing time. Used to query task status and retrieve results when complete."
-      },
-      "reason": "Applies the bound the published text sets. task_id identifies a task, so it is not empty, as 3.2.7's core/compact-task-submitted.json already published. The task tasks/get returns."
-    },
-    {
       "file": "core/tasks-list-request.json",
       "pointer": "/properties/filters/properties/task_ids/items",
       "bound": "minLength",
@@ -2606,6 +2594,1984 @@
         "quote": "\"code\": { \"type\": \"string\", \"minLength\": 1"
       },
       "reason": "Applies the bound the published text sets. 3.2.11 published this bound on code in core/error.json. An error code, which core/open-error-code.json bounds."
+    },
+    {
+      "file": "core/hotel-item.json",
+      "pointer": "/properties/address/properties/city",
+      "bound": "maxLength",
+      "value": 100,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/business-entity.json",
+        "quote": "\"city\": { \"type\": \"string\", \"maxLength\": 100 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the city of the postal address in core/business-entity.json. A postal address city, which core/address-city.json bounds."
+    },
+    {
+      "file": "core/hotel-item.json",
+      "pointer": "/properties/address/properties/postal_code",
+      "bound": "maxLength",
+      "value": 20,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/business-entity.json",
+        "quote": "\"postal_code\": { \"type\": \"string\", \"maxLength\": 20 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the postal_code of the postal address in core/business-entity.json. A postal address postal code, which core/address-postal-code.json bounds."
+    },
+    {
+      "file": "core/hotel-item.json",
+      "pointer": "/properties/address/properties/region",
+      "bound": "maxLength",
+      "value": 100,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/business-entity.json",
+        "quote": "\"region\": { \"type\": \"string\", \"description\": \"State, province, or region\", \"maxLength\": 100 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the region of the postal address in core/business-entity.json. A postal address region, which core/address-region.json bounds."
+    },
+    {
+      "file": "core/hotel-item.json",
+      "pointer": "/properties/address/properties/street",
+      "bound": "maxLength",
+      "value": 200,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/business-entity.json",
+        "quote": "\"street\": { \"type\": \"string\", \"description\": \"Street address including building number\", \"maxLength\": 200 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the street of the postal address in core/business-entity.json. A postal address street, which core/address-street.json bounds."
+    },
+    {
+      "file": "core/real-estate-item.json",
+      "pointer": "/properties/address/properties/city",
+      "bound": "maxLength",
+      "value": 100,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/business-entity.json",
+        "quote": "\"city\": { \"type\": \"string\", \"maxLength\": 100 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the city of the postal address in core/business-entity.json. A postal address city, which core/address-city.json bounds."
+    },
+    {
+      "file": "core/real-estate-item.json",
+      "pointer": "/properties/address/properties/postal_code",
+      "bound": "maxLength",
+      "value": 20,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/business-entity.json",
+        "quote": "\"postal_code\": { \"type\": \"string\", \"maxLength\": 20 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the postal_code of the postal address in core/business-entity.json. A postal address postal code, which core/address-postal-code.json bounds."
+    },
+    {
+      "file": "core/real-estate-item.json",
+      "pointer": "/properties/address/properties/region",
+      "bound": "maxLength",
+      "value": 100,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/business-entity.json",
+        "quote": "\"region\": { \"type\": \"string\", \"description\": \"State, province, or region\", \"maxLength\": 100 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the region of the postal address in core/business-entity.json. A postal address region, which core/address-region.json bounds."
+    },
+    {
+      "file": "core/real-estate-item.json",
+      "pointer": "/properties/address/properties/street",
+      "bound": "maxLength",
+      "value": 200,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/business-entity.json",
+        "quote": "\"street\": { \"type\": \"string\", \"description\": \"Street address including building number\", \"maxLength\": 200 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the street of the postal address in core/business-entity.json. A postal address street, which core/address-street.json bounds."
+    },
+    {
+      "file": "core/store-item.json",
+      "pointer": "/properties/address/properties/city",
+      "bound": "maxLength",
+      "value": 100,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/business-entity.json",
+        "quote": "\"city\": { \"type\": \"string\", \"maxLength\": 100 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the city of the postal address in core/business-entity.json. A postal address city, which core/address-city.json bounds."
+    },
+    {
+      "file": "core/store-item.json",
+      "pointer": "/properties/address/properties/postal_code",
+      "bound": "maxLength",
+      "value": 20,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/business-entity.json",
+        "quote": "\"postal_code\": { \"type\": \"string\", \"maxLength\": 20 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the postal_code of the postal address in core/business-entity.json. A postal address postal code, which core/address-postal-code.json bounds."
+    },
+    {
+      "file": "core/store-item.json",
+      "pointer": "/properties/address/properties/region",
+      "bound": "maxLength",
+      "value": 100,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/business-entity.json",
+        "quote": "\"region\": { \"type\": \"string\", \"description\": \"State, province, or region\", \"maxLength\": 100 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the region of the postal address in core/business-entity.json. A postal address region, which core/address-region.json bounds."
+    },
+    {
+      "file": "core/store-item.json",
+      "pointer": "/properties/address/properties/street",
+      "bound": "maxLength",
+      "value": 200,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/business-entity.json",
+        "quote": "\"street\": { \"type\": \"string\", \"description\": \"Street address including building number\", \"maxLength\": 200 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the street of the postal address in core/business-entity.json. A postal address street, which core/address-street.json bounds."
+    },
+    {
+      "file": "collection/delete-collection-list-request.json",
+      "pointer": "/properties/list_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/collection-list-ref.json",
+        "quote": "\"list_id\": { \"type\": \"string\", \"description\": \"Identifier for the collection list within the agent\", \"minLength\": 1, \"x-entity\": \"collection_list\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on list_id in core/collection-list-ref.json. A collection list ID, which core/collection-list-id.json bounds."
+    },
+    {
+      "file": "collection/delete-collection-list-response.json",
+      "pointer": "/properties/list_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/collection-list-ref.json",
+        "quote": "\"list_id\": { \"type\": \"string\", \"description\": \"Identifier for the collection list within the agent\", \"minLength\": 1, \"x-entity\": \"collection_list\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on list_id in core/collection-list-ref.json. A collection list ID, which core/collection-list-id.json bounds."
+    },
+    {
+      "file": "collection/update-collection-list-request.json",
+      "pointer": "/properties/list_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/collection-list-ref.json",
+        "quote": "\"list_id\": { \"type\": \"string\", \"description\": \"Identifier for the collection list within the agent\", \"minLength\": 1, \"x-entity\": \"collection_list\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on list_id in core/collection-list-ref.json. A collection list ID, which core/collection-list-id.json bounds."
+    },
+    {
+      "file": "property/delete-property-list-request.json",
+      "pointer": "/properties/list_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/property-list-ref.json",
+        "quote": "\"list_id\": { \"type\": \"string\", \"description\": \"Identifier for the property list within the agent\", \"minLength\": 1, \"x-entity\": \"property_list\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on list_id in core/property-list-ref.json. A property list ID, which core/property-list-id.json bounds."
+    },
+    {
+      "file": "property/delete-property-list-response.json",
+      "pointer": "/properties/list_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/property-list-ref.json",
+        "quote": "\"list_id\": { \"type\": \"string\", \"description\": \"Identifier for the property list within the agent\", \"minLength\": 1, \"x-entity\": \"property_list\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on list_id in core/property-list-ref.json. A property list ID, which core/property-list-id.json bounds."
+    },
+    {
+      "file": "property/update-property-list-request.json",
+      "pointer": "/properties/list_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/property-list-ref.json",
+        "quote": "\"list_id\": { \"type\": \"string\", \"description\": \"Identifier for the property list within the agent\", \"minLength\": 1, \"x-entity\": \"property_list\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on list_id in core/property-list-ref.json. A property list ID, which core/property-list-id.json bounds."
+    },
+    {
+      "file": "collection/get-collection-list-response.json",
+      "pointer": "/properties/collections/items/properties/collection_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/collection-ref.json",
+        "quote": "\"collection_id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Collection ID from the publisher's adagents.json collection catalog.\", \"x-entity\": \"collection\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on collection_id in core/collection-ref.json. A collection ID, which core/collection-id.json bounds."
+    },
+    {
+      "file": "collection/get-collection-list-response.json",
+      "pointer": "/properties/collections/items/properties/collection_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.1/core/canonical-installment-ref.json",
+        "quote": "\"collection_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"collection\""
+      },
+      "reason": "Applies the bound the published text sets. No 3.2.12 site bounds a collection ID's length; 3.3.0-beta.1 through rc.3 published this bound on collection_id in core/canonical-installment-ref.json. A collection ID, which core/collection-id.json bounds."
+    },
+    {
+      "file": "collection/get-collection-list-response.json",
+      "pointer": "/properties/collections/items/properties/publisher_domain",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/collection-ref.json",
+      "pointer": "/properties/collection_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.1/core/canonical-installment-ref.json",
+        "quote": "\"collection_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"collection\""
+      },
+      "reason": "Applies the bound the published text sets. No 3.2.12 site bounds a collection ID's length; 3.3.0-beta.1 through rc.3 published this bound on collection_id in core/canonical-installment-ref.json. A collection ID, which core/collection-id.json bounds."
+    },
+    {
+      "file": "core/installment-ref.json",
+      "pointer": "/properties/installment_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.1/core/canonical-installment-ref.json",
+        "quote": "\"installment_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"description\": \"Installment ID within the referenced collection.\", \"x-entity\": \"installment\""
+      },
+      "reason": "Applies the bound the published text sets. No 3.2.12 site bounds an installment ID's length; 3.3.0-beta.1 through rc.3 published this bound on installment_id in core/canonical-installment-ref.json. An installment ID, which core/installment-id.json bounds."
+    },
+    {
+      "file": "core/installment.json",
+      "pointer": "/properties/installment_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/installment-ref.json",
+        "quote": "\"installment_id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Installment ID within the referenced collection.\", \"x-entity\": \"installment\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on installment_id in core/installment-ref.json. An installment ID, which core/installment-id.json bounds."
+    },
+    {
+      "file": "core/installment.json",
+      "pointer": "/properties/installment_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.1/core/canonical-installment-ref.json",
+        "quote": "\"installment_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"description\": \"Installment ID within the referenced collection.\", \"x-entity\": \"installment\""
+      },
+      "reason": "Applies the bound the published text sets. No 3.2.12 site bounds an installment ID's length; 3.3.0-beta.1 through rc.3 published this bound on installment_id in core/canonical-installment-ref.json. An installment ID, which core/installment-id.json bounds."
+    },
+    {
+      "file": "core/installment.json",
+      "pointer": "/properties/derivative_of/properties/installment_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/installment-ref.json",
+        "quote": "\"installment_id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Installment ID within the referenced collection.\", \"x-entity\": \"installment\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on installment_id in core/installment-ref.json. An installment ID, which core/installment-id.json bounds."
+    },
+    {
+      "file": "core/installment.json",
+      "pointer": "/properties/derivative_of/properties/installment_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.1/core/canonical-installment-ref.json",
+        "quote": "\"installment_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"description\": \"Installment ID within the referenced collection.\", \"x-entity\": \"installment\""
+      },
+      "reason": "Applies the bound the published text sets. No 3.2.12 site bounds an installment ID's length; 3.3.0-beta.1 through rc.3 published this bound on installment_id in core/canonical-installment-ref.json. An installment ID, which core/installment-id.json bounds."
+    },
+    {
+      "file": "core/installment.json",
+      "pointer": "/properties/topics",
+      "bound": "minItems",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.1/core/canonical-installment.json",
+        "quote": "\"topics\": { \"type\": \"array\", \"description\": \"Content topics for this installment. Uses the same taxonomy as the collection's genre_taxonomy when present. Enables installment-level brand safety evaluation beyond content_rating.\", \"items\": { \"type\": \"string\" }, \"minItems\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.3.0-beta.1 through rc.3 published this bound on topics in core/canonical-installment.json, the compact view of the same installment. An installment's topics."
+    },
+    {
+      "file": "core/installment.json",
+      "pointer": "/properties/guest_talent",
+      "bound": "minItems",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.1/core/canonical-installment.json",
+        "quote": "\"guest_talent\": { \"type\": \"array\", \"description\": \"Installment-specific guests and talent. Additive to the collection's recurring talent.\", \"items\": { \"$ref\": \"https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/talent.json\" }, \"minItems\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.3.0-beta.1 through rc.3 published this bound on guest_talent in core/canonical-installment.json, the compact view of the same installment. An installment's guest talent."
+    },
+    {
+      "file": "property/validation-result.json",
+      "pointer": "/properties/features/items/properties/requirement/properties/allowed_values",
+      "bound": "minItems",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/feature-requirement.json",
+        "quote": "\"allowed_values\": { \"type\": \"array\", \"description\": \"Values that pass the requirement (for binary/categorical features)\", \"items\": {}, \"minItems\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on allowed_values in core/feature-requirement.json. The echoed requirement's allowed values, which the buyer set under that bound."
+    },
+    {
+      "file": "account/sync-accounts-response.json",
+      "pointer": "/oneOf/0/properties/accounts/items/properties/operator",
+      "bound": "maxLength",
+      "value": 253,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/signal-definition.json",
+        "quote": "\"upstream_source_domain\": { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253,"
+      },
+      "reason": "Applies the bound the published text sets. A domain name is a DNS name, which RFC 1035 limits to 253 characters, and 3.2.8 published that limit on upstream_source_domain. A domain name, which core/domain-name.json now bounds."
+    },
+    {
+      "file": "core/indicators-changed-webhook.json",
+      "pointer": "/properties/account_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/account-change.json",
+        "quote": "\"description\": \"Seller-assigned account containing the resource.\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"account\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on the account ID in core/account-change.json. An account ID, which core/account-id.json bounds."
+    },
+    {
+      "file": "core/indicators-changed-webhook.json",
+      "pointer": "/properties/account_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.8/core/account-change.json",
+        "quote": "\"description\": \"Seller-assigned account containing the resource.\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"account\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.8 published this bound on the account ID in core/account-change.json. An account ID, which core/account-id.json bounds."
+    },
+    {
+      "file": "core/indicators-changed-webhook.json",
+      "pointer": "/properties/media_buy_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.4/media-buy/create-media-buy-request.json",
+        "quote": "\"predecessor_media_buy_id\": { \"x-status\": \"experimental\", \"x-added-in\": \"3.3.0\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"media_buy\","
+      },
+      "reason": "Applies the bound the published text sets. No 3.2.8 site bounds a media buy ID; 3.3.0-beta.2 through beta.4 published this bound on predecessor_media_buy_id. A media buy ID, which core/media-buy-id.json bounds."
+    },
+    {
+      "file": "core/indicators-changed-webhook.json",
+      "pointer": "/properties/media_buy_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/media-buy/control-media-buy-request.json",
+        "quote": "\"media_buy_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"media_buy\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the media buy ID in media-buy/control-media-buy-request.json. A media buy ID, which core/media-buy-id.json bounds."
+    },
+    {
+      "file": "core/indicators-changed-webhook.json",
+      "pointer": "/properties/package_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/media-buy/package-control.json",
+        "quote": "\"package_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"package\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the package ID in media-buy/package-control.json. A package ID, which core/package-id.json bounds."
+    },
+    {
+      "file": "core/indicators-changed-webhook.json",
+      "pointer": "/properties/creative_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/creative-representation-set.json",
+        "quote": "\"creative_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"creative\","
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the creative ID in core/creative-representation-set.json. A creative ID, which core/creative-id.json bounds."
+    },
+    {
+      "file": "brand.json",
+      "pointer": "/definitions/brand/properties/collections/items/properties/collection_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/collection-ref.json",
+        "quote": "\"collection_id\": { \"type\": \"string\", \"minLength\": 1,"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on collection_id in core/collection-ref.json. A collection ID, which core/collection-id.json bounds."
+    },
+    {
+      "file": "brand.json",
+      "pointer": "/definitions/brand/properties/collections/items/properties/collection_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.1/core/canonical-installment-ref.json",
+        "quote": "\"collection_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"collection\""
+      },
+      "reason": "Applies the bound the published text sets. No 3.2.12 site bounds a collection ID's length; 3.3.0-beta.1 through rc.3 published this bound on collection_id in core/canonical-installment-ref.json. A collection ID, which core/collection-id.json bounds."
+    },
+    {
+      "file": "brand.json",
+      "pointer": "/definitions/brand/properties/contact/properties/email",
+      "bound": "maxLength",
+      "value": 254,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/business-entity.json",
+        "quote": "\"email\": { \"type\": \"string\", \"format\": \"email\", \"maxLength\": 254"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on email in core/business-entity.json. An email address, which core/email-address.json bounds at 254 characters (RFC 5321)."
+    },
+    {
+      "file": "brand.json",
+      "pointer": "/definitions/brand/properties/voice_synthesis/properties/provider",
+      "bound": "maxLength",
+      "value": 128,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.4/sponsored-intelligence/si-capabilities.json",
+        "quote": "\"provider\": { \"type\": \"string\", \"description\": \"TTS provider (elevenlabs, openai, etc.)\", \"maxLength\": 128"
+      },
+      "reason": "Applies the bound the published text sets. No 3.2.12 site bounds a TTS provider; 3.3.0-beta.1 through rc.3 published this bound on the si-capabilities voice provider. A text-to-speech provider, which core/voice-provider.json bounds."
+    },
+    {
+      "file": "brand/get-brand-identity-response.json",
+      "pointer": "/oneOf/0/properties/voice_synthesis/properties/provider",
+      "bound": "maxLength",
+      "value": 128,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.4/sponsored-intelligence/si-capabilities.json",
+        "quote": "\"provider\": { \"type\": \"string\", \"description\": \"TTS provider (elevenlabs, openai, etc.)\", \"maxLength\": 128"
+      },
+      "reason": "Applies the bound the published text sets. No 3.2.12 site bounds a TTS provider; 3.3.0-beta.1 through rc.3 published this bound on the si-capabilities voice provider. A text-to-speech provider, which core/voice-provider.json bounds."
+    },
+    {
+      "file": "brand.json",
+      "pointer": "/definitions/brand_agent/properties/id",
+      "bound": "maxLength",
+      "value": 100,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/brand.json",
+        "quote": "\"id\": { \"type\": \"string\", \"description\": \"Agent identifier (useful for logging, multi-tenant platforms)\", \"pattern\": \"^[a-z0-9_]+$\", \"maxLength\": 100"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the agent entry id in brand.json. A brand.json agent identifier, which core/brand-agent-id.json bounds."
+    },
+    {
+      "file": "brand.json",
+      "pointer": "/definitions/rights_agent/properties/id",
+      "bound": "maxLength",
+      "value": 100,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/brand.json",
+        "quote": "\"id\": { \"type\": \"string\", \"description\": \"Agent identifier (useful for logging, multi-tenant platforms)\", \"pattern\": \"^[a-z0-9_]+$\", \"maxLength\": 100"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the agent entry id in brand.json. A brand.json agent identifier, which core/brand-agent-id.json bounds."
+    },
+    {
+      "file": "core/rights-constraint.json",
+      "pointer": "/properties/rights_agent/properties/id",
+      "bound": "maxLength",
+      "value": 100,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/brand.json",
+        "quote": "\"id\": { \"type\": \"string\", \"description\": \"Agent identifier (useful for logging, multi-tenant platforms)\", \"pattern\": \"^[a-z0-9_]+$\", \"maxLength\": 100"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the agent entry id in brand.json. A brand.json agent identifier, which core/brand-agent-id.json bounds."
+    },
+    {
+      "file": "core/transformer.json",
+      "pointer": "/properties/voice_synthesis_ref/items/properties/brand_agent/properties/id",
+      "bound": "maxLength",
+      "value": 100,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/brand.json",
+        "quote": "\"id\": { \"type\": \"string\", \"description\": \"Agent identifier (useful for logging, multi-tenant platforms)\", \"pattern\": \"^[a-z0-9_]+$\", \"maxLength\": 100"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the agent entry id in brand.json. A brand.json agent identifier, which core/brand-agent-id.json bounds."
+    },
+    {
+      "file": "core/assets/pixel-tracker-asset.json",
+      "pointer": "/properties/custom_event_name",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/tracker-execution-selector.json",
+        "quote": "\"custom_event_name\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Required only when event is custom.\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on custom_event_name in the pixel_tracker branch of core/tracker-execution-selector.json, which selects a pixel tracker by its event and custom event name. A pixel tracker's custom event name, which core/custom-event-name.json bounds."
+    },
+    {
+      "file": "core/creative-delivery-metrics.json",
+      "pointer": "/allOf/1/properties/creative_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/media-buy/get-media-buy-delivery-response.json",
+        "quote": "\"minLength\": 1, \"description\": \"Optional identifier for the creative that aired in this spot occurrence, matching the package's creative asset or assignment."
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the creative ID of a get_media_buy_delivery spot row. The creative of a delivery metrics row, which core/creative-id.json bounds."
+    },
+    {
+      "file": "core/format-option-ref.json",
+      "pointer": "/oneOf/0/properties/format_option_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-format-option.json",
+        "quote": "\"format_option_id\": { \"type\": \"string\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on format_option_id in core/canonical-format-option.json, the format option that a format option reference selects. A format option ID, which core/format-option-id.json bounds."
+    },
+    {
+      "file": "core/format-option-ref.json",
+      "pointer": "/oneOf/1/properties/format_option_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-format-option.json",
+        "quote": "\"format_option_id\": { \"type\": \"string\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on format_option_id in core/canonical-format-option.json, the format option that a format option reference selects. A format option ID, which core/format-option-id.json bounds."
+    },
+    {
+      "file": "creative/creative-assignment-changed-webhook.json",
+      "pointer": "/properties/account_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/account-change-recorded-webhook.json",
+        "quote": "\"account_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"account\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the account ID of the account-change webhook, core/account-change-recorded-webhook.json. An account ID, which core/account-id.json bounds."
+    },
+    {
+      "file": "creative/creative-assignment-changed-webhook.json",
+      "pointer": "/properties/account_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/account-change-recorded-webhook.json",
+        "quote": "\"account_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"account\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the account ID of the account-change webhook, core/account-change-recorded-webhook.json. An account ID, which core/account-id.json bounds."
+    },
+    {
+      "file": "creative/creative-assignment-changed-webhook.json",
+      "pointer": "/properties/creative_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/creative/sync-creatives-request.json",
+        "quote": "\"creative_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"creative\" }, \"package_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"package\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the creative and package IDs of a sync_creatives assign operation, the package-creative assignment this webhook reports on. A creative ID, which core/creative-id.json bounds."
+    },
+    {
+      "file": "creative/creative-assignment-changed-webhook.json",
+      "pointer": "/properties/media_buy_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.4/media-buy/create-media-buy-request.json",
+        "quote": "\"predecessor_media_buy_id\": { \"x-status\": \"experimental\", \"x-added-in\": \"3.3.0\", \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"x-entity\": \"media_buy\","
+      },
+      "reason": "Applies the bound the published text sets. No 3.2.12 site sets a maximum length on a media buy ID; 3.3.0-beta.2 through beta.4 published this bound on predecessor_media_buy_id. A media buy ID, which core/media-buy-id.json bounds."
+    },
+    {
+      "file": "creative/creative-assignment-changed-webhook.json",
+      "pointer": "/properties/media_buy_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/planned-delivery.json",
+        "quote": "\"media_buy_id\": { \"type\": \"string\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the media buy ID in core/planned-delivery.json. A media buy ID, which core/media-buy-id.json bounds."
+    },
+    {
+      "file": "creative/creative-assignment-changed-webhook.json",
+      "pointer": "/properties/package_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/creative/sync-creatives-request.json",
+        "quote": "\"creative_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"creative\" }, \"package_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"package\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the creative and package IDs of a sync_creatives assign operation, the package-creative assignment this webhook reports on. A package ID, which core/package-id.json bounds."
+    },
+    {
+      "file": "core/placement.json",
+      "pointer": "/properties/placement_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-placement.json",
+        "quote": "\"placement_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"placement\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on placement_id in core/canonical-placement.json, the compact form of the same product placement. A placement ID, which core/placement-id.json keeps non-empty."
+    },
+    {
+      "file": "core/placement.json",
+      "pointer": "/properties/name",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-placement.json",
+        "quote": "\"name\": { \"type\": \"string\", \"minLength\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on name in core/canonical-placement.json, the compact form of the same product placement. A placement name, which core/placement-name.json keeps non-empty."
+    },
+    {
+      "file": "creative/preview-render.json",
+      "pointer": "/oneOf/0/properties/dimensions/properties/width",
+      "bound": "exclusiveMinimum",
+      "value": 0,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/format.json",
+        "quote": "\"description\": \"Dimensions for this rendered piece. Defaults to pixels when unit is absent.\", \"properties\": { \"width\": { \"type\": \"number\", \"exclusiveMinimum\": 0,"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the width of a rendered piece in core/format.json renders[].dimensions, which a preview render renders. A dimension length, which core/dimension-length.json bounds."
+    },
+    {
+      "file": "creative/preview-render.json",
+      "pointer": "/oneOf/0/properties/dimensions/properties/height",
+      "bound": "exclusiveMinimum",
+      "value": 0,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/format.json",
+        "quote": "\"height\": { \"type\": \"number\", \"exclusiveMinimum\": 0, \"description\": \"Fixed height. Interpretation depends on unit (default: pixels).\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the height of a rendered piece in core/format.json renders[].dimensions, which a preview render renders. A dimension length, which core/dimension-length.json bounds."
+    },
+    {
+      "file": "creative/preview-render.json",
+      "pointer": "/oneOf/1/properties/dimensions/properties/width",
+      "bound": "exclusiveMinimum",
+      "value": 0,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/format.json",
+        "quote": "\"description\": \"Dimensions for this rendered piece. Defaults to pixels when unit is absent.\", \"properties\": { \"width\": { \"type\": \"number\", \"exclusiveMinimum\": 0,"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the width of a rendered piece in core/format.json renders[].dimensions, which a preview render renders. A dimension length, which core/dimension-length.json bounds."
+    },
+    {
+      "file": "creative/preview-render.json",
+      "pointer": "/oneOf/1/properties/dimensions/properties/height",
+      "bound": "exclusiveMinimum",
+      "value": 0,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/format.json",
+        "quote": "\"height\": { \"type\": \"number\", \"exclusiveMinimum\": 0, \"description\": \"Fixed height. Interpretation depends on unit (default: pixels).\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the height of a rendered piece in core/format.json renders[].dimensions, which a preview render renders. A dimension length, which core/dimension-length.json bounds."
+    },
+    {
+      "file": "creative/preview-render.json",
+      "pointer": "/oneOf/2/properties/dimensions/properties/width",
+      "bound": "exclusiveMinimum",
+      "value": 0,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/format.json",
+        "quote": "\"description\": \"Dimensions for this rendered piece. Defaults to pixels when unit is absent.\", \"properties\": { \"width\": { \"type\": \"number\", \"exclusiveMinimum\": 0,"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the width of a rendered piece in core/format.json renders[].dimensions, which a preview render renders. A dimension length, which core/dimension-length.json bounds."
+    },
+    {
+      "file": "creative/preview-render.json",
+      "pointer": "/oneOf/2/properties/dimensions/properties/height",
+      "bound": "exclusiveMinimum",
+      "value": 0,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/format.json",
+        "quote": "\"height\": { \"type\": \"number\", \"exclusiveMinimum\": 0, \"description\": \"Fixed height. Interpretation depends on unit (default: pixels).\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the height of a rendered piece in core/format.json renders[].dimensions, which a preview render renders. A dimension length, which core/dimension-length.json bounds."
+    },
+    {
+      "file": "registries/v1-canonical-mapping.json",
+      "pointer": "/properties/mappings/items/properties/v1_pattern/oneOf/1/properties/structural/properties/dimensions/properties/width",
+      "bound": "exclusiveMinimum",
+      "value": 0,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/format.json",
+        "quote": "\"description\": \"Dimensions for this rendered piece. Defaults to pixels when unit is absent.\", \"properties\": { \"width\": { \"type\": \"number\", \"exclusiveMinimum\": 0,"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the width of a rendered piece in core/format.json renders[].dimensions, which a structural pattern matches against. A dimension length, which core/dimension-length.json bounds."
+    },
+    {
+      "file": "registries/v1-canonical-mapping.json",
+      "pointer": "/properties/mappings/items/properties/v1_pattern/oneOf/1/properties/structural/properties/dimensions/properties/height",
+      "bound": "exclusiveMinimum",
+      "value": 0,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/format.json",
+        "quote": "\"height\": { \"type\": \"number\", \"exclusiveMinimum\": 0, \"description\": \"Fixed height. Interpretation depends on unit (default: pixels).\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the height of a rendered piece in core/format.json renders[].dimensions, which a structural pattern matches against. A dimension length, which core/dimension-length.json bounds."
+    },
+    {
+      "file": "core/package-signal-targeting.json",
+      "pointer": "/properties/signal_agent_segment_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/wholesale-feed-event.json",
+        "quote": "\"signal_agent_segment_id\": { \"type\": \"string\", \"description\": \"Opaque activation handle returned by the signals agent.\", \"minLength\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on signal_agent_segment_id in core/wholesale-feed-event.json, whose signal entry has the same wire shape as a get_signals signals[] item. A signal agent segment ID, which core/signal-agent-segment-id.json keeps non-empty."
+    },
+    {
+      "file": "core/product-signal-targeting-option.json",
+      "pointer": "/properties/signal_agent_segment_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/wholesale-feed-event.json",
+        "quote": "\"signal_agent_segment_id\": { \"type\": \"string\", \"description\": \"Opaque activation handle returned by the signals agent.\", \"minLength\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on signal_agent_segment_id in core/wholesale-feed-event.json, whose signal entry has the same wire shape as a get_signals signals[] item. A signal agent segment ID, which core/signal-agent-segment-id.json keeps non-empty."
+    },
+    {
+      "file": "signals/activate-signal-request.json",
+      "pointer": "/properties/signal_agent_segment_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/wholesale-feed-event.json",
+        "quote": "\"signal_agent_segment_id\": { \"type\": \"string\", \"description\": \"Opaque activation handle returned by the signals agent.\", \"minLength\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on signal_agent_segment_id in core/wholesale-feed-event.json, whose signal entry has the same wire shape as a get_signals signals[] item. A signal agent segment ID, which core/signal-agent-segment-id.json keeps non-empty."
+    },
+    {
+      "file": "signals/get-signals-response.json",
+      "pointer": "/properties/signals/items/properties/signal_agent_segment_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/wholesale-feed-event.json",
+        "quote": "\"signal_agent_segment_id\": { \"type\": \"string\", \"description\": \"Opaque activation handle returned by the signals agent.\", \"minLength\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on signal_agent_segment_id in core/wholesale-feed-event.json, whose signal entry has the same wire shape as a get_signals signals[] item. A signal agent segment ID, which core/signal-agent-segment-id.json keeps non-empty."
+    },
+    {
+      "file": "core/wholesale-feed-event.json",
+      "pointer": "/oneOf/4/properties/payload/properties/signal_agent_segment_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/wholesale-feed-event.json",
+        "quote": "\"signal_agent_segment_id\": { \"type\": \"string\", \"description\": \"Opaque activation handle returned by the signals agent.\", \"minLength\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on signal_agent_segment_id in core/wholesale-feed-event.json, whose signal entry has the same wire shape as a get_signals signals[] item. A signal agent segment ID, which core/signal-agent-segment-id.json keeps non-empty."
+    },
+    {
+      "file": "core/wholesale-feed-event.json",
+      "pointer": "/oneOf/5/properties/payload/properties/signal_agent_segment_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/wholesale-feed-event.json",
+        "quote": "\"signal_agent_segment_id\": { \"type\": \"string\", \"description\": \"Opaque activation handle returned by the signals agent.\", \"minLength\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on signal_agent_segment_id in core/wholesale-feed-event.json, whose signal entry has the same wire shape as a get_signals signals[] item. A signal agent segment ID, which core/signal-agent-segment-id.json keeps non-empty."
+    },
+    {
+      "file": "core/wholesale-feed-event.json",
+      "pointer": "/oneOf/6/properties/payload/properties/signal_agent_segment_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/wholesale-feed-event.json",
+        "quote": "\"signal_agent_segment_id\": { \"type\": \"string\", \"description\": \"Opaque activation handle returned by the signals agent.\", \"minLength\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on signal_agent_segment_id in core/wholesale-feed-event.json, whose signal entry has the same wire shape as a get_signals signals[] item. A signal agent segment ID, which core/signal-agent-segment-id.json keeps non-empty."
+    },
+    {
+      "file": "core/wholesale-feed-event.json",
+      "pointer": "/oneOf/7/properties/payload/properties/signal_agent_segment_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/wholesale-feed-event.json",
+        "quote": "\"signal_agent_segment_id\": { \"type\": \"string\", \"description\": \"Opaque activation handle returned by the signals agent.\", \"minLength\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on signal_agent_segment_id in core/wholesale-feed-event.json, whose signal entry has the same wire shape as a get_signals signals[] item. A signal agent segment ID, which core/signal-agent-segment-id.json keeps non-empty."
+    },
+    {
+      "file": "core/signal-listing.json",
+      "pointer": "/properties/name",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/wholesale-feed-event.json",
+        "quote": "\"name\": { \"type\": \"string\", \"description\": \"Human-readable signal name\", \"minLength\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the signal name in core/wholesale-feed-event.json. A signal name, which core/signal-name.json keeps non-empty."
+    },
+    {
+      "file": "core/signal-listing.json",
+      "pointer": "/properties/name",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/signal-definition.json",
+        "quote": "\"name\": { \"type\": \"string\", \"description\": \"Human-readable signal name\", \"minLength\": 1, \"maxLength\": 255 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the signal name in core/signal-definition.json. A signal name, which core/signal-name.json bounds."
+    },
+    {
+      "file": "signals/get-signals-response.json",
+      "pointer": "/properties/signals/items/properties/name",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/wholesale-feed-event.json",
+        "quote": "\"name\": { \"type\": \"string\", \"description\": \"Human-readable signal name\", \"minLength\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the signal name in core/wholesale-feed-event.json. A signal name, which core/signal-name.json keeps non-empty."
+    },
+    {
+      "file": "signals/get-signals-response.json",
+      "pointer": "/properties/signals/items/properties/name",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/signal-definition.json",
+        "quote": "\"name\": { \"type\": \"string\", \"description\": \"Human-readable signal name\", \"minLength\": 1, \"maxLength\": 255 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the signal name in core/signal-definition.json. A signal name, which core/signal-name.json bounds."
+    },
+    {
+      "file": "core/signal-listing.json",
+      "pointer": "/properties/description",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/wholesale-feed-event.json",
+        "quote": "\"description\": { \"type\": \"string\", \"description\": \"Detailed signal description\", \"minLength\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the signal description in core/wholesale-feed-event.json. A signal description, which core/signal-description.json keeps non-empty."
+    },
+    {
+      "file": "core/signal-listing.json",
+      "pointer": "/properties/description",
+      "bound": "maxLength",
+      "value": 2000,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/signal-definition.json",
+        "quote": "\"description\": { \"type\": \"string\", \"description\": \"Detailed description of what this signal represents and how it's derived\", \"maxLength\": 2000 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the signal description in core/signal-definition.json. A signal description, which core/signal-description.json bounds."
+    },
+    {
+      "file": "signals/get-signals-response.json",
+      "pointer": "/properties/signals/items/properties/description",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/wholesale-feed-event.json",
+        "quote": "\"description\": { \"type\": \"string\", \"description\": \"Detailed signal description\", \"minLength\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the signal description in core/wholesale-feed-event.json. A signal description, which core/signal-description.json keeps non-empty."
+    },
+    {
+      "file": "signals/get-signals-response.json",
+      "pointer": "/properties/signals/items/properties/description",
+      "bound": "maxLength",
+      "value": 2000,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/signal-definition.json",
+        "quote": "\"description\": { \"type\": \"string\", \"description\": \"Detailed description of what this signal represents and how it's derived\", \"maxLength\": 2000 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the signal description in core/signal-definition.json. A signal description, which core/signal-description.json bounds."
+    },
+    {
+      "file": "signals/get-signals-response.json",
+      "pointer": "/properties/signals/items/properties/data_provider",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/wholesale-feed-event.json",
+        "quote": "\"data_provider\": { \"type\": \"string\", \"minLength\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on data_provider in core/wholesale-feed-event.json, whose signal entry has the same wire shape as a get_signals signals[] item. The get_signals catalog entry's data_provider, which core/signal-catalog-entry.json keeps non-empty."
+    },
+    {
+      "file": "signals/get-signals-response.json",
+      "pointer": "/properties/signals/items/properties/deployments",
+      "bound": "minItems",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/wholesale-feed-event.json",
+        "quote": "\"deployments\": { \"type\": \"array\", \"items\": { \"$ref\": \"https://adcontextprotocol.org/schemas/3.2.12/core/deployment.json\" }, \"minItems\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on deployments in core/wholesale-feed-event.json, whose signal entry has the same wire shape as a get_signals signals[] item. The get_signals catalog entry's deployments, which core/signal-catalog-entry.json keeps non-empty."
+    },
+    {
+      "file": "core/wholesale-feed-event.json",
+      "pointer": "/oneOf/0/properties/payload/properties/product_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-product.json",
+        "quote": "\"product_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"product\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on product_id in core/canonical-product.json, and core/product.json says sellers reuse that ID across reads and wholesale-feed webhooks. A product ID, which core/product-id.json keeps non-empty."
+    },
+    {
+      "file": "core/wholesale-feed-event.json",
+      "pointer": "/oneOf/1/properties/payload/properties/product_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-product.json",
+        "quote": "\"product_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"product\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on product_id in core/canonical-product.json, and core/product.json says sellers reuse that ID across reads and wholesale-feed webhooks. A product ID, which core/product-id.json keeps non-empty."
+    },
+    {
+      "file": "core/wholesale-feed-event.json",
+      "pointer": "/oneOf/2/properties/payload/properties/product_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-product.json",
+        "quote": "\"product_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"product\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on product_id in core/canonical-product.json, and core/product.json says sellers reuse that ID across reads and wholesale-feed webhooks. A product ID, which core/product-id.json keeps non-empty."
+    },
+    {
+      "file": "core/wholesale-feed-event.json",
+      "pointer": "/oneOf/3/properties/payload/properties/product_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-product.json",
+        "quote": "\"product_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"product\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on product_id in core/canonical-product.json, and core/product.json says sellers reuse that ID across reads and wholesale-feed webhooks. A product ID, which core/product-id.json keeps non-empty."
+    },
+    {
+      "file": "signals/get-signals-response.json",
+      "pointer": "/properties/incomplete/items/properties/description",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/media-buy/list-products-response.json",
+        "quote": "\"scope\": { \"type\": \"string\", \"enum\": [ \"products\", \"pricing\", \"forecast\", \"wholesale_feed\" ] }, \"description\": { \"type\": \"string\", \"minLength\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the incomplete-scope description in media-buy/list-products-response.json. An incomplete-scope description, which core/incomplete-scope-description.json keeps non-empty."
+    },
+    {
+      "file": "core/keyword-delivery-metrics.json",
+      "pointer": "/allOf/1/properties/keyword",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/targeting.json",
+        "quote": "\"keyword\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"The keyword to target\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the keyword of a package keyword target in core/targeting.json keyword_targets[], and a keyword delivery row reports that targeted keyword. Keyword text, which core/keyword.json bounds."
+    },
+    {
+      "file": "core/forecast-point.json",
+      "pointer": "/properties/product_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-product.json",
+        "quote": "\"product_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"product\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the product ID in core/canonical-product.json, and a forecast row's product_id names that product. A product ID, which core/product-id.json bounds."
+    },
+    {
+      "file": "core/canonical-forecast-point.json",
+      "pointer": "/properties/product_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-product.json",
+        "quote": "\"product_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"product\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the product ID in core/canonical-product.json, and a forecast row's product_id names that product. A product ID, which core/product-id.json bounds."
+    },
+    {
+      "file": "account/report-usage-request.json",
+      "pointer": "/properties/usage/items/properties/measurement_window",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-measurement-terms.json",
+        "quote": "\"measurement_window\": { \"type\": \"string\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the billing measurement window in core/canonical-measurement-terms.json, which names a window_id of the product's measurement windows. A measurement window ID, which core/measurement-window-id.json bounds."
+    },
+    {
+      "file": "core/measurement-terms.json",
+      "pointer": "/properties/billing_measurement/properties/measurement_window",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-measurement-terms.json",
+        "quote": "\"measurement_window\": { \"type\": \"string\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the billing measurement window in core/canonical-measurement-terms.json, which names a window_id of the product's measurement windows. A measurement window ID, which core/measurement-window-id.json bounds."
+    },
+    {
+      "file": "core/measurement-window.json",
+      "pointer": "/properties/window_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-measurement-terms.json",
+        "quote": "\"measurement_window\": { \"type\": \"string\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the billing measurement window in core/canonical-measurement-terms.json, which names a window_id of the product's measurement windows. A measurement window ID, which core/measurement-window-id.json bounds."
+    },
+    {
+      "file": "media-buy/get-media-buy-delivery-response.json",
+      "pointer": "/properties/media_buy_deliveries/items/properties/by_package/items/allOf/1/properties/measurement_window",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-measurement-terms.json",
+        "quote": "\"measurement_window\": { \"type\": \"string\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the billing measurement window in core/canonical-measurement-terms.json, which names a window_id of the product's measurement windows. A measurement window ID, which core/measurement-window-id.json bounds."
+    },
+    {
+      "file": "media-buy/get-media-buy-delivery-response.json",
+      "pointer": "/properties/media_buy_deliveries/items/properties/by_package/items/allOf/1/properties/supersedes_window",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-measurement-terms.json",
+        "quote": "\"measurement_window\": { \"type\": \"string\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the billing measurement window in core/canonical-measurement-terms.json, which names a window_id of the product's measurement windows. A measurement window ID, which core/measurement-window-id.json bounds."
+    },
+    {
+      "file": "media-buy/get-media-buy-delivery-response.json",
+      "pointer": "/properties/media_buy_deliveries/items/properties/windows/items/properties/measurement_window",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-measurement-terms.json",
+        "quote": "\"measurement_window\": { \"type\": \"string\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the billing measurement window in core/canonical-measurement-terms.json, which names a window_id of the product's measurement windows. A measurement window ID, which core/measurement-window-id.json bounds."
+    },
+    {
+      "file": "media-buy/media-buy-delivery-webhook-result.json",
+      "pointer": "/properties/media_buy_deliveries/items/properties/by_package/items/allOf/1/properties/measurement_window",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-measurement-terms.json",
+        "quote": "\"measurement_window\": { \"type\": \"string\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the billing measurement window in core/canonical-measurement-terms.json, which names a window_id of the product's measurement windows. A measurement window ID, which core/measurement-window-id.json bounds."
+    },
+    {
+      "file": "media-buy/media-buy-delivery-webhook-result.json",
+      "pointer": "/properties/media_buy_deliveries/items/properties/by_package/items/allOf/1/properties/supersedes_window",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-measurement-terms.json",
+        "quote": "\"measurement_window\": { \"type\": \"string\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the billing measurement window in core/canonical-measurement-terms.json, which names a window_id of the product's measurement windows. A measurement window ID, which core/measurement-window-id.json bounds."
+    },
+    {
+      "file": "core/measurement-terms.json",
+      "pointer": "/properties/billing_measurement/properties/measurement_window",
+      "bound": "maxLength",
+      "value": 50,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/measurement-window.json",
+        "quote": "\"window_id\": { \"type\": \"string\", \"maxLength\": 50,"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on window_id in core/measurement-window.json, and the billing measurement window references a window_id from the product's reporting_capabilities.measurement_windows. A measurement window ID, which core/measurement-window-id.json bounds."
+    },
+    {
+      "file": "core/canonical-measurement-terms.json",
+      "pointer": "/properties/billing_measurement/properties/measurement_window",
+      "bound": "maxLength",
+      "value": 50,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/measurement-window.json",
+        "quote": "\"window_id\": { \"type\": \"string\", \"maxLength\": 50,"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on window_id in core/measurement-window.json, and the billing measurement window references a window_id from the product's reporting_capabilities.measurement_windows. A measurement window ID, which core/measurement-window-id.json bounds."
+    },
+    {
+      "file": "media-buy/get-media-buy-delivery-request.json",
+      "pointer": "/properties/reporting_dimensions/properties/device_type/properties/cursor",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/account/list-account-changes-request.json",
+        "quote": "\"cursor\": { \"type\": \"string\", \"description\": \"Opaque checkpoint returned by a prior call using the same authenticated principal, authorization scope epoch, account, and normalized filters. Returns changes strictly after the scanned high-water represented by this value. Sellers MUST reject reuse under a different principal, account, or filter set with INVALID_REQUEST at field cursor; an authorization-scope epoch change returns CURSOR_EXPIRED and requires snapshot rebootstrap.\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on cursor in account/list-account-changes-request.json. A page cursor, which core/page-cursor.json keeps non-empty."
+    },
+    {
+      "file": "media-buy/get-media-buy-delivery-request.json",
+      "pointer": "/properties/reporting_dimensions/properties/device_platform/properties/cursor",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.11/account/list-account-changes-request.json",
+        "quote": "\"cursor\": { \"type\": \"string\", \"description\": \"Opaque checkpoint returned by a prior call using the same authenticated principal, authorization scope epoch, account, and normalized filters. Returns changes strictly after the scanned high-water represented by this value. Sellers MUST reject reuse under a different principal, account, or filter set with INVALID_REQUEST at field cursor; an authorization-scope epoch change returns CURSOR_EXPIRED and requires snapshot rebootstrap.\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.11 published this bound on cursor in account/list-account-changes-request.json. A page cursor, which core/page-cursor.json keeps non-empty."
+    },
+    {
+      "file": "core/canonical-product.json",
+      "pointer": "/properties/allowed_actions",
+      "bound": "minItems",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/product.json",
+        "quote": "\"items\": { \"$ref\": \"https://adcontextprotocol.org/schemas/3.2.12/core/product-allowed-action.json\" }, \"minItems\": 1, \"uniqueItems\": true"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on allowed_actions in core/product.json, the full form of the product that core/canonical-product.json projects."
+    },
+    {
+      "file": "core/canonical-product.json",
+      "pointer": "/properties/max_optimization_goals",
+      "bound": "minimum",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/product.json",
+        "quote": "\"max_optimization_goals\": { \"type\": \"integer\", \"minimum\": 1,"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on max_optimization_goals in core/product.json, the full form of the product that core/canonical-product.json projects."
+    },
+    {
+      "file": "core/canonical-product.json",
+      "pointer": "/properties/placements",
+      "bound": "minItems",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/product.json",
+        "quote": "\"items\": { \"$ref\": \"https://adcontextprotocol.org/schemas/3.2.12/core/placement.json\" }, \"minItems\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on placements in core/product.json, the full form of the product that core/canonical-product.json projects."
+    },
+    {
+      "file": "core/catalog-item-availability-update-result.json",
+      "pointer": "/properties/catalog_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/catalog-item-availability-update.json",
+        "quote": "\"catalog_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"description\": \"Buyer-assigned ID of the buyer-managed catalog containing the item.\", \"x-entity\": \"catalog\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the buyer-assigned catalog ID in core/catalog-item-availability-update.json. A catalog ID, which core/catalog-id.json bounds."
+    },
+    {
+      "file": "core/catalog-item-availability-update-result.json",
+      "pointer": "/properties/catalog_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/catalog-item-availability-update.json",
+        "quote": "\"catalog_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"description\": \"Buyer-assigned ID of the buyer-managed catalog containing the item.\", \"x-entity\": \"catalog\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the buyer-assigned catalog ID in core/catalog-item-availability-update.json. A catalog ID, which core/catalog-id.json bounds."
+    },
+    {
+      "file": "core/catalog-item-availability-update-result.json",
+      "pointer": "/properties/item_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/catalog-item-availability-update.json",
+        "quote": "\"item_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"description\": \"Exact canonical item key used by Catalog.ids."
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the catalog item ID in core/catalog-item-availability-update.json, the update this result echoes. A catalog item ID, which core/catalog-item-id.json bounds."
+    },
+    {
+      "file": "core/catalog-item-availability-update-result.json",
+      "pointer": "/properties/item_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/catalog-item-availability-update.json",
+        "quote": "\"item_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"description\": \"Exact canonical item key used by Catalog.ids."
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the catalog item ID in core/catalog-item-availability-update.json, the update this result echoes. A catalog item ID, which core/catalog-item-id.json bounds."
+    },
+    {
+      "file": "core/catalog-selection.json",
+      "pointer": "/properties/catalog_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/catalog-item-availability-update.json",
+        "quote": "\"catalog_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"description\": \"Buyer-assigned ID of the buyer-managed catalog containing the item.\", \"x-entity\": \"catalog\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the buyer-assigned catalog ID in core/catalog-item-availability-update.json. A catalog ID, which core/catalog-id.json bounds."
+    },
+    {
+      "file": "core/catalog.json",
+      "pointer": "/properties/catalog_id",
+      "bound": "maxLength",
+      "value": 255,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/catalog-item-availability-update.json",
+        "quote": "\"catalog_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"description\": \"Buyer-assigned ID of the buyer-managed catalog containing the item.\", \"x-entity\": \"catalog\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the buyer-assigned catalog ID in core/catalog-item-availability-update.json. A catalog ID, which core/catalog-id.json bounds."
+    },
+    {
+      "file": "core/catalog.json",
+      "pointer": "/properties/catalog_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/catalog-item-availability-update.json",
+        "quote": "\"catalog_id\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 255, \"description\": \"Buyer-assigned ID of the buyer-managed catalog containing the item.\", \"x-entity\": \"catalog\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the buyer-assigned catalog ID in core/catalog-item-availability-update.json. A catalog ID, which core/catalog-id.json bounds."
+    },
+    {
+      "file": "core/product.json",
+      "pointer": "/properties/installments",
+      "bound": "maxItems",
+      "value": 500,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.1/core/canonical-product.json",
+        "quote": "\"items\": { \"$ref\": \"https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/canonical-installment.json\" }, \"minItems\": 1, \"maxItems\": 500,"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 bounds no product installment list; 3.3.0-beta.1 published this bound on installments in core/canonical-product.json, the compact form of the same product."
+    },
+    {
+      "file": "core/product.json",
+      "pointer": "/properties/installments",
+      "bound": "minItems",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.3.0-beta.1/core/canonical-product.json",
+        "quote": "\"items\": { \"$ref\": \"https://adcontextprotocol.org/schemas/3.3.0-beta.1/core/canonical-installment.json\" }, \"minItems\": 1, \"maxItems\": 500,"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 bounds no product installment list; 3.3.0-beta.1 published this bound on installments in core/canonical-product.json, the compact form of the same product."
+    },
+    {
+      "file": "core/product.json",
+      "pointer": "/properties/name",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-product.json",
+        "quote": "\"name\": { \"type\": \"string\", \"minLength\": 1 }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on name in core/canonical-product.json, the compact form of the same product. A product name, which core/product-name.json keeps non-empty."
+    },
+    {
+      "file": "core/product.json",
+      "pointer": "/properties/product_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/canonical-product.json",
+        "quote": "\"product_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"product\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on product_id in core/canonical-product.json, the compact form of the same product. A product ID, which core/product-id.json bounds."
+    },
+    {
+      "file": "media-buy/get-media-buy-delivery-response.json",
+      "pointer": "/properties/media_buy_deliveries/items/properties/by_package/items/allOf/1/properties/package_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/media-buy/package-control.json",
+        "quote": "\"package_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"package\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the package ID in media-buy/package-control.json. A package ID, which core/package-id.json bounds."
+    },
+    {
+      "file": "media-buy/get-media-buy-delivery-response.json",
+      "pointer": "/properties/media_buy_deliveries/items/properties/windows/items/properties/by_package/items/allOf/1/properties/package_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/media-buy/package-control.json",
+        "quote": "\"package_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"package\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the package ID in media-buy/package-control.json. A package ID, which core/package-id.json bounds."
+    },
+    {
+      "file": "media-buy/media-buy-delivery-webhook-result.json",
+      "pointer": "/properties/media_buy_deliveries/items/properties/by_package/items/allOf/1/properties/package_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/media-buy/package-control.json",
+        "quote": "\"package_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"package\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the package ID in media-buy/package-control.json. A package ID, which core/package-id.json bounds."
+    },
+    {
+      "file": "media-buy/get-products-response.json",
+      "pointer": "/properties/incomplete/items/properties/description",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/media-buy/list-products-response.json",
+        "quote": "\"description\": { \"type\": \"string\", \"minLength\": 1 }, \"estimated_wait\":"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on incomplete[].description in media-buy/list-products-response.json, the same incomplete scope entry on the product list. An incomplete scope description, which core/incomplete-scope-description.json keeps non-empty."
+    },
+    {
+      "file": "media-buy/get-products-response.json",
+      "pointer": "/properties/suggestions",
+      "bound": "minItems",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/media-buy/get-products-rejected.json",
+        "quote": "If absent, the seller is not offering a protocol-level alternative for this brief.\", \"minItems\": 1, \"maxItems\": 20,"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on suggestions in media-buy/get-products-rejected.json, the GetProductsRejected arm that is the only arm carrying suggestions."
+    },
+    {
+      "file": "media-buy/sync-event-sources-request.json",
+      "pointer": "/properties/event_sources/items/properties/event_source_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/optimization-goal.json",
+        "quote": "\"event_source_id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Event source to include (must be configured on this account via sync_event_sources)\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the event source ID that optimization goals reference in core/optimization-goal.json, the ID sync_event_sources configures. An event source ID, which core/event-source-id.json bounds."
+    },
+    {
+      "file": "media-buy/sync-event-sources-response.json",
+      "pointer": "/oneOf/0/properties/event_sources/items/properties/event_source_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/optimization-goal.json",
+        "quote": "\"event_source_id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Event source to include (must be configured on this account via sync_event_sources)\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the event source ID that optimization goals reference in core/optimization-goal.json, the ID sync_event_sources configures. An event source ID, which core/event-source-id.json bounds."
+    },
+    {
+      "file": "media-buy/sync-event-sources-response.json",
+      "pointer": "/oneOf/0/properties/event_sources/items/properties/event_types",
+      "bound": "minItems",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/media-buy/sync-event-sources-request.json",
+        "quote": "\"description\": \"Event types this source handles (e.g. purchase, lead). If omitted, accepts all event types.\", \"items\": { \"$ref\": \"https://adcontextprotocol.org/schemas/3.2.12/enums/event-type.json\" }, \"minItems\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on event_types in media-buy/sync-event-sources-request.json, the request item whose event source this result reports."
+    },
+    {
+      "file": "pricing-options/cpa-option.json",
+      "pointer": "/properties/custom_event_name",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/pricing-options/revenue-share-option.json",
+        "quote": "\"custom_event_name\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Name of the custom event when event_type is custom. Required for custom events and absent otherwise.\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on custom_event_name in pricing-options/revenue-share-option.json, the custom event of a conversion-billed pricing option, and on the compact form in core/canonical-pricing-option.json. A custom event name, which core/custom-event-name.json defines."
+    },
+    {
+      "file": "pricing-options/cpa-option.json",
+      "pointer": "/properties/event_source_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/pricing-options/revenue-share-option.json",
+        "quote": "\"event_source_id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Event source whose attribution is authoritative for billing. Must match an event source configured through sync_event_sources.\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on event_source_id in pricing-options/revenue-share-option.json, the event source a conversion-billed pricing option bills from, and on the compact form in core/canonical-pricing-option.json. An event source ID, which core/event-source-id.json defines."
+    },
+    {
+      "file": "pricing-options/cpa-option.json",
+      "pointer": "/properties/pricing_option_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/pricing-options/revenue-share-option.json",
+        "quote": "\"pricing_option_id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Unique identifier for this pricing option within the product\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on pricing_option_id in pricing-options/revenue-share-option.json, with the same description, and on the compact form in core/canonical-pricing-option.json. A product pricing option ID, which core/pricing-option-id.json defines."
+    },
+    {
+      "file": "pricing-options/cpc-option.json",
+      "pointer": "/properties/pricing_option_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/pricing-options/revenue-share-option.json",
+        "quote": "\"pricing_option_id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Unique identifier for this pricing option within the product\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on pricing_option_id in pricing-options/revenue-share-option.json, with the same description, and on the compact form in core/canonical-pricing-option.json. A product pricing option ID, which core/pricing-option-id.json defines."
+    },
+    {
+      "file": "pricing-options/cpcv-option.json",
+      "pointer": "/properties/pricing_option_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/pricing-options/revenue-share-option.json",
+        "quote": "\"pricing_option_id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Unique identifier for this pricing option within the product\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on pricing_option_id in pricing-options/revenue-share-option.json, with the same description, and on the compact form in core/canonical-pricing-option.json. A product pricing option ID, which core/pricing-option-id.json defines."
+    },
+    {
+      "file": "pricing-options/cpm-option.json",
+      "pointer": "/properties/pricing_option_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/pricing-options/revenue-share-option.json",
+        "quote": "\"pricing_option_id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Unique identifier for this pricing option within the product\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on pricing_option_id in pricing-options/revenue-share-option.json, with the same description, and on the compact form in core/canonical-pricing-option.json. A product pricing option ID, which core/pricing-option-id.json defines."
+    },
+    {
+      "file": "pricing-options/cpp-option.json",
+      "pointer": "/properties/pricing_option_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/pricing-options/revenue-share-option.json",
+        "quote": "\"pricing_option_id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Unique identifier for this pricing option within the product\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on pricing_option_id in pricing-options/revenue-share-option.json, with the same description, and on the compact form in core/canonical-pricing-option.json. A product pricing option ID, which core/pricing-option-id.json defines."
+    },
+    {
+      "file": "pricing-options/cpv-option.json",
+      "pointer": "/properties/pricing_option_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/pricing-options/revenue-share-option.json",
+        "quote": "\"pricing_option_id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Unique identifier for this pricing option within the product\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on pricing_option_id in pricing-options/revenue-share-option.json, with the same description, and on the compact form in core/canonical-pricing-option.json. A product pricing option ID, which core/pricing-option-id.json defines."
+    },
+    {
+      "file": "pricing-options/flat-rate-option.json",
+      "pointer": "/properties/pricing_option_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/pricing-options/revenue-share-option.json",
+        "quote": "\"pricing_option_id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Unique identifier for this pricing option within the product\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on pricing_option_id in pricing-options/revenue-share-option.json, with the same description, and on the compact form in core/canonical-pricing-option.json. A product pricing option ID, which core/pricing-option-id.json defines."
+    },
+    {
+      "file": "pricing-options/time-option.json",
+      "pointer": "/properties/pricing_option_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/pricing-options/revenue-share-option.json",
+        "quote": "\"pricing_option_id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Unique identifier for this pricing option within the product\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on pricing_option_id in pricing-options/revenue-share-option.json, with the same description, and on the compact form in core/canonical-pricing-option.json. A product pricing option ID, which core/pricing-option-id.json defines."
+    },
+    {
+      "file": "pricing-options/vcpm-option.json",
+      "pointer": "/properties/pricing_option_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/pricing-options/revenue-share-option.json",
+        "quote": "\"pricing_option_id\": { \"type\": \"string\", \"minLength\": 1, \"description\": \"Unique identifier for this pricing option within the product\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on pricing_option_id in pricing-options/revenue-share-option.json, with the same description, and on the compact form in core/canonical-pricing-option.json. A product pricing option ID, which core/pricing-option-id.json defines."
+    },
+    {
+      "file": "content-standards/artifact-webhook-payload.json",
+      "pointer": "/properties/artifacts/items/properties/package_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/media-buy/package-control.json",
+        "quote": "\"package_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"package\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the package ID in media-buy/package-control.json. A package ID, which core/package-id.json bounds."
+    },
+    {
+      "file": "content-standards/get-media-buy-artifacts-response.json",
+      "pointer": "/oneOf/0/properties/artifacts/items/properties/package_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/media-buy/package-control.json",
+        "quote": "\"package_id\": { \"type\": \"string\", \"minLength\": 1, \"x-entity\": \"package\" }"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on the package ID in media-buy/package-control.json. A package ID, which core/package-id.json bounds."
+    },
+    {
+      "file": "content-standards/artifact-webhook-payload.json",
+      "pointer": "/properties/pagination/properties/batch_number",
+      "bound": "minimum",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/content-standards/artifact-webhook-payload.json",
+        "quote": "\"description\": \"Current batch number (1-indexed)\""
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 numbers artifact webhook batches from 1, so no batch number is below 1."
+    },
+    {
+      "file": "content-standards/content-standards.json",
+      "pointer": "/properties/languages_any/items",
+      "bound": "maxLength",
+      "value": 63,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/locale-tag.json",
+        "quote": "\"type\": \"string\", \"minLength\": 2, \"maxLength\": 63"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on core/locale-tag.json. A BCP 47 language tag, which core/locale-tag.json bounds."
+    },
+    {
+      "file": "content-standards/content-standards.json",
+      "pointer": "/properties/languages_any/items",
+      "bound": "minLength",
+      "value": 2,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/locale-tag.json",
+        "quote": "\"type\": \"string\", \"minLength\": 2, \"maxLength\": 63"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on core/locale-tag.json. A BCP 47 language tag, which core/locale-tag.json bounds."
+    },
+    {
+      "file": "content-standards/create-content-standards-request.json",
+      "pointer": "/properties/scope/properties/languages_any/items",
+      "bound": "maxLength",
+      "value": 63,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/locale-tag.json",
+        "quote": "\"type\": \"string\", \"minLength\": 2, \"maxLength\": 63"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on core/locale-tag.json. A BCP 47 language tag, which core/locale-tag.json bounds."
+    },
+    {
+      "file": "content-standards/create-content-standards-request.json",
+      "pointer": "/properties/scope/properties/languages_any/items",
+      "bound": "minLength",
+      "value": 2,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/locale-tag.json",
+        "quote": "\"type\": \"string\", \"minLength\": 2, \"maxLength\": 63"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on core/locale-tag.json. A BCP 47 language tag, which core/locale-tag.json bounds."
+    },
+    {
+      "file": "content-standards/update-content-standards-request.json",
+      "pointer": "/properties/scope/properties/languages_any/items",
+      "bound": "maxLength",
+      "value": 63,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/locale-tag.json",
+        "quote": "\"type\": \"string\", \"minLength\": 2, \"maxLength\": 63"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on core/locale-tag.json. A BCP 47 language tag, which core/locale-tag.json bounds."
+    },
+    {
+      "file": "content-standards/update-content-standards-request.json",
+      "pointer": "/properties/scope/properties/languages_any/items",
+      "bound": "minLength",
+      "value": 2,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/locale-tag.json",
+        "quote": "\"type\": \"string\", \"minLength\": 2, \"maxLength\": 63"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on core/locale-tag.json. A BCP 47 language tag, which core/locale-tag.json bounds."
+    },
+    {
+      "file": "error-details/stale-response.json",
+      "pointer": "/properties/original_error/properties/code",
+      "bound": "maxLength",
+      "value": 64,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/error.json",
+        "quote": "\"code\": { \"type\": \"string\", \"minLength\": 1, \"maxLength\": 64"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on code in core/error.json. original_error is a subset of the underlying error, and its code is an error code, which core/open-error-code.json bounds."
+    },
+    {
+      "file": "error-details/stale-response.json",
+      "pointer": "/properties/original_error/properties/code",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/error.json",
+        "quote": "\"code\": { \"type\": \"string\", \"minLength\": 1"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on code in core/error.json. original_error is a subset of the underlying error, and its code is an error code, which core/open-error-code.json bounds."
+    },
+    {
+      "file": "account/sync-accounts-response.json",
+      "pointer": "/oneOf/0/properties/accounts/items/properties/setup/properties/message",
+      "bound": "maxLength",
+      "value": 1000,
+      "release": "3.3.0",
+      "source": {
+        "path": "docs/reference/migration/3-2-to-3-3.mdx",
+        "quote": "**An account setup message is at most 1,000 characters**"
+      },
+      "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. An account setup message, which the pending action for the same onboarding step already caps at 1,000 characters."
+    },
+    {
+      "file": "brand/get-brand-identity-response.json",
+      "pointer": "/oneOf/0/properties/colors/properties/accent/oneOf/1",
+      "bound": "maxItems",
+      "value": 16,
+      "release": "3.3.0",
+      "source": {
+        "path": "docs/reference/migration/3-2-to-3-3.mdx",
+        "quote": "**A color role lists at most 16 hex colors.**"
+      },
+      "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. A color role, which names the few hex colors a brand uses for one purpose; every published palette sends one per role."
+    },
+    {
+      "file": "brand/get-brand-identity-response.json",
+      "pointer": "/oneOf/0/properties/colors/properties/background/oneOf/1",
+      "bound": "maxItems",
+      "value": 16,
+      "release": "3.3.0",
+      "source": {
+        "path": "docs/reference/migration/3-2-to-3-3.mdx",
+        "quote": "**A color role lists at most 16 hex colors.**"
+      },
+      "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. A color role, which names the few hex colors a brand uses for one purpose; every published palette sends one per role."
+    },
+    {
+      "file": "brand/get-brand-identity-response.json",
+      "pointer": "/oneOf/0/properties/colors/properties/primary/oneOf/1",
+      "bound": "maxItems",
+      "value": 16,
+      "release": "3.3.0",
+      "source": {
+        "path": "docs/reference/migration/3-2-to-3-3.mdx",
+        "quote": "**A color role lists at most 16 hex colors.**"
+      },
+      "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. A color role, which names the few hex colors a brand uses for one purpose; every published palette sends one per role."
+    },
+    {
+      "file": "brand/get-brand-identity-response.json",
+      "pointer": "/oneOf/0/properties/colors/properties/secondary/oneOf/1",
+      "bound": "maxItems",
+      "value": 16,
+      "release": "3.3.0",
+      "source": {
+        "path": "docs/reference/migration/3-2-to-3-3.mdx",
+        "quote": "**A color role lists at most 16 hex colors.**"
+      },
+      "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. A color role, which names the few hex colors a brand uses for one purpose; every published palette sends one per role."
+    },
+    {
+      "file": "brand/get-brand-identity-response.json",
+      "pointer": "/oneOf/0/properties/colors/properties/text/oneOf/1",
+      "bound": "maxItems",
+      "value": 16,
+      "release": "3.3.0",
+      "source": {
+        "path": "docs/reference/migration/3-2-to-3-3.mdx",
+        "quote": "**A color role lists at most 16 hex colors.**"
+      },
+      "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. A color role, which names the few hex colors a brand uses for one purpose; every published palette sends one per role."
+    },
+    {
+      "file": "content-standards/artifact-webhook-payload.json",
+      "pointer": "/properties/pagination/properties/total_artifacts",
+      "bound": "minimum",
+      "value": 0,
+      "release": "3.3.0",
+      "source": {
+        "path": "docs/reference/migration/3-2-to-3-3.mdx",
+        "quote": "**An artifact webhook counts at least 1 batch and no negative artifacts.**"
+      },
+      "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. The artifact webhook artifact count, which is a count and never negative."
+    },
+    {
+      "file": "content-standards/artifact-webhook-payload.json",
+      "pointer": "/properties/pagination/properties/total_batches",
+      "bound": "minimum",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "docs/reference/migration/3-2-to-3-3.mdx",
+        "quote": "**An artifact webhook counts at least 1 batch and no negative artifacts.**"
+      },
+      "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. The artifact webhook batch count: the payload that carries it is itself batch 1 or later."
+    },
+    {
+      "file": "core/account-status-changed-webhook.json",
+      "pointer": "/properties/setup/properties/message",
+      "bound": "maxLength",
+      "value": 1000,
+      "release": "3.3.0",
+      "source": {
+        "path": "docs/reference/migration/3-2-to-3-3.mdx",
+        "quote": "**An account setup message is at most 1,000 characters**"
+      },
+      "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. An account setup message, which the pending action for the same onboarding step already caps at 1,000 characters."
+    },
+    {
+      "file": "core/account.json",
+      "pointer": "/properties/setup/properties/message",
+      "bound": "maxLength",
+      "value": 1000,
+      "release": "3.3.0",
+      "source": {
+        "path": "docs/reference/migration/3-2-to-3-3.mdx",
+        "quote": "**An account setup message is at most 1,000 characters**"
+      },
+      "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. An account setup message, which the pending action for the same onboarding step already caps at 1,000 characters."
+    },
+    {
+      "file": "core/canonical-audience-evidence-selection.json",
+      "pointer": "/properties/verified_attestation_digests",
+      "bound": "maxItems",
+      "value": 10,
+      "release": "3.3.0",
+      "source": {
+        "path": "docs/reference/migration/3-2-to-3-3.mdx",
+        "quote": "**Compact audience evidence lists at most 10 attestation digests**"
+      },
+      "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. A compact audience evidence digest list: each digest stands for one of at most 10 attestation references, and repeats are rejected."
+    },
+    {
+      "file": "core/canonical-audience-evidence.json",
+      "pointer": "/properties/attestation_digests",
+      "bound": "maxItems",
+      "value": 10,
+      "release": "3.3.0",
+      "source": {
+        "path": "docs/reference/migration/3-2-to-3-3.mdx",
+        "quote": "**Compact audience evidence lists at most 10 attestation digests**"
+      },
+      "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. A compact audience evidence digest list: each digest stands for one of at most 10 attestation references, and repeats are rejected."
+    },
+    {
+      "file": "creative/list-creatives-response.json",
+      "pointer": "/properties/query_summary/properties/sort_applied",
+      "required": "direction",
+      "release": "3.3.0",
+      "source": {
+        "path": "docs/reference/migration/3-2-to-3-3.mdx",
+        "quote": "**A creative listing's applied sort names its field and direction.**"
+      },
+      "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. A creative listing applied sort: a seller that sorted did so by some field in some direction, as the task listing applied sort requires."
+    },
+    {
+      "file": "creative/list-creatives-response.json",
+      "pointer": "/properties/query_summary/properties/sort_applied",
+      "required": "field",
+      "release": "3.3.0",
+      "source": {
+        "path": "docs/reference/migration/3-2-to-3-3.mdx",
+        "quote": "**A creative listing's applied sort names its field and direction.**"
+      },
+      "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. A creative listing applied sort: a seller that sorted did so by some field in some direction, as the task listing applied sort requires."
+    },
+    {
+      "file": "media-buy/sync-audiences-request.json",
+      "pointer": "/properties/audiences/items/properties/audience_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "docs/reference/migration/3-2-to-3-3.mdx",
+        "quote": "**An audience ID is non-empty.**"
+      },
+      "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. An audience ID, the buyer key that sync_audiences upserts; an empty string names no audience."
+    },
+    {
+      "file": "media-buy/sync-audiences-response.json",
+      "pointer": "/oneOf/0/properties/audiences/items/properties/audience_id",
+      "bound": "minLength",
+      "value": 1,
+      "release": "3.3.0",
+      "source": {
+        "path": "docs/reference/migration/3-2-to-3-3.mdx",
+        "quote": "**An audience ID is non-empty.**"
+      },
+      "reason": "No earlier published 3.x text sets this bound; 3.3 states it for the first time. An audience ID, the buyer key that sync_audiences upserts; an empty string names no audience."
+    },
+    {
+      "file": "media-buy/sync-catalogs-async-response-working.json",
+      "pointer": "/properties/current_step",
+      "bound": "maxLength",
+      "value": 500,
+      "release": "3.3.0",
+      "source": {
+        "path": "dist/schemas/3.2.12/core/compact-task-working.json",
+        "quote": "\"current_step\": { \"type\": \"string\", \"maxLength\": 500 },"
+      },
+      "reason": "Applies the bound the published text sets. 3.2.12 published this bound on current_step in core/compact-task-working.json, the progress payload of a working task. The current step of a working task, which core/task-current-step.json bounds."
     }
   ]
 }

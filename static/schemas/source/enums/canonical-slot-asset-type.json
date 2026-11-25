@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/canonical-slot-asset-type.json",
+  "title": "Canonical Slot Asset Type",
+  "description": "Asset type that a canonical format slot accepts. Each value selects an asset schema.",
+  "type": "string",
+  "enum": [
+    "image",
+    "video",
+    "audio",
+    "text",
+    "markdown",
+    "url",
+    "html",
+    "css",
+    "javascript",
+    "vast",
+    "daast",
+    "display_tag",
+    "webhook",
+    "brief",
+    "video_brief",
+    "catalog",
+    "published_post",
+    "zip",
+    "card",
+    "object",
+    "pixel_tracker",
+    "vast_tracker",
+    "daast_tracker"
+  ]
+}

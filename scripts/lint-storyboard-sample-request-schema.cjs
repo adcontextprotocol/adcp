@@ -167,6 +167,9 @@ const SHA256_DIGEST_PLACEHOLDER = `sha256:${'A'.repeat(43)}`;
  * The `depth` guard prevents infinite recursion on self-referential schemas.
  */
 function placeholderFor(schema, depth = 0) {
+  // A named definition can itself compose with allOf, so follow a $ref before
+  // looking for the composition.
+  if (schema?.$ref && depth <= 4) return placeholderFor(loadSchema(schema.$ref), depth + 1);
   // Whole-value witnesses can contain selectors composed with allOf. Merge
   // required object fields for placeholders only; AJV validates the full schema.
   if (Array.isArray(schema?.allOf)) {

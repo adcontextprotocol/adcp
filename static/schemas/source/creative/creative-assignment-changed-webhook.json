@@ -24,19 +24,19 @@
       "$ref": "/schemas/core/subscriber-id.json"
     },
     "account_id": {
-      "type": "string",
+      "$ref": "/schemas/core/account-id.json",
       "x-entity": "account"
     },
     "media_buy_id": {
-      "type": "string",
+      "$ref": "/schemas/core/media-buy-id.json",
       "x-entity": "media_buy"
     },
     "package_id": {
-      "type": "string",
+      "$ref": "/schemas/core/package-id.json",
       "x-entity": "package"
     },
     "creative_id": {
-      "type": "string",
+      "$ref": "/schemas/core/creative-id.json",
       "x-entity": "creative"
     },
     "change_kind": {

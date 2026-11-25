@@ -40,11 +40,8 @@
       "$ref": "/schemas/core/media-buy-legacy-terms-ref.json"
     },
     "applicable_package_ids": {
-      "type": "array",
-      "description": "For a package-scoped action, the exact packages currently eligible. Omission means every relevant package. Root actions omit this field.",
-      "items": { "$ref": "/schemas/core/applicable-package-id.json" },
-      "minItems": 1,
-      "uniqueItems": true
+      "$ref": "/schemas/core/applicable-package-ids.json",
+      "description": "For a package-scoped action, the exact packages currently eligible. Omission means every relevant package. Root actions omit this field."
     }
   },
   "required": ["action", "mode"],
@@ -66,7 +63,20 @@
     },
     {
       "if": { "required": ["review_sla"] },
-      "then": { "properties": { "action": { "enum": ["sync_creatives", "replace_creative", "update_creative_assignments"] } } }
+      "then": {
+        "properties": {
+          "action": {
+            "enum": [
+              "sync_creatives",
+              "replace_creative",
+              "update_creative_assignments"
+            ]
+          },
+          "task": {
+            "const": "sync_creatives"
+          }
+        }
+      }
     }
   ],
   "additionalProperties": true

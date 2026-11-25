@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/capability-preview-variant.json",
+  "title": "Capability Preview Variant",
+  "description": "One preview of a multi-capability build: a preview ID, one or more renders, the default input that produced them, and the creative capability (or, deprecated, the named format) it was generated for.",
+  "type": "object",
+  "properties": {
+    "preview_id": {
+      "type": "string",
+      "description": "Unique identifier for this preview"
+    },
+    "format_id": {
+      "$ref": "/schemas/core/format-id.json",
+      "deprecated": true,
+      "description": "Deprecated named-format correlation for a legacy target_format_ids request."
+    },
+    "capability_id": {
+      "$ref": "/schemas/core/creative-capability-id.json",
+      "description": "Canonical creative capability this preview was generated through. Matches one requested target_capability_ids entry."
+    },
+    "renders": {
+      "type": "array",
+      "description": "Array of rendered pieces for this format's preview. Most formats render as a single piece. Companion ad formats render as multiple pieces.",
+      "items": {
+        "$ref": "/schemas/creative/preview-render.json"
+      },
+      "minItems": 1
+    },
+    "input": {
+      "$ref": "/schemas/core/preview-input.json",
+      "description": "The input parameters that generated this preview. For multi-format responses, this is always a default input."
+    }
+  },
+  "required": [
+    "preview_id",
+    "renders",
+    "input"
+  ],
+  "anyOf": [
+    {
+      "required": [
+        "capability_id"
+      ]
+    },
+    {
+      "required": [
+        "format_id"
+      ]
+    }
+  ]
+}

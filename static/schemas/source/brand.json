@@ -94,29 +94,10 @@
       "$ref": "/schemas/core/brand-localized-scalar.json"
     },
     "localized_string_list_entry": {
-      "type": "object",
-      "description": "One locale mapped to a complete ordered string list. The list is selected as a unit so readers never assemble mixed-language output from independently localized elements.",
-      "minProperties": 1,
-      "maxProperties": 1,
-      "additionalProperties": {
-        "type": "array",
-        "items": { "type": "string" },
-        "minItems": 1
-      }
+      "$ref": "/schemas/core/brand-localized-string-list-entry.json"
     },
     "localized_string_list": {
-      "description": "A legacy plain string list or an ordered set of one-locale maps whose values are complete string lists. Producers MUST NOT repeat a locale after replacing '_' with '-' and applying the AdCP locale-tag canonicalization profile.",
-      "oneOf": [
-        {
-          "type": "array",
-          "items": { "type": "string" }
-        },
-        {
-          "type": "array",
-          "items": { "$ref": "#/definitions/localized_string_list_entry" },
-          "minItems": 1
-        }
-      ]
+      "$ref": "/schemas/core/brand-localized-string-list.json"
     },
     "default_language": {
       "allOf": [
@@ -286,26 +267,8 @@
               "description": "Simple tone descriptors for backwards compatibility"
             },
             {
-              "type": "object",
-              "description": "Structured brand voice guidelines",
-              "properties": {
-                "voice": {
-                  "$ref": "#/definitions/localized_scalar",
-                  "description": "High-level voice descriptor, either a legacy plain string or localized values."
-                },
-                "attributes": {
-                  "$ref": "#/definitions/localized_string_list",
-                  "description": "Personality traits that characterize the brand voice. Localized lists are selected as a whole."
-                },
-                "dos": {
-                  "$ref": "#/definitions/localized_string_list",
-                  "description": "Guidance for copy generation - what TO do. Localized lists are selected as a whole."
-                },
-                "donts": {
-                  "$ref": "#/definitions/localized_string_list",
-                  "description": "Guardrails to avoid brand violations - what NOT to do. Localized lists are selected as a whole."
-                }
-              }
+              "$ref": "/schemas/core/brand-tone.json",
+              "description": "Structured brand voice guidelines"
             }
           ]
         },
@@ -404,7 +367,10 @@
           "type": "object",
           "description": "Brand-level contact information",
           "properties": {
-            "email": { "type": "string", "format": "email", "description": "Contact email" },
+            "email": {
+              "$ref": "/schemas/core/email-address.json",
+              "description": "Contact email"
+            },
             "phone": { "type": "string", "description": "Contact phone number" }
           }
         },
@@ -421,7 +387,7 @@
                 "x-added-in": "3.3.0"
               },
               "collection_id": {
-                "type": "string",
+                "$ref": "/schemas/core/collection-id.json",
                 "description": "Collection identifier as used in the seller's get_products responses. Scoped to publisher_domain when present."
               },
               "name": {
@@ -490,7 +456,8 @@
       "description": "Alias for the shared core identity relying party schema, kept so existing references to brand.json#/definitions/identity_relying_party keep resolving."
     },
     "brand_agent": {
-      "$ref": "/schemas/core/brand-agent.json"
+      "$ref": "/schemas/core/brand-agent.json",
+      "description": "Reference to a brand agent that provides brand data via MCP"
     },
     "rights_agent": {
       "type": "object",
@@ -540,10 +507,8 @@
           "description": "Agent endpoint URL (MCP or A2A). Callers comparing a brand's declared agent URL against another value (e.g., resolving 'is this the agent that signed this artifact?' or matching against a discovery cache) MUST canonicalize both sides per the AdCP URL canonicalization rules, not byte-equality. After the publication chain and an authorized request-signing key verify, this exact entry's canonical URL is the stable Agent identity input for principal mapping; the domain, JWKS URI, kid, and key material are credential or trust facts beneath it, not the Agent identity. See docs/reference/url-canonicalization."
         },
         "id": {
-          "type": "string",
-          "description": "Agent identifier (useful for logging, multi-tenant platforms)",
-          "pattern": "^[a-z0-9_]+$",
-          "maxLength": 100
+          "$ref": "/schemas/core/brand-agent-id.json",
+          "description": "Agent identifier (useful for logging, multi-tenant platforms)"
         },
         "description": {
           "$ref": "/schemas/core/brand-agent-description.json",
@@ -710,7 +675,7 @@
   "oneOf": [
     {
       "type": "object",
-      "title": "Authoritative Location Redirect",
+      "title": "Brand Location Redirect",
       "description": "Redirects to a hosted brand.json file at another URL",
       "properties": {
         "$schema": { "type": "string" },
@@ -770,7 +735,7 @@
     },
     {
       "type": "object",
-      "title": "Brand Agent",
+      "title": "Agent-Represented Brand",
       "description": "Brand represented by agents that provide brand info via MCP",
       "properties": {
         "$schema": { "type": "string" },

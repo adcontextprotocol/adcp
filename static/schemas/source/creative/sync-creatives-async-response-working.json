@@ -3,30 +3,12 @@
   "$id": "/schemas/creative/sync-creatives-async-response-working.json",
   "title": "Sync Creatives - Working",
   "description": "Progress payload for active sync_creatives task.",
-  "type": "object",
   "allOf": [
-    { "$ref": "/schemas/core/protocol-envelope.json" },
-    { "$ref": "/schemas/core/task-working.json" }
+    {
+      "$ref": "/schemas/core/compact-task-working.json"
+    }
   ],
   "properties": {
-    "percentage": {
-      "$ref": "/schemas/core/percentage.json",
-      "description": "Completion percentage (0-100)"
-    },
-    "current_step": {
-      "type": "string",
-      "description": "Current step or phase of the operation"
-    },
-    "total_steps": {
-      "type": "integer",
-      "minimum": 1,
-      "description": "Total number of steps in the operation"
-    },
-    "step_number": {
-      "type": "integer",
-      "minimum": 1,
-      "description": "Current step number"
-    },
     "creatives_processed": {
       "type": "integer",
       "minimum": 0,
@@ -36,13 +18,6 @@
       "type": "integer",
       "minimum": 0,
       "description": "Total number of creatives to process"
-    },
-    "context": {
-      "$ref": "/schemas/core/context.json"
-    },
-    "ext": {
-      "$ref": "/schemas/core/ext.json"
     }
-  },
-  "additionalProperties": true
+  }
 }

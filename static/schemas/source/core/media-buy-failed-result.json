@@ -3,32 +3,22 @@
   "$id": "/schemas/core/media-buy-failed-result.json",
   "title": "Media Buy Failed Result",
   "description": "A failed media buy result: status `failed` with one or more errors, and no media buy ID or warnings.",
-  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/task-error-response.json"
+    }
+  ],
   "properties": {
     "status": {
       "type": "string",
       "const": "failed",
       "default": "failed"
-    },
-    "errors": {
-      "type": "array",
-      "items": {
-        "$ref": "/schemas/core/error.json"
-      },
-      "minItems": 1
-    },
-    "context": {
-      "$ref": "/schemas/core/context.json"
-    },
-    "ext": {
-      "$ref": "/schemas/core/ext.json"
     }
   },
   "required": [
     "status",
     "errors"
   ],
-  "additionalProperties": true,
   "not": {
     "anyOf": [
       {

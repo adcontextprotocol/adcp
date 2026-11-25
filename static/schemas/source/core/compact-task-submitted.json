@@ -5,16 +5,12 @@
   "description": "Bounded submitted envelope shared by the compact lifecycle tools.",
   "type": "object",
   "allOf": [
-    { "$ref": "/schemas/core/protocol-envelope.json" },
-    { "$ref": "/schemas/core/task-submitted.json" }
-  ],
-  "properties": {
-    "errors": {
-      "type": "array",
-      "items": { "$ref": "/schemas/core/error.json" }
+    {
+      "$ref": "/schemas/core/protocol-envelope.json"
     },
-    "context": { "$ref": "/schemas/core/context.json" },
-    "ext": { "$ref": "/schemas/core/ext.json" }
-  },
+    {
+      "$ref": "/schemas/core/task-submitted-response.json"
+    }
+  ],
   "additionalProperties": true
 }

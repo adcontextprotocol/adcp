@@ -198,13 +198,11 @@
       "description": "Default slots for html5 canonical. Buyer ships a zip bundle plus optional backup image (required when `backup_image_required: true`) and clickthrough URL. The zip's entry point is typically `index.html`; click handling uses the `clickTag` (or `clickTAG`) macro substituted by the seller at serve time."
     },
     "width": {
-      "type": "integer",
-      "minimum": 1,
+      "$ref": "/schemas/core/pixel-length.json",
       "description": "Accepted logical entry-canvas width in pixels for a fixed-size slot; height must also be set. Alternatively use `sizes[]` or responsive `min_width`/`max_width`/`min_height`/`max_height` bounds. These modes are mutually exclusive, but no size mode is also structurally valid. Omission follows the enclosing declaration's technical_requirements_complete assertion."
     },
     "height": {
-      "type": "integer",
-      "minimum": 1,
+      "$ref": "/schemas/core/pixel-length.json",
       "description": "Accepted logical entry-canvas height in pixels for a fixed-size slot; width must also be set. See `width` for size-mode mutual exclusion and omission semantics."
     },
     "sizes": {

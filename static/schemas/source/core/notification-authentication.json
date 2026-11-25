@@ -6,16 +6,12 @@
   "type": "object",
   "properties": {
     "schemes": {
-      "type": "array",
-      "items": {
-        "$ref": "/schemas/enums/auth-scheme.json"
-      },
-      "minItems": 1,
-      "maxItems": 1
+      "$ref": "/schemas/core/webhook-auth-schemes.json"
     },
     "credentials": {
       "$ref": "/schemas/core/auth-credential.json",
-      "description": "Credentials for the legacy scheme. Bearer: token. HMAC-SHA256: shared secret. Minimum 32 characters. Exchanged out-of-band during onboarding. Write-only."
+      "description": "Credentials for the legacy scheme. Bearer: token. HMAC-SHA256: shared secret. Minimum 32 characters. Exchanged out-of-band during onboarding. Write-only.",
+      "x-max-length-4.0": 512
     }
   },
   "required": [

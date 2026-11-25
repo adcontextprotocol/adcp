@@ -6,12 +6,12 @@
   "type": "object",
   "properties": {
     "product_id": {
-      "type": "string",
+      "$ref": "/schemas/core/product-id.json",
       "description": "Opaque identifier for this buyable product. For a non-custom wholesale product, sellers MUST reuse the ID for the same logical catalog offer within the seller and declared cache_scope across reads and wholesale-feed webhooks; feed and pricing versions communicate temporal catalog mutation, while retirement or replacement may end the identity. Concurrent or request-bound configurations whose effective targeting, disclosed targeting modifications, forecast assumptions, terms, or overlay support differ MUST use distinguishable configured product IDs. For is_custom: true, the ID identifies only the request-specific discovery/refinement lineage and is not stable across independent contexts. Sellers MUST keep every issued configured ID resolvable for its promised lifetime. Pricing variants within one logical product are distinguished by pricing_option_id: a seller MUST mint a new pricing_option_id whenever a binding fixed price, floor, currency, model, or priced applicability changes, and MUST NOT reinterpret an issued option ID at a new price. Selecting product_id plus pricing_option_id in create_media_buy accepts that returned configuration and commercial option.",
       "x-entity": "product"
     },
     "name": {
-      "type": "string",
+      "$ref": "/schemas/core/product-name.json",
       "description": "Human-readable product name"
     },
     "description": {
@@ -374,7 +374,8 @@
           "items": {
             "$ref": "/schemas/enums/conversion-optimization-target.json"
           },
-          "minItems": 1
+          "minItems": 1,
+          "uniqueItems": true
         },
         "platform_managed": {
           "type": "boolean",
@@ -483,10 +484,7 @@
       "type": "array",
       "description": "Collections available in this product. A non-empty array is the complete roster. `[]` means the seller does not disclose it (undisclosed); absent makes no collection declaration. It bounds nothing. MUST NOT be `[]` on a response served below 3.3. Each entry references collections declared in an adagents.json by domain and collection ID. Buyers resolve full collection objects from the referenced adagents.json. Product selectors must name explicit collection_ids — the domain-only bulk-grant selector form is for authorization scoping, not product composition.",
       "items": {
-        "allOf": [
-          { "$ref": "/schemas/core/collection-selector.json" },
-          { "required": ["collection_ids"] }
-        ]
+        "$ref": "/schemas/core/explicit-collection-selector.json"
       }
     },
     "collection_targeting_allowed": {
@@ -507,7 +505,9 @@
       "description": "Specific installments included in this product. Each installment references its parent through canonical collection_ref when the product spans multiple collections or publisher namespaces; collection_id remains a deprecated single-namespace shorthand. When absent with collections present, the product covers the collections broadly (run-of-collection).",
       "items": {
         "$ref": "/schemas/core/installment.json"
-      }
+      },
+      "minItems": 1,
+      "maxItems": 500
     },
     "enforced_policies": {
       "type": "array",

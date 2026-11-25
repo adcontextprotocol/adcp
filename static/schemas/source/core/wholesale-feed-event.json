@@ -66,7 +66,7 @@
           "required": ["product_id", "applies_to"],
           "properties": {
             "product_id": {
-              "type": "string"
+              "$ref": "/schemas/core/product-id.json"
             },
             "product": {
               "$ref": "/schemas/core/product.json",
@@ -108,7 +108,7 @@
           "required": ["product_id", "applies_to"],
           "properties": {
             "product_id": {
-              "type": "string"
+              "$ref": "/schemas/core/product-id.json"
             },
             "product": {
               "$ref": "/schemas/core/product.json",
@@ -157,7 +157,7 @@
           "required": ["product_id", "applies_to"],
           "properties": {
             "product_id": {
-              "type": "string"
+              "$ref": "/schemas/core/product-id.json"
             },
             "pricing_options": {
               "type": "array",
@@ -225,7 +225,7 @@
           ],
           "properties": {
             "product_id": {
-              "type": "string"
+              "$ref": "/schemas/core/product-id.json"
             },
             "removal_reason": {
               "$ref": "#/$defs/removalReason"
@@ -260,7 +260,7 @@
           ],
           "properties": {
             "signal_agent_segment_id": {
-              "type": "string"
+              "$ref": "/schemas/core/signal-agent-segment-id.json"
             },
             "signal_ref": {
               "$ref": "/schemas/core/signal-ref.json"
@@ -300,7 +300,7 @@
           ],
           "properties": {
             "signal_agent_segment_id": {
-              "type": "string"
+              "$ref": "/schemas/core/signal-agent-segment-id.json"
             },
             "signal_ref": {
               "$ref": "/schemas/core/signal-ref.json"
@@ -347,7 +347,7 @@
           ],
           "properties": {
             "signal_agent_segment_id": {
-              "type": "string"
+              "$ref": "/schemas/core/signal-agent-segment-id.json"
             },
             "signal_ref": {
               "$ref": "/schemas/core/signal-ref.json"
@@ -406,7 +406,7 @@
           ],
           "properties": {
             "signal_agent_segment_id": {
-              "type": "string"
+              "$ref": "/schemas/core/signal-agent-segment-id.json"
             },
             "signal_ref": {
               "$ref": "/schemas/core/signal-ref.json"
@@ -535,10 +535,10 @@
           "properties": {
             "publisher_domain": {
               "$ref": "/schemas/core/domain-name.json",
-              "description": "Domain where the adagents.json declaring these collections is hosted (e.g., 'mrbeast.com'). The collections array in that file contains the authoritative collection definitions."
+              "description": "Domain where the adagents.json declaring the collection is hosted. With collection_id, the key of the card mirror entry."
             },
             "collection_id": {
-              "type": "string",
+              "$ref": "/schemas/core/collection-id.json",
               "x-entity": "collection"
             },
             "removal_reason": {
@@ -665,93 +665,9 @@
       "description": "Why the entity was removed. For collection_card.removed the reason describes why this seller stopped offering the card, not a change to the publisher's declaration. 'withdrawn': seller-initiated, no resubmit path. 'cancellation': resource cancelled, may return. 'expired': time-bounded availability ended (flight ended, seasonal product retired). 'depublication': underlying property depublished (see publisher.adagents_changed in the registry feed). 'policy_takedown': governance-driven removal (AdCP governance agent OR external regulator/legal takedown). In-flight buys honor existing cancellation policy regardless of reason; storefront UX differs."
     },
     "signal": {
-      "type": "object",
+      "$ref": "/schemas/core/signal-catalog-entry.json",
       "title": "Wholesale signal object",
-      "description": "One signal entry using the same wire shape as an item in get_signals.signals[].",
-      "allOf": [
-        {
-          "$ref": "/schemas/core/signal-listing.json"
-        }
-      ],
-      "properties": {
-        "signal_ref": {
-          "$ref": "/schemas/core/signal-ref.json",
-          "description": "Canonical signal reference for this wholesale signal. New events SHOULD use signal_ref."
-        },
-        "signal_id": {
-          "$ref": "/schemas/core/signal-id.json",
-          "description": "DEPRECATED. Use signal_ref instead. Legacy SignalId retained for compatibility with older clients.",
-          "deprecated": true
-        },
-        "signal_agent_segment_id": {
-          "type": "string",
-          "description": "Opaque activation handle returned by the signals agent.",
-          "minLength": 1
-        },
-        "name": {
-          "$ref": "/schemas/core/signal-name.json",
-          "description": "Human-readable signal name"
-        },
-        "description": {
-          "$ref": "/schemas/core/signal-description.json",
-          "description": "Detailed signal description"
-        },
-        "value_type": {
-          "$ref": "/schemas/enums/signal-value-type.json"
-        },
-        "categories": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "minItems": 1
-        },
-        "range": {
-          "$ref": "/schemas/core/numeric-range.json"
-        },
-        "signal_type": {
-          "$ref": "/schemas/enums/signal-catalog-type.json"
-        },
-        "data_provider": {
-          "type": "string",
-          "minLength": 1
-        },
-        "coverage_percentage": {
-          "$ref": "/schemas/core/percentage.json",
-          "description": "DEPRECATED for detailed planning. Optional legacy scalar percentage of audience coverage retained only as a fallback for clients that do not consume coverage_forecast. When coverage_forecast is present, coverage_forecast is authoritative for signal-level discovery and coverage_percentage is fallback-only.",
-          "deprecated": true
-        },
-        "coverage_forecast": {
-          "$ref": "/schemas/core/signal-coverage-forecast.json",
-          "description": "Optional forecast-shaped signal availability guidance using the same wire shape as get_signals.signals[].coverage_forecast. When present, this is authoritative for signal-level discovery coverage."
-        },
-        "deployments": {
-          "type": "array",
-          "items": {
-            "$ref": "/schemas/core/deployment.json"
-          },
-          "minItems": 1
-        },
-        "pricing_options": {
-          "type": "array",
-          "items": {
-            "$ref": "/schemas/core/vendor-pricing-option.json"
-          },
-          "minItems": 1
-        }
-      },
-      "required": [
-        "signal_agent_segment_id",
-        "name",
-        "description",
-        "signal_type",
-        "deployments"
-      ],
-      "anyOf": [
-        { "required": ["signal_ref"] },
-        { "required": ["signal_id"] }
-      ],
-      "additionalProperties": true
+      "description": "One signal entry using the same wire shape as an item in get_signals.signals[]."
     },
     "repair_recommendation": {
       "title": "Feed Repair Recommendation",

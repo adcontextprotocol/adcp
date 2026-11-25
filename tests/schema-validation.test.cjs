@@ -2623,7 +2623,7 @@ async function runTests() {
             description: 'Weather context',
             signal_type: 'marketplace',
             coverage_forecast: signalCoverageForecast,
-            deployments: []
+            deployments: [{ type: 'platform', platform: 'the-trade-desk', is_live: false }]
           }
         ]
       },

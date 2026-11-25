@@ -100,8 +100,7 @@
       "description": "DEPRECATED legacy coverage filter. On compact discovery tasks use criteria.offer_filters.regions. Return products whose inventory covers at least one requested area; this does not impose delivery targeting or require selectable targeting support. Retained get_products handlers MUST preserve the original coverage predicate.",
       "deprecated": true,
       "items": {
-        "type": "string",
-        "pattern": "^[A-Z]{2}-[A-Z0-9]+$"
+        "$ref": "/schemas/core/country-subdivision-code.json"
       },
       "minItems": 1
     },
@@ -183,13 +182,8 @@
       "items": {
         "oneOf": [
           {
-            "type": "object",
-            "description": "Filter by AdCP audience sync path.",
-            "properties": {
-              "pattern": { "type": "string", "const": "sync_audiences", "default": "sync_audiences" }
-            },
-            "required": ["pattern"],
-            "additionalProperties": true
+            "$ref": "/schemas/core/sync-audiences-method.json",
+            "description": "Filter by AdCP audience sync path."
           },
           {
             "type": "object",

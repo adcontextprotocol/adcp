@@ -5,12 +5,12 @@
   "description": "Payload when build_creative is paused waiting for user input. May occur during generation when the agent needs creative direction, or when brand guidelines require approval.",
   "type": "object",
   "allOf": [
-    { "$ref": "/schemas/core/protocol-envelope.json" },
-    { "$ref": "/schemas/core/task-input-required.json" }
+    {
+      "$ref": "/schemas/core/compact-task-input-required.json"
+    }
   ],
   "properties": {
     "reason": {
-      "type": "string",
       "enum": [
         "APPROVAL_REQUIRED",
         "CREATIVE_DIRECTION_NEEDED",
@@ -19,17 +19,7 @@
       "description": "Reason code indicating why input is needed"
     },
     "errors": {
-      "type": "array",
-      "description": "Optional validation errors or warnings explaining why input is required.",
-      "items": {
-        "$ref": "/schemas/core/error.json"
-      }
-    },
-    "context": {
-      "$ref": "/schemas/core/context.json"
-    },
-    "ext": {
-      "$ref": "/schemas/core/ext.json"
+      "description": "Optional validation errors or warnings explaining why input is required."
     }
   },
   "additionalProperties": true

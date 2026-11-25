@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/iana-timezones.json",
+  "title": "IANA Timezone Identifiers",
+  "description": "Concrete IANA timezone identifiers, each listed once.",
+  "type": "array",
+  "items": {
+    "$ref": "/schemas/core/iana-timezone.json"
+  },
+  "minItems": 1,
+  "uniqueItems": true
+}

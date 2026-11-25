@@ -229,9 +229,8 @@
   "x-status": "experimental",
   "properties": {
     "plan_id": {
-      "type": "string",
-      "description": "Campaign governance plan identifier. Required on the initial intent or availability check, before a governance_context exists. Optional on subsequent checks: the governance agent derives the plan from its own signed governance_context. If both are present, the governance agent MUST reject the request when plan_id does not match the token's plan binding. Services MUST treat governance_context as authoritative and MUST NOT require a buyer to disclose plan_id. A plan is owned by the authenticated buyer principal that synchronized it; plan_id is an identifier, not an account credential.",
-      "x-entity": "governance_plan"
+      "$ref": "/schemas/core/governance-plan-id.json",
+      "description": "Campaign governance plan identifier. Required on the initial intent or availability check, before a governance_context exists. Optional on subsequent checks: the governance agent derives the plan from its own signed governance_context. If both are present, the governance agent MUST reject the request when plan_id does not match the token's plan binding. Services MUST treat governance_context as authoritative and MUST NOT require a buyer to disclose plan_id. A plan is owned by the authenticated buyer principal that synchronized it; plan_id is an identifier, not an account credential."
     },
     "caller": {
       "type": "string",
@@ -314,6 +313,7 @@
             "type": "object",
             "properties": {
               "subject": {
+                "title": "Signal Runtime Attestation Subject",
                 "type": "object",
                 "properties": {
                   "type": {

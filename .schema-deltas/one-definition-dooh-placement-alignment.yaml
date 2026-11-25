@@ -1,0 +1,63 @@
+# Delta manifest (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  One definition per object: DOOH and placement alignment. Placement IDs and names, pixel and render lengths, and
+  preview render dimensions each have one definition; the corrections below follow published 3.2.12 text, and every
+  other change is a $ref to an identical definition.
+changes:
+  - location: core/placement-name.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: both
+    note: >-
+      core/placement.json#/properties/name -> core/placement-name.json. Correction under DR-0036: 3.2.12 defines the
+      product placement name with minLength 1 in core/canonical-placement.json, the compact projection of the same
+      product placement ("name": { "type": "string", "minLength": 1 },
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/canonical-placement.json#L99-L101).
+      Register entry core/placement.json /properties/name.
+  - location: core/placement-id.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: both
+    note: >-
+      core/placement.json#/properties/placement_id -> core/placement-id.json. Correction under DR-0036: 3.2.12 defines
+      the product placement ID with minLength 1 in core/canonical-placement.json ("placement_id": { "type": "string",
+      "minLength": 1, "x-entity": "placement" },
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/canonical-placement.json#L85-L88).
+      Register entry core/placement.json /properties/placement_id.
+  - location: core/dimension-length.json#
+    keyword: exclusiveMinimum
+    new: 0
+    direction: tighten
+    side: response
+    note: >-
+      creative/preview-render.json#/definitions/dimensions (was three inline copies with minimum 0) and
+      registries/v1-canonical-mapping.json structural.dimensions (was unbounded) -> core/dimension-length.json, the
+      width and height of a rendered piece. Correction under DR-0036: 3.2.12 core/format.json renders[].dimensions,
+      "Dimensions for this rendered piece", sets "width": { "type": "number", "exclusiveMinimum": 0 } and the same on
+      height (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/format.json#L123-L135).
+      A preview render renders one of those pieces, and a v1 structural pattern matches against them. Register
+      entries for both sites, width and height.
+  - location: core/dimension-length.json#
+    keyword: minimum
+    old: 0
+    direction: none
+    side: response
+    note: >-
+      creative/preview-render.json#/definitions/dimensions drops minimum 0 for exclusiveMinimum 0. No payload changes
+      verdict because of this line alone: exclusiveMinimum 0 rejects everything minimum 0 rejected, so the
+      exclusiveMinimum line masks it.
+  - location: core/dimension-length.json#
+    keyword: type
+    old:
+      - integer
+    new:
+      - number
+    direction: loosen
+    side: none
+    note: >-
+      registries/v1-canonical-mapping.json structural.dimensions width and height -> core/dimension-length.json. A
+      loosening: the pattern now accepts the fractional lengths of the v1 format dimensions it is compared with
+      (number in core/format.json renders[].dimensions). Witness: structural.dimensions.width = 1.5 (base rejects,
+      head accepts).

@@ -7,14 +7,8 @@
   "type": "object",
   "oneOf": [
     {
-      "title": "AdCP audience sync",
-      "description": "The seller accepts inline audience member pushes via the AdCP sync_audiences task. Any AdCP-speaking buyer can use this path with no additional integration. This pattern declares inline push only; grant- and distribution-based paths carry their own declarations.",
-      "type": "object",
-      "properties": {
-        "pattern": { "type": "string", "const": "sync_audiences", "default": "sync_audiences" }
-      },
-      "required": ["pattern"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/sync-audiences-method.json",
+      "description": "The seller accepts inline audience member pushes via the AdCP sync_audiences task. Any AdCP-speaking buyer can use this path with no additional integration. This pattern declares inline push only; grant- and distribution-based paths carry their own declarations."
     },
     {
       "title": "TMP identity match",
@@ -70,30 +64,7 @@
           "type": "array",
           "description": "Principals the buyer grants access to in the vendor's system. identity is always required. cloud and region are optional, paired deployment metadata: omit both for global principals (for example, an IAM principal or federated identity). Their operational meaning is vendor-specific — they may constrain direct-share reachability or select a fulfillment route, or may be routing and cost hints only. They are not compliance boundaries; data-transfer assessments key on the recipient entity's jurisdiction, not the grantee account's region. Optional: sellers MAY instead communicate identities during account setup.",
           "items": {
-            "type": "object",
-            "properties": {
-              "cloud": {
-                "$ref": "/schemas/enums/delivery-recipient-cloud.json",
-                "description": "Cloud family hosting this identity's account."
-              },
-              "region": {
-                "type": "string",
-                "description": "Vendor/cloud region identifier. Format follows the cloud family's region naming; not constrained by this schema.",
-                "maxLength": 128
-              },
-              "identity": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Principal to grant, interpreted relative to the enclosing entry's vendor.domain. Format is vendor-specific and opaque — Snowflake: orgname.accountname; Databricks: sharing recipient identifier; BigQuery: IAM principal.",
-                "maxLength": 128
-              }
-            },
-            "required": ["identity"],
-            "dependencies": {
-              "cloud": ["region"],
-              "region": ["cloud"]
-            },
-            "additionalProperties": true
+            "$ref": "#/definitions/dataset_query_consumer_identity"
           },
           "minItems": 1,
           "maxItems": 32
@@ -103,18 +74,8 @@
       "additionalProperties": true
     },
     {
-      "title": "Clean room",
-      "description": "Privacy-preserving match in the named vendor's clean room; neither party sees the other's raw rows. A seller MUST declare this audience-activation pattern only when the collaboration can produce an audience targetable on this product; analytics-only or measurement-only room access does not qualify. The declaration does not imply that output is portable. Room setup is bilateral onboarding. Platform-native or partner-distributed output pairs with platform_distribution; queryable output pairs with dataset_query. The resulting audience binds through a dataset or platform_segment source reference on sync_audiences (core/audience-source.json).",
-      "type": "object",
-      "properties": {
-        "pattern": { "type": "string", "const": "clean_room", "default": "clean_room" },
-        "vendor": {
-          "$ref": "/schemas/core/brand-ref.json",
-          "description": "Clean-room product's operating domain."
-        }
-      },
-      "required": ["pattern", "vendor"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/clean-room-method.json",
+      "description": "Privacy-preserving match in the named vendor's clean room; neither party sees the other's raw rows. A seller MUST declare this audience-activation pattern only when the collaboration can produce an audience targetable on this product; analytics-only or measurement-only room access does not qualify. The declaration does not imply that output is portable. Room setup is bilateral onboarding. Platform-native or partner-distributed output pairs with platform_distribution; queryable output pairs with dataset_query. The resulting audience binds through a dataset or platform_segment source reference on sync_audiences (core/audience-source.json)."
     },
     {
       "title": "Platform distribution",
@@ -156,5 +117,38 @@
     },
     { "pattern": "clean_room", "vendor": { "domain": "collaboration-room.example" } },
     { "pattern": "platform_distribution", "vendor": { "domain": "activation-hub.example" }, "destination_ref": "dest_12345", "bind_expiry_days": 14 }
-  ]
+  ],
+  "definitions": {
+    "dataset_query_consumer_identity": {
+      "title": "Dataset Query Consumer Identity",
+      "description": "A principal that a buyer grants access to a buyer-hosted dataset in the vendor's data-sharing system, so the seller can read it.",
+      "type": "object",
+      "properties": {
+        "cloud": {
+          "$ref": "/schemas/enums/delivery-recipient-cloud.json",
+          "description": "Cloud family hosting this identity's account."
+        },
+        "region": {
+          "$ref": "/schemas/core/cloud-region.json",
+          "description": "Vendor/cloud region identifier. Format follows the cloud family's region naming; not constrained by this schema."
+        },
+        "identity": {
+          "$ref": "/schemas/core/sharing-principal-identity.json",
+          "description": "Principal to grant, interpreted relative to the enclosing entry's vendor.domain. Format is vendor-specific and opaque — Snowflake: orgname.accountname; Databricks: sharing recipient identifier; BigQuery: IAM principal."
+        }
+      },
+      "required": [
+        "identity"
+      ],
+      "dependencies": {
+        "cloud": [
+          "region"
+        ],
+        "region": [
+          "cloud"
+        ]
+      },
+      "additionalProperties": true
+    }
+  }
 }

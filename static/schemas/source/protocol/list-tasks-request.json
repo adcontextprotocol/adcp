@@ -4,41 +4,11 @@
   "title": "List Tasks Request",
   "description": "Request parameters for the list_tasks AdCP tool. This is a 3.x protocol-namespace alias for the legacy AdCP tasks/list reconciliation surface, not a transport-native MCP/A2A tasks/* method. It lists and filters AdCP application-layer async tasks for state reconciliation while preserving the legacy 3.x payload shape.",
   "x-tool-summary": "List and filter AdCP asynchronous tasks for state reconciliation.",
-  "type": "object",
   "allOf": [
     {
-      "$ref": "/schemas/core/version-envelope.json"
+      "$ref": "/schemas/core/tasks-list-request.json"
     }
   ],
-  "properties": {
-    "account": {
-      "$ref": "/schemas/core/account-ref.json",
-      "description": "Account scope for task reconciliation. Sellers MUST only return tasks created for the caller's authenticated account + principal pair. When omitted, the seller MAY use the credential-bound singleton account, but multi-account credentials SHOULD require an explicit account."
-    },
-    "filters": {
-      "$ref": "/schemas/core/task-filters.json",
-      "description": "Filter criteria for querying tasks"
-    },
-    "sort": {
-      "$ref": "/schemas/core/task-sort.json",
-      "description": "Sorting parameters"
-    },
-    "pagination": {
-      "$ref": "/schemas/core/pagination-request.json"
-    },
-    "include_history": {
-      "type": "boolean",
-      "default": false,
-      "description": "Include full conversation history for each task (may significantly increase response size)"
-    },
-    "context": {
-      "$ref": "/schemas/core/context.json"
-    },
-    "ext": {
-      "$ref": "/schemas/core/ext.json"
-    }
-  },
-  "additionalProperties": true,
   "examples": [
     {
       "description": "List all pending tasks across protocols",

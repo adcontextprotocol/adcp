@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/pixel-length.json",
+  "title": "Pixel Length",
+  "description": "A whole number of pixels along one axis, such as a width or a height. The smallest length is one pixel.",
+  "type": "integer",
+  "minimum": 1
+}

@@ -22,7 +22,7 @@
             "type": "object",
             "properties": {
               "event_source_id": {
-                "type": "string",
+                "$ref": "/schemas/core/event-source-id.json",
                 "description": "Event source ID from the request",
                 "x-entity": "event_source"
               },
@@ -46,7 +46,8 @@
                 "description": "Event types this source handles",
                 "items": {
                   "$ref": "/schemas/enums/event-type.json"
-                }
+                },
+                "minItems": 1
               },
               "value_currencies": {
                 "type": "array",
@@ -159,27 +160,19 @@
     {
       "title": "SyncEventSourcesError",
       "description": "Error response - operation failed completely",
-      "type": "object",
-      "properties": {
-        "errors": {
-          "type": "array",
-          "description": "Operation-level errors that prevented processing",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          },
-          "minItems": 1
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
+      "allOf": [
+        {
+          "$ref": "/schemas/core/task-error-response.json"
         }
-      },
+      ],
       "required": [
         "errors"
       ],
-      "additionalProperties": true,
+      "properties": {
+        "errors": {
+          "description": "Operation-level errors that prevented processing"
+        }
+      },
       "not": {
         "anyOf": [
           {

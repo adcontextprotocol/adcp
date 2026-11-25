@@ -1,0 +1,295 @@
+# Delta manifest (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  One definition per object: delivery and reporting alignment. Forecast product IDs and currency, measurement windows, finalization
+  deadlines, makegood policies, vendor metric breakdowns, breakdown limits and cursors, delivery providers, and reporting
+  delivery SLAs each have one definition; the corrections below bound them as the published text does, and every other change
+  is a $ref to an identical definition.
+changes:
+- location: core/domain-name.json#
+  keyword: pattern
+  old: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$
+  direction: none
+  side: both
+  note: >-
+    The same delivery-provider domain -> new:core/provider-domain.json. The domain pattern limits each label to 63 characters,
+    as RFC 1035 does (the #8536 label line). The pattern alone would also admit a single-label name; the provider-domain allOf
+    line restates the dotted rule. Masked: the label pattern stays in effect as its own conjunct beside the dotted one, and the
+    check reports it as removed from the merged object, so no payload changes verdict because of this line. The single-label
+    tightening ("localhost" valid at the base, invalid at the head) is the allOf line's, with its recorded witness; a domain
+    with a 64-character label is invalid at both.
+- location: core/reporting-destination-provider.json#/properties/domain
+  keyword: allOf
+  new:
+    pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$
+  direction: tighten
+  side: both
+  note: >-
+    core/reporting-dataset-share-destination.json and core/reporting-write-destination.json provision-branch provider (two
+    closed copies of {domain: domain-name}) -> new:core/reporting-destination-provider.json, which stays closed (the credential-free
+    guard) and writes domain as core/delivery-provider.json does, through new:core/provider-domain.json. Both now reject single-label
+    names. Correction under DR-0036, the same basis as the delivery-provider line: 3.2.12 core/delivery-provider.json "Single-label
+    and localhost-style names are invalid." (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/delivery-provider.json#L8-L12).
+    Both schemas are experimental. The lint does not see pattern; the quote is here. Checked by hand with Ajv: the dataset
+    share destination provider domain "localhost" is valid at the base (core/domain-name.json admits one label) and invalid
+    at the head (the dotted rule core/provider-domain.json adds); a domain with a 64-character label is invalid at both.
+  witness:
+    root: /schemas/core/reporting-dataset-share-destination.json
+    instance:
+      mode: provision
+      access_mode: a
+      recipient:
+        identity: a
+      provider:
+        domain: localhost
+- location: core/reporting-destination-provider.json#/properties/domain
+  keyword: allOf
+  new:
+    pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$
+  direction: tighten
+  side: both
+  note: >-
+    new:core/provider-domain.json keeps the dotted rule of the published delivery provider. core/reporting-delivery-offering.json
+    method.provider and method.producer_identity.provider (inline {domain: domain-name} objects) -> core/delivery-provider.json,
+    so those two providers now reject single-label names. Correction under DR-0036, a schema of the major that defines the
+    concept: 3.2.12 core/delivery-provider.json, the "Provider namespace for an external delivery or data-sharing service",
+    says "Lowercase dotted provider domain, such as a provider's operating domain. Single-label and localhost-style names
+    are invalid." (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/delivery-provider.json#L8-L12).
+    The offering's provider names that same platform. The lint does not see pattern; the quote is here. Hand-checked with
+    Ajv and ajv-formats (repo options): a reporting-delivery-offering.json offering with method.provider.domain "localhost"
+    (the reporting-status contract test's dataset_share offering otherwise) is valid at the base, invalid at the head, and
+    valid again with the dotted allOf member removed. The tool's candidates do not reach the offering roots, so its search
+    finds none.
+- location: core/reporting-delivery-sla.json#
+  keyword: maxLength
+  new: 64
+  direction: tighten
+  side: both
+  note: >-
+    core/reporting-schedule.json#/properties/period_duration (inline, the same pattern) -> core/reporting-period-duration.json,
+    as core/reporting-schedule-offering.json already does. Correction under DR-0036, from a 3.3 prerelease tree, as the register
+    already accepts: 3.3.0-beta.1 reporting-schedule-offering.json gives the offered period_duration "maxLength": 64 (https://github.com/adcontextprotocol/adcp/blob/c0dfa90c28bcb768f70b4da1dfc3ca057050fa0a/dist/schemas/3.3.0-beta.1/core/reporting-schedule-offering.json#L9-L12),
+    and "period_duration, alignment, and delivery_sla MUST equal the installed configuration." (https://github.com/adcontextprotocol/adcp/blob/c0dfa90c28bcb768f70b4da1dfc3ca057050fa0a/dist/schemas/3.3.0-beta.1/core/reporting-schedule-offering.json#L192).
+    Both schemas are experimental, so the lint does not compare them. Hand-checked with Ajv and ajv-formats (repo options):
+    the reporting schedule {period_duration: "P" + 63 zeros + "1D" (66 characters), alignment: utc, delivery_sla: PT0S} is
+    valid at the base, invalid at the head, and valid again with maxLength removed. The tool's length candidates do not match
+    the duration pattern, so its search finds none.
+  witness:
+    root: /schemas/core/reporting-schedule.json
+    instance:
+      period_duration: P1D
+      alignment: utc
+      delivery_sla: P0000000000000000000000000000000000000000000000000000000000000001D
+- location: core/reporting-period-duration.json#
+  keyword: maxLength
+  new: 64
+  direction: tighten
+  side: both
+  note: >-
+    core/reporting-schedule.json#/properties/delivery_sla (core/iso8601-duration.json) and core/reporting-schedule-offering.json#/properties/delivery_sla
+    (the same pattern inline, maxLength 64) -> new:core/reporting-delivery-sla.json: the ISO 8601 duration pattern of core/iso8601-duration.json
+    with maxLength 64, stated in one document as core/reporting-period-duration.json does. The offering keeps its verdicts;
+    the installed schedule gains the bound. Correction under DR-0036, from a 3.3 prerelease tree: 3.3.0-beta.1 reporting-schedule-offering.json
+    gives the offered delivery_sla "maxLength": 64 (https://github.com/adcontextprotocol/adcp/blob/c0dfa90c28bcb768f70b4da1dfc3ca057050fa0a/dist/schemas/3.3.0-beta.1/core/reporting-schedule-offering.json#L42-L45),
+    and the installed delivery_sla MUST equal it (L192, quoted on the period_duration line). Both schemas are experimental,
+    so the lint does not compare them. Hand-checked with Ajv and ajv-formats (repo options): the reporting schedule {period_duration:
+    P1D, alignment: utc, delivery_sla: "P" + 63 zeros + "1D" (66 characters)} is valid at the base, invalid at the head, and
+    valid again with maxLength removed. The tool's length candidates do not match the duration pattern, so its search finds
+    none.
+  witness:
+    root: /schemas/core/reporting-schedule.json
+    instance:
+      period_duration: P0000000000000000000000000000000000000000000000000000000000000001D
+      alignment: utc
+      delivery_sla: PT1H
+- location: core/measurement-window-id.json#
+  keyword: minLength
+  new: 1
+  direction: tighten
+  side: both
+  note: >-
+    core/forecast-point.json#/properties/product_id and core/canonical-forecast-point.json#/properties/product_id (inline
+    strings, x-entity product) -> core/product-id.json. Correction under DR-0036: 3.2.12 defines the product ID with minLength
+    1 in core/canonical-product.json ("product_id": { "type": "string", "minLength": 1, "x-entity": "product" https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/canonical-product.json#L8-L11).
+    A forecast row's product_id names that product. Register entries for both forecast-point sites.
+- location: core/product-id.json#
+  keyword: minLength
+  new: 1
+  direction: tighten
+  side: both
+  note: >-
+    core/measurement-window-id.json takes minLength 1, and core/measurement-terms.json and core/canonical-measurement-terms.json
+    billing_measurement.measurement_window (inline strings) reference it. This reaches every window ID site: measurement-window.json
+    window_id, report_usage measurement_window, and the delivery rows' measurement_window and supersedes_window. Correction
+    under DR-0036, a schema of the major that defines the concept: 3.2.12 canonical-measurement-terms.json publishes the billing
+    measurement window as "measurement_window": { "type": "string", "minLength": 1 (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/canonical-measurement-terms.json#L19-L21),
+    and that window "References a window_id from the product's reporting_capabilities.measurement_windows" (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/measurement-terms.json#L24).
+    Register entries for each reported pointer.
+- location: core/measurement-window-id.json#
+  keyword: maxLength
+  new: 50
+  direction: tighten
+  side: both
+  note: >-
+    core/measurement-terms.json and core/canonical-measurement-terms.json billing_measurement.measurement_window -> core/measurement-window-id.json.
+    Correction under DR-0036: 3.2.12 core/measurement-window.json defines the window ID with "window_id": { "type": "string",
+    "maxLength": 50, (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/measurement-window.json#L8-L10),
+    and the billing measurement window "References a window_id from the product's reporting_capabilities.measurement_windows"
+    (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/measurement-terms.json#L24).
+    Register entries for both terms sites.
+- location: core/country-code.json#
+  keyword: pattern
+  new: ^[A-Z]{2}$
+  direction: tighten
+  side: both
+  note: >-
+    core/planned-delivery.json#/properties/geo/properties/countries/items -> core/country-code.json. Correction under DR-0036,
+    an external standard the text names: 3.2.12 planned-delivery.json says "ISO 3166-1 alpha-2 country codes where ads will
+    deliver." (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/planned-delivery.json#L35).
+    The lint does not see pattern; the quote is here.
+- location: core/country-subdivision-code.json#
+  keyword: pattern
+  new: ^[A-Z]{2}-[A-Z0-9]{1,3}$
+  direction: tighten
+  side: both
+  note: >-
+    core/planned-delivery.json#/properties/geo/properties/regions/items -> core/country-subdivision-code.json. Correction
+    under DR-0036, an external standard the text names: 3.2.12 planned-delivery.json says "ISO 3166-2 subdivision codes where
+    ads will deliver." (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/planned-delivery.json#L42).
+    The lint does not see pattern; the quote is here.
+- location: core/currency-code.json#
+  keyword: pattern
+  new: ^[A-Z]{3}$
+  direction: tighten
+  side: both
+  note: >-
+    core/delivery-forecast.json#/properties/currency -> core/currency-code.json, as core/canonical-delivery-forecast.json
+    already does. Correction under DR-0036, an external standard the text names: 3.2.12 delivery-forecast.json says "ISO 4217
+    currency code for monetary values in this forecast (spend, budget)" (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/delivery-forecast.json#L26),
+    and the compact forecast published the same field as "currency": { "type": "string", "pattern": "^[A-Z]{3}$" } (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/canonical-delivery-forecast.json#L21-L24).
+    The lint does not see pattern; the quote is here.
+- location: core/domain-name.json#
+  keyword: maxLength
+  new: 253
+  direction: tighten
+  side: both
+  note: >-
+    core/delivery-provider.json#/properties/domain (an inline dotted-domain string) -> new:core/provider-domain.json, which
+    composes core/domain-name.json. Correction under DR-0036, with the basis of the existing register entries for core/domain-name.json:
+    RFC 1035 limits a DNS name to 253 characters, and 3.2.8 published that limit on a domain: "\"upstream_source_domain\":
+    { \"type\": \"string\", \"format\": \"hostname\", \"maxLength\": 253," (https://github.com/adcontextprotocol/adcp/blob/6ed4b25e261f54d6b106938d0724757bea9dc5fc/dist/schemas/3.2.8/core/signal-definition.json#L453-L456).
+    Reaches core/agent-reporting-destination.json through its three provider sites; that schema is experimental, so the lint
+    does not compare it and no entry is needed.
+- location: core/domain-name.json#
+  keyword: pattern
+  old: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$
+  direction: tighten
+  side: both
+  note: >-
+    The same delivery-provider domain -> new:core/provider-domain.json. The domain pattern limits each label to 63 characters,
+    as RFC 1035 does (the #8536 label line). The pattern alone would also admit a single-label name; the provider-domain allOf
+    line restates the dotted rule, so this line only tightens.
+- location: core/delivery-provider.json#/properties/domain
+  keyword: allOf
+  new:
+    pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$
+  direction: tighten
+  side: both
+  note: >-
+    new:core/provider-domain.json keeps the dotted rule of the published delivery provider. core/reporting-delivery-offering.json
+    method.provider and method.producer_identity.provider (inline {domain: domain-name} objects) -> core/delivery-provider.json,
+    so those two providers now reject single-label names. Correction under DR-0036, a schema of the major that defines the
+    concept: 3.2.12 core/delivery-provider.json, the "Provider namespace for an external delivery or data-sharing service",
+    says "Lowercase dotted provider domain, such as a provider's operating domain. Single-label and localhost-style names
+    are invalid." (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/delivery-provider.json#L8-L12).
+    The offering's provider names that same platform. The lint does not see pattern; the quote is here. Hand-checked with
+    Ajv and ajv-formats (repo options): a reporting-delivery-offering.json offering with method.provider.domain "localhost"
+    (the reporting-status contract test's dataset_share offering otherwise) is valid at the base, invalid at the head, and
+    valid again with the dotted allOf member removed. The tool's candidates do not reach the offering roots, so its search
+    finds none.
+  witness:
+    root: /schemas/core/reporting-delivery-offering.json
+    instance:
+      offering_id: a
+      feed_purpose: pacing
+      report_definition_id: a
+      report_definition_uri: https://example.com/x
+      report_definition_sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      reporting_profile:
+        id: a
+        version: a
+        schema_uri: https://example.com/x
+        schema_sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        schema_dialect: https://json-schema.org/draft/2020-12/schema
+        schema_ref_policy: local_fragment_only
+        grain: a
+        primary_keys:
+        - a
+        canonicalization_contract_version: '1.0'
+        canonicalization_media_type: application/vnd.adcp.reporting-canonicalization+json
+      schedule:
+        period_duration: P1D
+        alignment: utc
+        delivery_sla: PT1H
+      supported_finality:
+      - snapshot
+      reconciliation_mode: delivery_only
+      method:
+        pattern: file_transfer
+        transport: a
+        orchestration: producer_managed
+        destination_modes:
+        - provision
+        producer_identity:
+          identity: a
+          provider:
+            domain: localhost
+        provider:
+          domain: a
+        format: jsonl
+- location: core/delivery-provider.json#/properties/domain
+  keyword: allOf
+  new:
+    pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$
+  direction: tighten
+  side: both
+  note: >-
+    core/reporting-dataset-share-destination.json and core/reporting-write-destination.json provision-branch provider (two
+    closed copies of {domain: domain-name}) -> new:core/reporting-destination-provider.json, which stays closed (the credential-free
+    guard) and writes domain as core/delivery-provider.json does, through new:core/provider-domain.json. Both now reject single-label
+    names. Correction under DR-0036, the same basis as the delivery-provider line: 3.2.12 core/delivery-provider.json "Single-label
+    and localhost-style names are invalid." (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/delivery-provider.json#L8-L12).
+    Both schemas are experimental. The lint does not see pattern; the quote is here. Checked by hand with Ajv: a delivery
+    provider domain with a 64-character label ('a' x 64 + '.example.com') is valid at the base and invalid at the head (the
+    core/domain-name.json label limit), and example.com is valid at both.
+  witness:
+    root: /schemas/core/delivery-provider.json
+    instance:
+      domain: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example.com
+- location: core/canonical-reporting-capabilities.json#/properties/vendor_metrics/items
+  keyword: properties
+  new:
+    enum:
+    - affiliated
+    - first_party
+    - third_party
+  direction: tighten
+  side: response
+  note: >-
+    The compact product's reporting_capabilities.vendor_metrics[] declares vendor_relationship (optional, enums/vendor-relationship.json),
+    as core/reporting-capabilities.json does. Before, the open item accepted any value there. Correction under DR-0036, a
+    schema of the major that defines the concept: 3.2.12 reporting-capabilities.json declares "vendor_relationship": { "$ref":
+    "https://adcontextprotocol.org/schemas/3.2.12/enums/vendor-relationship.json" (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/reporting-capabilities.json#L84-L85),
+    and the 3.2.12 enum says the relationship is "Declared by the seller on `reporting_capabilities.vendor_metrics[]`" (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/enums/vendor-relationship.json#L5).
+    Every corpus payload at this position already uses an enum value. The lint does not see an added property's type; the
+    quote is here.
+- location: core/page-cursor.json#
+  keyword: minLength
+  new: 1
+  direction: tighten
+  side: request
+  note: >-
+    get_media_buy_delivery reporting_dimensions device_type.cursor and device_platform.cursor (inline strings) -> core/page-cursor.json,
+    as core/paged-delivery-breakdown-controls.json already does for audience and placement. Correction under DR-0036, the
+    basis the register already uses for the other breakdown cursors: 3.2.11 list-account-changes-request.json "cursor": {
+    "type": "string", ... "minLength": 1, (https://github.com/adcontextprotocol/adcp/blob/9df1dd7b1bad0286052e1efb5deaa7e66e4b718f/dist/schemas/3.2.11/account/list-account-changes-request.json#L25-L28).
+    Register entries for both cursors.

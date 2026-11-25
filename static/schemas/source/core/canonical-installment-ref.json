@@ -7,29 +7,12 @@
   "type": "object",
   "properties": {
     "collection_ref": {
-      "title": "Canonical Collection Reference",
-      "type": "object",
-      "description": "Closed parent collection identity. Collection IDs are scoped to the adagents.json at publisher_domain, so both members participate in identity.",
-      "properties": {
-        "publisher_domain": {
-          "$ref": "/schemas/core/domain-name.json"
-        },
-        "collection_id": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255,
-          "x-entity": "collection"
-        }
-      },
-      "required": ["publisher_domain", "collection_id"],
-      "additionalProperties": false
+      "$ref": "/schemas/core/canonical-collection-ref.json",
+      "description": "Closed parent collection identity. Collection IDs are scoped to the adagents.json at publisher_domain, so both members participate in identity."
     },
     "installment_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "description": "Installment ID within the referenced collection.",
-      "x-entity": "installment"
+      "$ref": "/schemas/core/installment-id.json",
+      "description": "Installment ID within the referenced collection."
     }
   },
   "required": ["collection_ref", "installment_id"],

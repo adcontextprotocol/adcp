@@ -45,22 +45,26 @@
     },
     "mileage": {
       "title": "Vehicle Mileage",
-      "type": "object",
       "description": "Odometer reading.",
-      "properties": {
-        "value": {
-          "type": "number",
-          "minimum": 0,
-          "description": "Mileage value."
+      "allOf": [
+        {
+          "$ref": "/schemas/core/distance.json"
         },
-        "unit": {
-          "type": "string",
-          "enum": ["km", "mi"],
-          "description": "Distance unit."
+        {
+          "properties": {
+            "value": {
+              "description": "Mileage value."
+            },
+            "unit": {
+              "enum": [
+                "km",
+                "mi"
+              ],
+              "description": "Distance unit: kilometers or miles."
+            }
+          }
         }
-      },
-      "required": ["value", "unit"],
-      "additionalProperties": true
+      ]
     },
     "body_style": {
       "type": "string",

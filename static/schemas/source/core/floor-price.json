@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/floor-price.json",
+  "title": "Floor Price",
+  "description": "Minimum acceptable bid for an auction-based pricing option, in the option's currency and for the unit its pricing model bills. Mutually exclusive with fixed_price.",
+  "type": "number",
+  "minimum": 0
+}

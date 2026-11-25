@@ -128,7 +128,7 @@ const PROPERTIES_3_3 = [
   ['media-buy/sync-event-sources-response.json', ['oneOf', 0, 'properties', 'event_sources', 'items', 'properties', 'archived']],
   ['creative/list-creatives-response.json', ['properties', 'creatives', 'items', 'properties', 'provenance']],
   ['core/error.json', ['properties', 'mutation_outcome']],
-  ['core/evaluator-spec.json', ['oneOf', 1, 'properties', 'agent_url']],
+  ['core/evaluator-spec.json', ['oneOf', 1, 'allOf', 1, 'properties', 'agent_url']],
   ['core/canonical-projection-ref.json', ['properties', 'supported_delivery_types']],
   ['media-buy/request-proposals-response.json', ['properties', 'later_proposals']],
   ['creative/validate-input-result.json', ['properties', 'warnings', 'items', 'properties', 'field']],
@@ -151,7 +151,7 @@ const PROPERTIES_3_3 = [
   ['core/media-buy.json', ['properties', 'cancellation_effective_at']],
   ['media-buy/get-media-buys-response.json', ['properties', 'media_buys', 'items', 'properties', 'cancellation_effective_at']],
   ['core/reporting-obligation.json', ['properties', 'stub']],
-  ['protocol/get-principal-response.json', ['properties', 'result', 'oneOf', 0, 'properties', 'reporting_subscription_page']],
+  ['protocol/get-principal-response.json', ['definitions', 'principal_result', 'oneOf', 0, 'properties', 'reporting_subscription_page']],
   ['core/account-authorization.json', ['properties', 'regranted_at']],
   ['core/media-buy.json', ['properties', 'flight_history']],
   ['media-buy/get-media-buys-response.json', ['properties', 'media_buys', 'items', 'properties', 'flight_history']],
@@ -184,7 +184,7 @@ test('whole-file 3.3 schemas and enums carry x-added-in 3.3.0', () => {
 
 test('expected_confirmation_at sites carry x-added-in 3.3.0', () => {
   const sites = [
-    ['media-buy/create-media-buy-async-response-submitted.json', ['properties', 'expected_confirmation_at']],
+    ['core/media-buy-submitted.json', ['properties', 'expected_confirmation_at']],
     ['media-buy/create-media-buy-response.json', ['oneOf', 2, 'properties', 'expected_confirmation_at']],
     ['media-buy/media-buy-commitment-response.json', ['oneOf', 2, 'properties', 'expected_confirmation_at']],
     ['media-buy/refine-proposals-async-response-submitted.json', ['properties', 'expected_confirmation_at']],
