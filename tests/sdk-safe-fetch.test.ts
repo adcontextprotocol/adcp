@@ -243,7 +243,7 @@ describe('SDK safe fetch adapter', () => {
       if (typeof server.closeAllConnections === 'function') server.closeAllConnections();
       await new Promise<void>(resolve => server.close(() => resolve()));
     }
-  }, 30_000);
+  });
 });
 
 function json(res: ServerResponse, status: number, body: unknown): void {

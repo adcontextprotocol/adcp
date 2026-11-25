@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -159,6 +159,56 @@ function startWireWitness(schemaRoot: string, register: boolean): Promise<Witnes
   });
 }
 
+// The candidate root holds the one tool the controls call on the candidate,
+// decline_proposals (authored and bundled), the index, and every document
+// they reference. The SDK and its server read every document of a
+// registered root several times per process (version aliases, content
+// digest, core registration), so a copy of the whole release made each
+// control parse 1,757 files it never uses.
+const CANDIDATE_ROOT_SEEDS = [
+  'index.json',
+  'media-buy/decline-proposals-request.json',
+  'media-buy/decline-proposals-response.json',
+  'bundled/media-buy/decline-proposals-request.json',
+  'bundled/media-buy/decline-proposals-response.json',
+];
+
+/** Root-relative paths of the documents the seeds reach through $ref, seeds included. */
+function referenceClosure(root: string, releasePrefix: string): Set<string> {
+  const reached = new Set<string>();
+  const pending = [...CANDIDATE_ROOT_SEEDS];
+  while (pending.length > 0) {
+    const relative = pending.pop()!;
+    if (reached.has(relative)) continue;
+    reached.add(relative);
+    const base = new URL(`${releasePrefix}${relative}`, 'https://adcontextprotocol.org');
+    const visit = (node: unknown): void => {
+      if (Array.isArray(node)) return node.forEach(visit);
+      if (!node || typeof node !== 'object') return;
+      for (const [key, value] of Object.entries(node)) {
+        if (key === '$ref' && typeof value === 'string' && !value.startsWith('#')) {
+          // A reference into another release (extensions/adcp.json names
+          // 3.2.1) is outside any root, the whole release's copy included.
+          const { pathname } = new URL(value, base);
+          if (pathname.startsWith(releasePrefix)) pending.push(pathname.slice(releasePrefix.length));
+        } else visit(value);
+      }
+    };
+    visit(JSON.parse(readFileSync(path.join(root, relative), 'utf8')));
+  }
+  return reached;
+}
+
+/** Writes the seeds' closure from the released tree with its ids moved to the candidate. */
+function writeCandidateRoot(releaseRoot: string, target: string): void {
+  const releasePrefix = `/schemas/${STRICT_FIXTURE_RELEASE}/`;
+  for (const relative of referenceClosure(releaseRoot, releasePrefix)) {
+    const filename = path.join(target, relative);
+    mkdirSync(path.dirname(filename), { recursive: true });
+    writeFileSync(filename, readFileSync(path.join(releaseRoot, relative), 'utf8').replaceAll(releasePrefix, CANDIDATE_SCHEMA_PREFIX));
+  }
+}
+
 /** The checks spawnSync's caller made, applied to a settled control. */
 function wireWitness(result: WitnessRun): Witness {
   expect(result.error, `${result.stdout}\n${result.stderr}`).toBeUndefined();
@@ -178,12 +228,7 @@ describe('candidate server schema registration', () => {
     schemaRoot = mkdtempSync(path.join(tmpdir(), 'adcp-future-candidate-schema-'));
     // Keep this controlled strict contract independent of development schemas,
     // which may legitimately add envelope fields in a subsequent release.
-    cpSync(path.resolve('dist/schemas', STRICT_FIXTURE_RELEASE), schemaRoot, { recursive: true, dereference: true });
-    for (const file of readdirSync(schemaRoot, { recursive: true }) as string[]) {
-      if (!file.endsWith('.json')) continue;
-      const filename = path.join(schemaRoot, file);
-      writeFileSync(filename, readFileSync(filename, 'utf8').replaceAll(`/schemas/${STRICT_FIXTURE_RELEASE}/`, CANDIDATE_SCHEMA_PREFIX));
-    }
+    writeCandidateRoot(path.resolve('dist/schemas', STRICT_FIXTURE_RELEASE), schemaRoot);
     const indexPath = path.join(schemaRoot, 'index.json');
     const index = JSON.parse(readFileSync(indexPath, 'utf8'));
     writeFileSync(indexPath, JSON.stringify({
@@ -203,7 +248,7 @@ describe('candidate server schema registration', () => {
     unboundControl = startWireWitness(schemaRoot, false);
     registeredControl = startWireWitness(schemaRoot, true);
     validate = await ajv.compileAsync(JSON.parse(readFileSync(path.join(schemaRoot, 'media-buy/decline-proposals-response.json'), 'utf8')));
-  }, 60_000);
+  });
 
   afterEach(() => vi.unstubAllEnvs());
   afterAll(async () => {
@@ -240,7 +285,7 @@ describe('candidate server schema registration', () => {
     // root. That coincidence does not establish the candidate schema binding.
     expect(Object.hasOwn(candidate.body, 'status')).toBe(false);
     expect(validate(candidate.body), JSON.stringify(validate.errors)).toBe(true);
-  }, 90_000);
+  });
 
   it('SDK-bump detector: strict raw future-candidate declines come from the ESM schema loader alone, and explicit stable 3.2 is unchanged', async () => {
     const { candidate, stable, esmCandidateSchemaVersion, cjsSdkFiles } = wireWitness(await registeredControl);
@@ -262,7 +307,16 @@ describe('candidate server schema registration', () => {
     // loader while shaping the decline, which this catches.
     expect(esmCandidateSchemaVersion).toBe(CANDIDATE_BUNDLE);
     expect(cjsSdkFiles.filter(file => CJS_SCHEMA_AUTHORITY.test(file))).toEqual([]);
-  }, 90_000);
+  });
+
+  it('builds the candidate root from the decline_proposals closure alone', () => {
+    // Every control process reads every document of the root it registers;
+    // a document no $ref reaches is cost without coverage. The closure is
+    // taken over the written root, so a dangling $ref fails here as well.
+    const written = (readdirSync(schemaRoot, { recursive: true }) as string[])
+      .filter(file => file.endsWith('.json')).map(file => file.split(path.sep).join('/'));
+    expect(new Set(written)).toEqual(referenceClosure(schemaRoot, CANDIDATE_SCHEMA_PREFIX));
+  });
 
   it('runs both wire-witness control processes in flight together', async () => {
     // The controls are independent (ephemeral port, read-only schema root), so
