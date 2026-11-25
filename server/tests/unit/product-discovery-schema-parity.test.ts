@@ -165,8 +165,11 @@ describe('product discovery MCP schema parity', () => {
     // constraints (#8525) makes them shared definitions in the bundled tools;
     // 169,806 bytes / 165.83 KiB measured. Naming every remaining repeat
     // brings it to 172,361 bytes / 168.32 KiB, and pointing every site at one
-    // definition to 173,355 bytes / 169.29 KiB, bounded at 170 KiB.
-    expect(totalBytes).toBeLessThanOrEqual(170 * 1024);
+    // definition to 173,355 bytes / 169.29 KiB. Inlining each definition
+    // that only one site references removes its $defs key and its pointer;
+    // shared definitions stay in $defs, and the dereferenced schemas are
+    // unchanged: 146,682 bytes / 143.24 KiB measured, bounded at 144 KiB.
+    expect(totalBytes).toBeLessThanOrEqual(144 * 1024);
 
     const list = tools.find(tool => tool.name === 'list_products')!.inputSchema as JsonSchema;
     const criteria = resolveLocalRef(list, list.properties.criteria);

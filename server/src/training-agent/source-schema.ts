@@ -185,6 +185,80 @@ function bundleSchema(root: JsonSchema): JsonSchema {
   return bundled;
 }
 
+const DEFINITION_REF_PREFIX = '#/$defs/';
+
+/** The $defs key a local ref names, and whether the ref names the whole entry
+ * rather than a pointer into it. */
+function definitionTarget(ref: string): { key: string; whole: boolean } | undefined {
+  if (!ref.startsWith(DEFINITION_REF_PREFIX)) return undefined;
+  const rest = ref.slice(DEFINITION_REF_PREFIX.length);
+  const slash = rest.indexOf('/');
+  const segment = slash === -1 ? rest : rest.slice(0, slash);
+  return { key: segment.replaceAll('~1', '/').replaceAll('~0', '~'), whole: slash === -1 };
+}
+
+/** Replace each $defs entry that exactly one bare `{ "$ref" }` names with its
+ * body at that site. A shared definition saves bytes, but a definition used
+ * once only adds its key and a pointer. Definitions carry no `$id`, so the
+ * inlined body resolves its refs against the same root, and draft-07 treats a
+ * bare `$ref` as its target, so validation is unchanged. Entries that a
+ * pointer reaches into, or that only their own body names, stay shared. */
+function inlineSingleUseDefinitions(schema: JsonSchema): void {
+  if (!isRecord(schema.$defs)) return;
+  const defs: JsonSchema = schema.$defs;
+
+  const uses = new Map<string, number>();
+  const inlinable = new Set<string>();
+  function count(node: unknown, owner?: string): void {
+    if (Array.isArray(node)) {
+      for (const entry of node) count(entry, owner);
+      return;
+    }
+    if (!isRecord(node)) return;
+    const target = typeof node.$ref === 'string' ? definitionTarget(node.$ref) : undefined;
+    if (target) {
+      uses.set(target.key, (uses.get(target.key) ?? 0) + 1);
+      if (target.whole && Object.keys(node).length === 1 && target.key !== owner) inlinable.add(target.key);
+    }
+    for (const [key, entry] of Object.entries(node)) {
+      if (!(node === schema && key === '$defs')) count(entry, owner);
+    }
+  }
+  count(schema);
+  for (const [key, body] of Object.entries(defs)) count(body, key);
+  for (const key of inlinable) if (uses.get(key) !== 1) inlinable.delete(key);
+  if (inlinable.size === 0) return;
+
+  const inlined = new Set<string>();
+  function expand(node: unknown): unknown {
+    if (Array.isArray(node)) return node.map(expand);
+    if (!isRecord(node)) return node;
+    const target = typeof node.$ref === 'string' ? definitionTarget(node.$ref) : undefined;
+    if (target && inlinable.has(target.key) && Object.keys(node).length === 1 && !inlined.has(target.key)) {
+      inlined.add(target.key);
+      return expand(defs[target.key]);
+    }
+    return Object.fromEntries(Object.entries(node).map(([key, entry]) => [
+      key,
+      node === schema && key === '$defs' ? entry : expand(entry),
+    ]));
+  }
+  const expandedRoot = expand(schema) as JsonSchema;
+  const expandedDefs = Object.fromEntries(
+    Object.entries(defs)
+      .filter(([key]) => !inlinable.has(key))
+      .map(([key, body]) => [key, expand(body)]),
+  );
+  // An inlinable entry that nothing outside the inlinable set reaches (a
+  // closed cycle) was never expanded; keep it as it was.
+  for (const key of inlinable) if (!inlined.has(key)) expandedDefs[key] = defs[key];
+
+  for (const key of Object.keys(schema)) delete schema[key];
+  Object.assign(schema, expandedRoot);
+  if (Object.keys(expandedDefs).length > 0) schema.$defs = expandedDefs;
+  else delete schema.$defs;
+}
+
 /** Load the normative source request schema and bundle every repository-local
  * reference for MCP tools/list consumers, which cannot resolve AdCP paths. */
 export function loadProductDiscoveryInputSchema(fileName: string): JsonSchema {
@@ -217,6 +291,7 @@ export function loadProductDiscoveryInputSchema(fileName: string): JsonSchema {
       delete defs['core/version-envelope'];
     }
   }
+  inlineSingleUseDefinitions(inputSchema);
   return inputSchema;
 }
 
