@@ -9,6 +9,20 @@
 import type { PublisherProfile, ShowDefinition } from './types.js';
 import { CREATOR_PUBLISHER } from './creators.js';
 
+const dma = (...codes: string[]) => codes.map(code => ({ system: 'nielsen_dma' as const, code }));
+
+// Nielsen DMA codes, plus the London and North West England ITL1 regions.
+const STREETLEVEL_METROS = [
+  ...dma('501', '803', '602', '504', '623', '807', '511', '618', '506', '524',
+    '539', '753', '505', '819', '613', '528', '751', '534', '862', '820'),
+  { system: 'uk_itl1' as const, code: 'TLI' },
+  { system: 'uk_itl1' as const, code: 'TLD' },
+];
+
+// The 20 Nielsen DMAs the group's 35 stations broadcast in.
+const CRESTLINE_METROS = dma('524', '517', '560', '659', '640', '630', '618', '641', '635', '623',
+  '609', '616', '515', '510', '535', '527', '617', '528', '534', '539');
+
 export const PUBLISHERS: PublisherProfile[] = [
   {
     id: 'pinnacle_news',
@@ -18,6 +32,7 @@ export const PUBLISHERS: PublisherProfile[] = [
     heroImageUrl: 'https://picsum.photos/seed/pinnacle-news/600/300',
     audienceSummary: 'Adults 25-54, 8M monthly uniques',
     estimatedVolume: '~12M impressions/month',
+    coverage: { countries: ['US', 'CA', 'GB', 'DE', 'FR'] },
     channels: ['display', 'olv', 'ctv', 'email'],
     deliveryTypes: ['guaranteed', 'non_guaranteed'],
     pricingTemplates: [
@@ -130,6 +145,7 @@ export const PUBLISHERS: PublisherProfile[] = [
     heroImageUrl: 'https://picsum.photos/seed/wavelength-audio/600/300',
     audienceSummary: 'Adults 18-44, 40M monthly listeners',
     estimatedVolume: '~60M audio impressions/month',
+    coverage: { countries: ['US', 'CA', 'GB', 'AU'] },
     channels: ['streaming_audio', 'podcast'],
     deliveryTypes: ['guaranteed', 'non_guaranteed'],
     pricingTemplates: [
@@ -217,6 +233,8 @@ export const PUBLISHERS: PublisherProfile[] = [
     heroImageUrl: 'https://picsum.photos/seed/streetlevel-dooh/600/300',
     audienceSummary: 'Urban commuters 18-49, 50 metro areas',
     estimatedVolume: '~200M impressions/month',
+    // The network's largest markets; the catalogue lists these rather than all 50.
+    coverage: { countries: ['US', 'GB'], metros: STREETLEVEL_METROS },
     channels: ['dooh', 'ooh'],
     deliveryTypes: ['guaranteed'],
     pricingTemplates: [
@@ -271,6 +289,7 @@ export const PUBLISHERS: PublisherProfile[] = [
     heroImageUrl: 'https://picsum.photos/seed/playfield-gaming/600/300',
     audienceSummary: 'Gamers 13-34, 85M monthly players',
     estimatedVolume: '~500M in-game impressions/month',
+    coverage: { countries: ['US', 'CA', 'MX', 'BR', 'GB', 'DE', 'FR', 'JP', 'KR', 'AU'] },
     channels: ['gaming', 'display'],
     deliveryTypes: ['non_guaranteed'],
     pricingTemplates: [
@@ -309,6 +328,7 @@ export const PUBLISHERS: PublisherProfile[] = [
     heroImageUrl: 'https://picsum.photos/seed/shopgrid-retail/600/300',
     audienceSummary: 'Online shoppers 25-54, 200M monthly visitors',
     estimatedVolume: '~1B retail media impressions/month',
+    coverage: { countries: ['US'] },
     channels: ['retail_media', 'display'],
     deliveryTypes: ['non_guaranteed'],
     catalogTypes: ['product', 'store'],
@@ -349,6 +369,7 @@ export const PUBLISHERS: PublisherProfile[] = [
     heroImageUrl: 'https://picsum.photos/seed/viewpoint-sports/600/300',
     audienceSummary: 'Sports fans 18-49, 25M concurrent peak',
     estimatedVolume: '~80M video impressions/month',
+    coverage: { countries: ['US', 'CA', 'GB', 'DE', 'FR', 'ES', 'IT'] },
     channels: ['ctv', 'olv', 'linear_tv'],
     deliveryTypes: ['guaranteed'],
     pricingTemplates: [
@@ -479,6 +500,7 @@ export const PUBLISHERS: PublisherProfile[] = [
     heroImageUrl: 'https://picsum.photos/seed/sparq-social/600/300',
     audienceSummary: 'Adults 18-34, 300M monthly active users',
     estimatedVolume: '~2B social impressions/month',
+    coverage: { countries: ['US', 'CA', 'MX', 'BR', 'GB', 'DE', 'FR', 'ES', 'IT', 'IN', 'JP', 'AU'] },
     channels: ['social', 'display', 'influencer'],
     deliveryTypes: ['non_guaranteed'],
     pricingTemplates: [
@@ -518,6 +540,7 @@ export const PUBLISHERS: PublisherProfile[] = [
     heroImageUrl: 'https://picsum.photos/seed/trendsettr-creators/600/300',
     audienceSummary: 'Lifestyle enthusiasts 18-35, 50K+ creators',
     estimatedVolume: '~150M influencer impressions/month',
+    coverage: { countries: ['US', 'CA', 'GB', 'AU'] },
     channels: ['influencer', 'social'],
     deliveryTypes: ['guaranteed'],
     pricingTemplates: [
@@ -548,6 +571,7 @@ export const PUBLISHERS: PublisherProfile[] = [
     heroImageUrl: 'https://picsum.photos/seed/beacon-search/600/300',
     audienceSummary: 'High-intent shoppers, 180M monthly queries',
     estimatedVolume: '~400M search impressions/month',
+    coverage: { countries: ['US', 'CA', 'GB', 'DE', 'FR', 'AU'] },
     channels: ['search'],
     deliveryTypes: ['non_guaranteed'],
     catalogTypes: ['product'],
@@ -587,6 +611,7 @@ export const PUBLISHERS: PublisherProfile[] = [
     heroImageUrl: 'https://picsum.photos/seed/novamind-ai/600/300',
     audienceSummary: 'Knowledge workers 25-54, 15M daily users',
     estimatedVolume: '~45M conversational impressions/month',
+    coverage: { countries: ['US', 'CA', 'GB', 'DE', 'FR', 'AU'] },
     channels: ['display'],
     deliveryTypes: ['non_guaranteed', 'guaranteed'],
     pricingTemplates: [
@@ -652,6 +677,7 @@ export const PUBLISHERS: PublisherProfile[] = [
     heroImageUrl: 'https://picsum.photos/seed/crestline-radio/600/300',
     audienceSummary: 'Adults 25-54, 12M weekly listeners',
     estimatedVolume: '~30M radio impressions/month',
+    coverage: { countries: ['US'], metros: CRESTLINE_METROS },
     channels: ['radio', 'streaming_audio'],
     deliveryTypes: ['guaranteed'],
     pricingTemplates: [
@@ -691,6 +717,7 @@ export const PUBLISHERS: PublisherProfile[] = [
     heroImageUrl: 'https://picsum.photos/seed/meridian-print/600/300',
     audienceSummary: 'Affluent adults 35-64, 4M print + 25M digital',
     estimatedVolume: '~50M digital impressions/month',
+    coverage: { countries: ['US', 'CA'] },
     channels: ['print', 'display'],
     deliveryTypes: ['guaranteed'],
     pricingTemplates: [

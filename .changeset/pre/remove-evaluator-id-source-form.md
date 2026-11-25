@@ -2,7 +2,7 @@
 "adcontextprotocol": minor
 ---
 
-Remove the `evaluator_id` source form from the experimental `evaluator` object on `build_creative` (`creative.evaluator`) and withdraw the `list_evaluators` follow-on (#5241). Evaluator sources are now inline `exemplars` or an allowlisted `agent_url`; a seller's house evaluator is an evaluator agent it lists in `creative_policy.accepted_verifiers[]`. The `evaluator` x-entity type is removed.
+Remove the `evaluator_id` source form from the experimental `evaluator` object on `build_creative` (`creative.evaluator`) and withdraw the `list_evaluators` follow-on (#5241). Evaluator sources are now inline `exemplars` or an allowlisted `agent_url`; a seller's house evaluator is an evaluator agent it lists in `creative_policy.accepted_verifiers[]`. The `evaluator` x-entity type is deprecated (#8854 restored it as a deprecated value).
 
 ## Migration
 

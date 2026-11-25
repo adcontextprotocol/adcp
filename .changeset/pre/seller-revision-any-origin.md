@@ -9,4 +9,4 @@ Seller revisions advance on every committed change, whatever its origin (#8142).
 - `list_creatives` creatives gain an optional seller-maintained, monotonic, opaque `seller_revision` (integer or string), distinct from the buyer-assigned `revision_id`, with a new `creative_seller_revision` `x-entity` value.
 - `account.change.resource_revision` carries the family's seller revision when one is defined: `revision` for a media buy or account, `seller_revision` for a creative.
 
-Seller revisions for packages, creative assignments, audiences, catalogs, event sources, property lists, products and signals are deferred to 3.4, one change per family.
+Seller revisions for packages, creative assignments, audiences, catalogs, event sources, property lists, products and signals are deferred to a later release, one change per family.

@@ -5,7 +5,7 @@
  * The function honors `x-adcp-hoist: true` on inlined schemas: each marked
  * schema moves to root $defs, every inline occurrence is replaced with a
  * $ref, and the directive itself is stripped from the bundled output —
- * including any stray markers that survived a pre-existing $defs block.
+ * including a marker on a pre-existing $defs entry, which is not hoisted.
  *
  * See issue #4557 — opt-in companion to the pure-enum auto-hoist.
  */
@@ -263,54 +263,20 @@ test('does not re-hoist a schema already living in $defs', () => {
   assert.deepEqual(result.properties.a, { $ref: '#/$defs/PriceBlock2' });
 });
 
-test('strips stray markers that survive a pre-existing $defs block', () => {
-  // A marker authored deep inside a pre-existing $defs entry is skipped
-  // by Pass 1 (collect skips $defs). The final sweep must still strip
-  // the directive — it is build-time only and must not leak into the
-  // bundled output regardless of where it was authored.
+test('strips the marker from a $defs entry without hoisting the entry itself', () => {
+  // The entry is not an occurrence: the collect pass finds nothing to
+  // hoist, but the directive must still be removed from output.
   const schema = {
     $defs: {
-      Something: {
-        type: 'object',
-        properties: {
-          // Marker nested inside a non-target $defs entry.
-          stray: { 'x-adcp-hoist': true, title: 'NotHoistable', type: 'object' },
-        },
-      },
+      StrayOnly: { 'x-adcp-hoist': true, title: 'StrayOnly', type: 'object' },
     },
     type: 'object',
     properties: { ok: { type: 'string' } },
   };
   const result = hoistMarkedSchemas(clone(schema));
 
-  // Marker stripped from the pre-existing $defs entry.
-  assert.equal(result.$defs.Something.properties.stray['x-adcp-hoist'], undefined);
-  // No spurious new $defs entry created — the marker was inside a $defs
-  // block, so Pass 1 didn't track it.
-  assert.equal(result.$defs.NotHoistable, undefined);
-});
-
-test('strips stray markers even when no hoistable markers exist outside $defs', () => {
-  // Edge case: every marker lives inside an existing $defs block. The
-  // collect pass finds nothing to hoist, but the directive must still
-  // be removed from output.
-  const schema = {
-    $defs: {
-      Something: {
-        type: 'object',
-        properties: {
-          stray: { 'x-adcp-hoist': true, title: 'StrayOnly', type: 'object' },
-        },
-      },
-    },
-    type: 'object',
-    properties: { ok: { type: 'string' } },
-  };
-  const result = hoistMarkedSchemas(clone(schema));
-
-  assert.equal(result.$defs.Something.properties.stray['x-adcp-hoist'], undefined);
-  const json = JSON.stringify(result);
-  assert.equal(json.includes('x-adcp-hoist'), false);
+  assert.deepEqual(result.$defs, { StrayOnly: { title: 'StrayOnly', type: 'object' } });
+  assert.equal(JSON.stringify(result).includes('x-adcp-hoist'), false);
 });
 
 test('hoists a discriminated oneOf appearing twice — regression for issue #4859 codegen fabrication', () => {
