@@ -3,7 +3,10 @@ import { join } from 'node:path';
 import Ajv from 'ajv';
 import { describe, expect, it } from 'vitest';
 import { productDiscoveryAliasToolDefinitions } from '../../src/training-agent/task-handlers.js';
-import { validateProductDiscoverySourceInput } from '../../src/training-agent/source-schema.js';
+import {
+  loadProductDiscoveryInputSchema,
+  validateProductDiscoverySourceInput,
+} from '../../src/training-agent/source-schema.js';
 
 type JsonSchema = Record<string, any>;
 
@@ -20,6 +23,30 @@ function resolveLocalRef(root: JsonSchema, value: JsonSchema): JsonSchema {
   return ref.slice(2).split('/').reduce((current: JsonSchema, encoded: string) => (
     current[encoded.replaceAll('~1', '/').replaceAll('~0', '~')] as JsonSchema
   ), root);
+}
+
+/** Expand every local `$ref` against its root, so two schemas that differ only
+ * in where a definition lives compare equal. A ref already being expanded
+ * becomes a cycle marker naming its target. */
+function dereference(root: JsonSchema): unknown {
+  function walk(node: unknown, stack: string[]): unknown {
+    if (Array.isArray(node)) return node.map(entry => walk(entry, stack));
+    if (!node || typeof node !== 'object') return node;
+    const record = node as JsonSchema;
+    if (typeof record.$ref === 'string' && record.$ref.startsWith('#/')) {
+      const { $ref, ...siblings } = record;
+      const target = stack.includes($ref)
+        ? { $cycle: $ref }
+        : walk(resolveLocalRef(root, { $ref }), [...stack, $ref]);
+      return Object.keys(siblings).length === 0
+        ? target
+        : { $dereferenced: target, ...(walk(siblings, stack) as JsonSchema) };
+    }
+    return Object.fromEntries(Object.entries(record)
+      .filter(([key]) => !(record === root && key === '$defs'))
+      .map(([key, value]) => [key, walk(value, stack)]));
+  }
+  return walk(root, []);
 }
 
 // tools/list omits `additionalProperties: true` inside bundled definitions (it
@@ -113,6 +140,23 @@ describe('product discovery MCP schema parity', () => {
     const ajv = new Ajv({ strict: false, validateFormats: false });
     for (const tool of productDiscoveryAliasToolDefinitions()) {
       expect(() => ajv.compile(tool.inputSchema), tool.name).not.toThrow();
+    }
+  });
+
+  it('inlines single-use definitions without changing any dereferenced tools/list schema', () => {
+    for (const fileName of [
+      'list-products-request',
+      'request-proposals-request',
+      'refine-proposals-request',
+      'decline-proposals-request',
+      'buy-products-request',
+      'accept-proposal-request',
+      'control-media-buy-request',
+    ]) {
+      const inlined = loadProductDiscoveryInputSchema(fileName);
+      const shared = loadProductDiscoveryInputSchema(fileName, { inlineSingleUse: false });
+      expect(JSON.stringify(inlined).length, fileName).toBeLessThan(JSON.stringify(shared).length);
+      expect(dereference(inlined), fileName).toEqual(dereference(shared));
     }
   });
 

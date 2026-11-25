@@ -260,8 +260,13 @@ function inlineSingleUseDefinitions(schema: JsonSchema): void {
 }
 
 /** Load the normative source request schema and bundle every repository-local
- * reference for MCP tools/list consumers, which cannot resolve AdCP paths. */
-export function loadProductDiscoveryInputSchema(fileName: string): JsonSchema {
+ * reference for MCP tools/list consumers, which cannot resolve AdCP paths.
+ * `inlineSingleUse: false` keeps every definition in $defs, the form the
+ * inlining must stay equivalent to. */
+export function loadProductDiscoveryInputSchema(
+  fileName: string,
+  { inlineSingleUse = true }: { inlineSingleUse?: boolean } = {},
+): JsonSchema {
   const bundled = bundleSchema(readSchema(`media-buy/${fileName}.json`));
   const {
     $schema: _schema,
@@ -291,7 +296,7 @@ export function loadProductDiscoveryInputSchema(fileName: string): JsonSchema {
       delete defs['core/version-envelope'];
     }
   }
-  inlineSingleUseDefinitions(inputSchema);
+  if (inlineSingleUse) inlineSingleUseDefinitions(inputSchema);
   return inputSchema;
 }
 
