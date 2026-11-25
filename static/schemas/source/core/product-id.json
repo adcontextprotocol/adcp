@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/product-id.json",
+  "title": "Product ID",
+  "description": "Identifier of a product in a seller's catalog.",
+  "type": "string",
+  "x-max-length-4.0": 255,
+  "minLength": 1
+}

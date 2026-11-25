@@ -31,9 +31,7 @@
           ]
         },
         "reason": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 1000
+          "$ref": "/schemas/core/identity-change-impact-reason.json"
         }
       },
       "required": [

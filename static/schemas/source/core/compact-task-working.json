@@ -9,7 +9,7 @@
     { "$ref": "/schemas/core/task-working.json" }
   ],
   "properties": {
-    "percentage": { "type": "number", "minimum": 0, "maximum": 100 },
+    "percentage": { "$ref": "/schemas/core/percentage.json" },
     "current_step": { "type": "string", "maxLength": 500 },
     "total_steps": { "type": "integer", "minimum": 1 },
     "step_number": { "type": "integer", "minimum": 1 },

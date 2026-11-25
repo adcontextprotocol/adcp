@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/reporting-feed-purpose.json",
+  "title": "Reporting Feed Purpose",
+  "description": "Operational use of a reporting feed: pacing, analytics, or billing.",
+  "type": "string",
+  "enum": [
+    "pacing",
+    "analytics",
+    "billing"
+  ]
+}

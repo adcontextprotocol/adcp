@@ -13,8 +13,7 @@
   },
   "properties": {
     "outcome": {
-      "type": "string",
-      "enum": ["listed", "unchanged"],
+      "$ref": "/schemas/enums/feed-listing-outcome.json",
       "description": "listed when the response carries a page of collections; unchanged when if_collections_version matched the current version of the selected catalog."
     },
     "collections": {
@@ -29,8 +28,7 @@
       "description": "Opaque version of the selected catalog, scoped to the canonicalized collections selectors and filters (arrays compared as sets, pagination.cursor excluded), plus account identity when cache_scope is account. It changes whenever any copy the selection would return, or the set of collections it selects, changes. A follower refresh that leaves a count's bounds and precision unchanged is not a change. Independent of feed_version and wholesale_feed_version: a change to one says nothing about the others. The unfiltered read (no collections selectors, no filters) carries the same version token as collection_card.* and collection_catalog.bulk_change webhooks for that cache_scope."
     },
     "cache_scope": {
-      "type": "string",
-      "enum": ["public", "account"],
+      "$ref": "/schemas/enums/cache-scope.json",
       "description": "public when the visible set does not depend on the account, and always when the request carried no account; account when it does. A seller MAY return public to a conditional request whose earlier response was account, meaning the account no longer has a distinct visible set; the buyer drops its account-scoped copy and uses the public one."
     },
     "context": { "$ref": "/schemas/core/context.json" },

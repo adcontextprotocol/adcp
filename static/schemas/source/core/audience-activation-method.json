@@ -52,8 +52,7 @@
           "type": "array",
           "description": "Supported transfer directions. buyer_to_seller: buyer writes to a seller-hosted bucket. seller_to_buyer: seller reads from a buyer-hosted bucket. Absent means unspecified (resolve during account setup), not neither.",
           "items": {
-            "type": "string",
-            "enum": ["buyer_to_seller", "seller_to_buyer"]
+            "$ref": "/schemas/enums/audience-activation-direction.json"
           },
           "minItems": 1,
           "uniqueItems": true
@@ -83,8 +82,7 @@
             "type": "object",
             "properties": {
               "cloud": {
-                "type": "string",
-                "enum": ["aws", "azure", "gcp"],
+                "$ref": "/schemas/enums/delivery-recipient-cloud.json",
                 "description": "Cloud family hosting this identity's account."
               },
               "region": {

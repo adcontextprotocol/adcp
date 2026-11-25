@@ -32,8 +32,7 @@
               "description": "Conversion event to plan for, in the same vocabulary forecast points report."
             },
             "custom_event_name": {
-              "type": "string",
-              "minLength": 1,
+              "$ref": "/schemas/core/custom-event-name.json",
               "description": "Required when event_type is 'custom'. Platform-specific name for the custom event."
             }
           },

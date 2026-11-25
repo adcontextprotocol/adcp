@@ -22,21 +22,7 @@
       "description": "Stable logical event identifier for this wholesale feed change. MUST equal the enclosing webhook notification_id. UUID v7 is RECOMMENDED so receivers can detect obvious out-of-order delivery; missed or distrusted pushes are repaired through list_products / get_signals / list_collections."
     },
     "event_type": {
-      "type": "string",
-      "enum": [
-        "product.created",
-        "product.updated",
-        "product.priced",
-        "product.removed",
-        "signal.created",
-        "signal.updated",
-        "signal.priced",
-        "signal.removed",
-        "wholesale_feed.bulk_change",
-        "collection_card.updated",
-        "collection_card.removed",
-        "collection_catalog.bulk_change"
-      ],
+      "$ref": "/schemas/enums/wholesale-feed-event-type.json",
       "description": "Discriminator. Determines the shape of `payload`."
     },
     "entity_type": {
@@ -454,10 +440,7 @@
               "description": "Approximate count of affected entities."
             },
             "recommendation": {
-              "type": "string",
-              "enum": [
-                "wholesale_resync"
-              ],
+              "$ref": "#/$defs/repair_recommendation",
               "description": "Advisory recommendation. Consumers SHOULD repair by re-reading the affected feed named by affected_entity_type; the recommendation is not a synchronized trigger. Modeled as a single-value enum (not a boolean) so future minor versions can extend the recommendation vocabulary without a breaking shape change. Consumers MUST be prepared to ignore unknown recommendation values."
             },
             "applies_to": {
@@ -583,10 +566,7 @@
               "description": "Approximate count of affected cards."
             },
             "recommendation": {
-              "type": "string",
-              "enum": [
-                "wholesale_resync"
-              ],
+              "$ref": "#/$defs/repair_recommendation",
               "description": "Advisory recommendation, the same vocabulary as wholesale_feed.bulk_change: replace the card mirror from a complete unfiltered list_collections read. Consumers MUST be prepared to ignore unknown recommendation values."
             },
             "applies_to": {
@@ -687,14 +667,12 @@
           "minLength": 1
         },
         "name": {
-          "type": "string",
-          "description": "Human-readable signal name",
-          "minLength": 1
+          "$ref": "/schemas/core/signal-name.json",
+          "description": "Human-readable signal name"
         },
         "description": {
-          "type": "string",
-          "description": "Detailed signal description",
-          "minLength": 1
+          "$ref": "/schemas/core/signal-description.json",
+          "description": "Detailed signal description"
         },
         "value_type": {
           "$ref": "/schemas/enums/signal-value-type.json"
@@ -730,10 +708,8 @@
           "minLength": 1
         },
         "coverage_percentage": {
-          "type": "number",
+          "$ref": "/schemas/core/percentage.json",
           "description": "DEPRECATED for detailed planning. Optional legacy scalar percentage of audience coverage retained only as a fallback for clients that do not consume coverage_forecast. When coverage_forecast is present, coverage_forecast is authoritative for signal-level discovery and coverage_percentage is fallback-only.",
-          "minimum": 0,
-          "maximum": 100,
           "deprecated": true
         },
         "coverage_forecast": {
@@ -767,6 +743,14 @@
         { "required": ["signal_id"] }
       ],
       "additionalProperties": true
+    },
+    "repair_recommendation": {
+      "title": "Feed Repair Recommendation",
+      "description": "Advisory recommendation for repairing a wholesale feed mirror.",
+      "type": "string",
+      "enum": [
+        "wholesale_resync"
+      ]
     }
   }
 }

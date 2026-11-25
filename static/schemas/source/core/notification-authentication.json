@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/notification-authentication.json",
+  "title": "Notification Authentication",
+  "description": "Legacy authentication selector on a notification subscription: presence asks the seller for Bearer or HMAC-SHA256, and absence selects the profile `signing_profile` names. Deprecated and removed in AdCP 4.0. Unlike `core/webhook-authentication.json`, `credentials` is optional: the subscription is echoed on reads, and credentials are write-only and MUST NOT be echoed.",
+  "type": "object",
+  "properties": {
+    "schemes": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/enums/auth-scheme.json"
+      },
+      "minItems": 1,
+      "maxItems": 1
+    },
+    "credentials": {
+      "$ref": "/schemas/core/auth-credential.json",
+      "description": "Credentials for the legacy scheme. Bearer: token. HMAC-SHA256: shared secret. Minimum 32 characters. Exchanged out-of-band during onboarding. Write-only."
+    }
+  },
+  "required": [
+    "schemes"
+  ],
+  "additionalProperties": true
+}

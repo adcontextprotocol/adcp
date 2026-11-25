@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/policy-issuer-name.json",
+  "title": "Policy Issuer Name",
+  "description": "Name of the regulator, standards body, or platform operator that issued a policy.",
+  "type": "string",
+  "minLength": 1
+}

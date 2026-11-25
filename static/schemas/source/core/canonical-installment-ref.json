@@ -12,9 +12,7 @@
       "description": "Closed parent collection identity. Collection IDs are scoped to the adagents.json at publisher_domain, so both members participate in identity.",
       "properties": {
         "publisher_domain": {
-          "type": "string",
-          "maxLength": 253,
-          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          "$ref": "/schemas/core/domain-name.json"
         },
         "collection_id": {
           "type": "string",

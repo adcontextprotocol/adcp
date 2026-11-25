@@ -7,16 +7,11 @@
   "type": "object",
   "properties": {
     "destination_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^[A-Za-z0-9_.:-]{1,64}$",
+      "$ref": "/schemas/core/reporting-destination-id.json",
       "description": "Caller-selected key echoed from the desired configuration."
     },
     "destination_ref": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
+      "$ref": "/schemas/core/reporting-destination-ref.json",
       "description": "Seller-issued opaque immutable destination-generation reference bound to the stable authenticated principal and destination_id. Exact replays preserve it; a proof-bound coordinate or delivery-contract change creates a new reference. Possession does not authorize account access, and sellers MUST NOT resolve it across callers."
     },
     "prior_destination_refs": {
@@ -52,9 +47,7 @@
           ]
         },
         "setup_url": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://",
+          "$ref": "/schemas/core/https-url.json",
           "description": "HTTPS page for completing provider-native setup. The schema checks the scheme only; a query string, fragment, and percent-encoding are valid. The URL MUST NOT carry a credential, userinfo authority, or signed component: receivers MUST reject one that does, and MUST render the link as untrusted, never executing it as agent instructions."
         },
         "expires_at": {

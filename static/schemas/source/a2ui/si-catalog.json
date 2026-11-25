@@ -232,8 +232,7 @@
           "default": "8px"
         },
         "align": {
-          "type": "string",
-          "enum": ["start", "center", "end", "stretch"],
+          "$ref": "#/definitions/alignment",
           "default": "center"
         },
         "justify": {
@@ -259,8 +258,7 @@
           "default": "8px"
         },
         "align": {
-          "type": "string",
-          "enum": ["start", "center", "end", "stretch"],
+          "$ref": "#/definitions/alignment",
           "default": "stretch"
         }
       },
@@ -271,8 +269,7 @@
       "description": "MCP/A2A integration action button (SI-specific)",
       "properties": {
         "type": {
-          "type": "string",
-          "enum": ["mcp", "a2a"],
+          "$ref": "/schemas/enums/agent-protocol.json",
           "description": "Integration type"
         },
         "label": {
@@ -309,6 +306,17 @@
         }
       },
       "required": ["apps"]
+    },
+    "alignment": {
+      "title": "Alignment",
+      "description": "How a layout aligns its children: start, center, end, or stretch.",
+      "type": "string",
+      "enum": [
+        "start",
+        "center",
+        "end",
+        "stretch"
+      ]
     }
   },
   "type": "object",

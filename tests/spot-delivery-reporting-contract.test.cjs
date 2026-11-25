@@ -91,7 +91,11 @@ describe("spot-level as-run delivery reporting", () => {
     const spotFields = spotSchema.allOf.find(
       (schema) => schema.properties
     ).properties;
-    assert.equal(spotFields.creative_id["x-entity"], "creative");
+    assert.equal(spotFields.creative_id.$ref, "/schemas/core/creative-id.json");
+    const creativeId = JSON.parse(
+      fs.readFileSync(path.join(SCHEMA_ROOT, "core/creative-id.json"), "utf8")
+    );
+    assert.equal(creativeId["x-entity"], "creative");
 
     const airing = {
       spot_id: "spot_rotation_001",

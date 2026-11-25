@@ -22,9 +22,7 @@
       "description": "Unit of measurement for quantitative values (e.g., 'percentage', 'score')"
     },
     "confidence": {
-      "type": "number",
-      "minimum": 0,
-      "maximum": 1,
+      "$ref": "/schemas/core/fraction.json",
       "description": "Confidence score for this value (0-1)"
     },
     "measured_at": {

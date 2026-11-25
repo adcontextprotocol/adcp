@@ -15,13 +15,11 @@
   },
   "properties": {
     "product_id": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/product-id.json",
       "x-entity": "product"
     },
     "pricing_option_id": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/pricing-option-id.json",
       "x-entity": "product_pricing_option"
     },
     "pricing": {
@@ -37,9 +35,7 @@
     "catalog_ids": {
       "type": "array",
       "items": {
-        "type": "string",
-        "minLength": 1,
-        "x-entity": "catalog"
+        "$ref": "/schemas/core/catalog-id.json"
       },
       "minItems": 1,
       "uniqueItems": true,
@@ -106,8 +102,7 @@
       "description": "Exact immutable audience-evidence snapshots selected for package construction."
     },
     "agency_estimate_number": {
-      "type": "string",
-      "maxLength": 100,
+      "$ref": "/schemas/core/agency-estimate-number.json",
       "description": "Package-level agency estimate or authorization reference."
     },
     "context": {

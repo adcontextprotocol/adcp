@@ -18,6 +18,10 @@
  *                    missing values that were likely added later.
  *                    EXIT CODE 1 — this is a real drift bug.
  *
+ * Enums under `if` and `not` are conditions, not declarations: they name the
+ * values a branch applies to, so they are narrower on purpose and the lint
+ * skips them.
+ *
  * Informational (does not fail the lint):
  *   exact_match   — inline values are identical to a canonical enum.
  *                    Printed with --verbose. Candidate for $ref migration.
@@ -91,8 +95,6 @@ const ALLOWED = new Set([
   // Delivery status is a superset of media-buy-status (includes failed, pending, etc.)
   'media-buy/get-media-buy-delivery-response.json|*',
   'media-buy/media-buy-delivery-webhook-result.json|*',
-  // Installment lifecycle: the publication conditional intentionally names the not-yet-published statuses
-  'core/installment-delivery-metrics.json|/allOf/1/if',
   // GOP type open/closed overlaps but is distinct concept
   'core/opportunity-context.json|*',
 ]);
@@ -112,18 +114,24 @@ function loadCanonicalEnums() {
   return enums;
 }
 
-function walkSchemaEnums(obj, currentPath, results) {
+// Keywords whose value maps names to subschemas, so a key inside one is a
+// property or definition name, never a keyword such as `if` or `not`.
+const SCHEMA_MAP_KEYS = new Set(['properties', 'patternProperties', 'definitions', '$defs', 'dependencies', 'dependentSchemas']);
+const CONDITION_KEYS = new Set(['if', 'not']);
+
+function walkSchemaEnums(obj, currentPath, results, isSchemaMap = false) {
   if (!obj || typeof obj !== 'object') return;
   if (Array.isArray(obj)) {
     obj.forEach((item, i) => walkSchemaEnums(item, `${currentPath}/${i}`, results));
     return;
   }
-  if (Array.isArray(obj.enum) && obj.enum.length >= 2 && obj.enum.every(v => typeof v === 'string')) {
+  if (!isSchemaMap && Array.isArray(obj.enum) && obj.enum.length >= 2 && obj.enum.every(v => typeof v === 'string')) {
     results.push({ path: currentPath, values: new Set(obj.enum), sorted: [...obj.enum].sort() });
   }
   for (const [key, val] of Object.entries(obj)) {
     if (key === '$ref') continue;
-    walkSchemaEnums(val, `${currentPath}/${key}`, results);
+    if (!isSchemaMap && CONDITION_KEYS.has(key)) continue;
+    walkSchemaEnums(val, `${currentPath}/${key}`, results, !isSchemaMap && SCHEMA_MAP_KEYS.has(key));
   }
 }
 

@@ -1689,11 +1689,10 @@ describe('managed reporting status contract', () => {
 
   it('gives reporting helper types globally distinct SDK names', () => {
     const reliabilitySchema = readSchema('/schemas/core/reporting-reliability-statistics.json');
-    assert.equal(
-      reliabilitySchema.properties.measurement_period.$ref,
-      '#/definitions/ReportingReliabilityMeasurementPeriod',
-    );
-    assert.ok(reliabilitySchema.definitions.ReportingReliabilityMeasurementPeriod);
+    // The measurement period is the shared datetime range, one type for every
+    // reporting window, not a helper of its own (#8720).
+    assert.equal(reliabilitySchema.properties.measurement_period.$ref, '/schemas/core/datetime-range.json');
+    assert.equal(reliabilitySchema.definitions.ReportingReliabilityMeasurementPeriod, undefined);
 
     const adjustmentReceiptSchema = readSchema('/schemas/core/reporting-adjustment-receipt.json');
     assert.equal(

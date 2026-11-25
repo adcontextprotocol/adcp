@@ -22,25 +22,8 @@
       "description": "Specific creative asset (if feedback is creative-specific)"
     },
     "measurement_period": {
-      "type": "object",
-      "description": "Time period for performance measurement",
-      "properties": {
-        "start": {
-          "type": "string",
-          "format": "date-time",
-          "description": "ISO 8601 start timestamp for measurement period"
-        },
-        "end": {
-          "type": "string",
-          "format": "date-time",
-          "description": "ISO 8601 end timestamp for measurement period"
-        }
-      },
-      "required": [
-        "start",
-        "end"
-      ],
-      "additionalProperties": true
+      "$ref": "/schemas/core/datetime-range.json",
+      "description": "Time period for performance measurement"
     },
     "performance_index": {
       "type": "number",

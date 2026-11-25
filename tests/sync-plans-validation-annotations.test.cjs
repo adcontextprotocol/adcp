@@ -55,13 +55,16 @@ test('the schema still accepts the plans the three annotated rules reject', asyn
   );
 });
 
-test('flight carries the ordering rule and flight.end states it', () => {
+test('flight carries the ordering rule and its description states it', () => {
   const { flight } = planProperties();
   assert.deepEqual(flight['x-adcp-validation'], {
     verifier_constraints: { flight_order: { end: 'later_than_start', on_violation: 'INVALID_REQUEST' } },
     spec: SPEC,
   });
-  assert.match(flight.properties.end.description, /MUST be later than `start`/);
+  // flight references core/datetime-range.json (#8720), so the rule is stated
+  // on flight itself.
+  assert.equal(flight.$ref, '/schemas/core/datetime-range.json');
+  assert.match(flight.description, /`end` MUST be later than `start`/);
 });
 
 test('policy_ids carries the uniqueness rule as an annotation, not as uniqueItems', () => {

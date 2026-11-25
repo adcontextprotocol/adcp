@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
+const { addNamedScalarSchemas, resolveScalar } = require('./helpers/named-scalar-schemas.cjs');
 
 const SCHEMA_DIR = path.join(__dirname, '../static/schemas/source');
 
@@ -29,7 +30,7 @@ test('buyer reason uses the comprehensive standard error-code vocabulary', () =>
 });
 
 test('core error accepts standard and forward-compatible buyer reason codes', () => {
-  const validate = new Ajv({ allErrors: true, strict: false }).compile(schema('core/error.json'));
+  const validate = addNamedScalarSchemas(new Ajv({ allErrors: true, strict: false })).compile(schema('core/error.json'));
   const base = {
     code: 'CREATIVE_REJECTED',
     message: 'The creative could not be accepted.',
@@ -54,7 +55,7 @@ test('core error accepts standard and forward-compatible buyer reason codes', ()
 });
 
 test('core error requires a complete buyer reason', () => {
-  const validate = new Ajv({ allErrors: true, strict: false }).compile(schema('core/error.json'));
+  const validate = addNamedScalarSchemas(new Ajv({ allErrors: true, strict: false })).compile(schema('core/error.json'));
   assert.equal(validate({
     code: 'CREATIVE_REJECTED',
     message: 'The creative could not be accepted.',
@@ -64,7 +65,7 @@ test('core error requires a complete buyer reason', () => {
 });
 
 test('core error requires recovery only when buyer reason is present', () => {
-  const validate = new Ajv({ allErrors: true, strict: false }).compile(schema('core/error.json'));
+  const validate = addNamedScalarSchemas(new Ajv({ allErrors: true, strict: false })).compile(schema('core/error.json'));
 
   assert.equal(validate({
     code: 'CREATIVE_REJECTED',

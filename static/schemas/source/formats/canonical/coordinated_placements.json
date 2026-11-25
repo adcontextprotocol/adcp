@@ -27,8 +27,7 @@
         "type": "object",
         "properties": {
           "component_id": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_]*$",
+            "$ref": "/schemas/core/coordinated-component-id.json",
             "description": "Stable coordination-local component identifier. Values MUST be unique within `components[]`."
           },
           "placement_ref": {
@@ -95,7 +94,7 @@
       "items": {
         "type": "object",
         "properties": {
-          "asset_group_id": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+          "asset_group_id": { "$ref": "/schemas/core/asset-group-id.json" },
           "asset_type": {
             "type": "string",
             "enum": ["image", "video", "audio", "text", "markdown", "url", "html", "css", "javascript", "vast", "daast", "webhook", "brief", "video_brief", "catalog", "published_post", "zip", "card", "object", "pixel_tracker", "vast_tracker", "daast_tracker"]

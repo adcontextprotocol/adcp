@@ -13,11 +13,8 @@
   "x-mutates-state": true,
   "properties": {
     "idempotency_key": {
-      "type": "string",
-      "description": "Client-generated unique key for at-most-once execution. A provisioning entry can open an account, so this key is what prevents a retry from opening a second account and from firing onboarding webhooks, billing setup, and audit events twice. MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each request.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Client-generated unique key for at-most-once execution. A provisioning entry can open an account, so this key is what prevents a retry from opening a second account and from firing onboarding webhooks, billing setup, and audit events twice. MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each request."
     },
     "accounts": {
       "type": "array",
@@ -52,22 +49,19 @@
             "description": "Brand reference identifying the advertiser. Required for **provisioning mode**. `domain` and optional `brand_id` identify the brand; `countries` sets the account attribute. In settings-update mode, `brand` updates `countries`; its `domain` and `brand_id` MUST equal the account's, and the seller rejects a different brand with INVALID_REQUEST. A seller MAY review a countries change and report `pending_approval` on the entry's result row. Per-call BrandRef fields such as `industries`, `data_subject_contestation`, and `brand_kit_override` MUST NOT affect lookup, idempotency, or account creation. New 3.2 producers SHOULD send only the BrandKey fields; the broader BrandRef remains accepted on this existing 3.x task for compatibility."
           },
           "operator": {
-            "type": "string",
-            "description": "Domain of the entity operating on the brand's behalf (e.g., 'pinnacle-media.com'). When the brand operates directly, this is the brand's domain. Verified against the brand's authorized_operators in brand.json. Required for **provisioning mode**; MUST be absent in settings-update mode.",
-            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+            "$ref": "/schemas/core/domain-name.json",
+            "description": "Domain of the entity operating on the brand's behalf (e.g., 'pinnacle-media.com'). When the brand operates directly, this is the brand's domain. Verified against the brand's authorized_operators in brand.json. Required for **provisioning mode**; MUST be absent in settings-update mode."
           },
           "operator_unit": {
             "$ref": "/schemas/core/operator-unit.json",
             "description": "Optional operator-owned business unit, agency seat, or platform account. An account attribute, set in provisioning mode and updatable in settings-update mode; name is mapping/display metadata."
           },
           "currency": {
-            "type": "string",
-            "pattern": "^[A-Z]{3}$",
+            "$ref": "/schemas/core/currency-code.json",
             "description": "Optional ISO 4217 transaction currency for a currency-bound advertiser object. Consult `account.supported_account_currency_modes` before provisioning. An account attribute: all media buys on the account use it. Omit for per-media-buy currency selection. Set when the account opens: a seller MAY refuse a change with UNSUPPORTED_FEATURE."
           },
           "timezone": {
-            "type": "string",
-            "minLength": 1,
+            "$ref": "/schemas/core/iana-timezone.json",
             "description": "Operational timezone selected for an account_fixed advertiser object. Required in provisioning mode when get_adcp_capabilities.account.timezone declares account_selection: buyer_selected, and the value MUST be one of supported_timezones. Omit for seller_fixed or seller_assigned modes. An account attribute set when the account opens: a seller MAY refuse a change with UNSUPPORTED_FEATURE."
           },
           "billing": {

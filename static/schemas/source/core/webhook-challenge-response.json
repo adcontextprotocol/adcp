@@ -6,18 +6,12 @@
   "type": "object",
   "properties": {
     "challenge": {
-      "type": "string",
-      "description": "Echo of the challenge value supplied by the seller.",
-      "minLength": 32,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{32,255}$"
+      "$ref": "/schemas/core/webhook-challenge-value.json",
+      "description": "Echo of the challenge value supplied by the seller."
     },
     "token": {
-      "type": "string",
-      "description": "Backward-compatible alias for `challenge`. Receivers SHOULD prefer `challenge`; sellers MUST accept either field.",
-      "minLength": 32,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{32,255}$"
+      "$ref": "/schemas/core/webhook-challenge-value.json",
+      "description": "Backward-compatible alias for `challenge`. Receivers SHOULD prefer `challenge`; sellers MUST accept either field."
     }
   },
   "anyOf": [

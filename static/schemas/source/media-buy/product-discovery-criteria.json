@@ -8,7 +8,7 @@
     "product_ids": {
       "type": "array",
       "description": "Exact seller-issued products to retrieve or use as proposal candidates.",
-      "items": { "type": "string", "minLength": 1, "x-entity": "product" },
+      "items": { "$ref": "/schemas/core/product-id.json", "x-entity": "product" },
       "minItems": 1,
       "uniqueItems": true
     },
@@ -52,7 +52,7 @@
     "catalog": { "$ref": "/schemas/core/catalog-selection.json" },
     "policy_ids": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1 },
+      "items": { "$ref": "/schemas/core/governance-policy-id.json" },
       "minItems": 1,
       "uniqueItems": true
     },

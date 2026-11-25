@@ -21,9 +21,8 @@
       "x-entity": "media_buy"
     },
     "currency": {
-      "type": "string",
-      "description": "ISO 4217 currency code for monetary values in this response (e.g., 'USD', 'EUR')",
-      "pattern": "^[A-Z]{3}$"
+      "$ref": "/schemas/core/currency-code.json",
+      "description": "ISO 4217 currency code for monetary values in this response (e.g., 'USD', 'EUR')"
     },
     "reporting_period": {
       "type": "object",
@@ -40,7 +39,7 @@
           "description": "ISO 8601 end timestamp"
         },
         "timezone": {
-          "type": "string",
+          "$ref": "/schemas/core/iana-timezone.json",
           "description": "IANA timezone identifier for the reporting period (e.g., 'America/New_York', 'UTC'). Platforms report in their native timezone."
         }
       },

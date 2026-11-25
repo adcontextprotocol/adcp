@@ -21,10 +21,7 @@
           "x-entity": "media_buy"
         },
         "name": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 255,
-          "pattern": "\\S",
+          "$ref": "/schemas/core/media-buy-name.json",
           "description": "Persisted human-readable name after the update. When update_media_buy supplied name, the seller MUST return the stored value here; a seller that could not apply the replacement SHOULD return the prior unchanged value rather than silently dropping the field. This display label is not an identifier or financial reference."
         },
         "media_buy_status": {
@@ -37,9 +34,8 @@
           "minimum": 1
         },
         "currency": {
-          "type": "string",
-          "description": "ISO 4217 currency code for monetary values at this media buy level. Echoed when the update affects budget or currency. Matches the currency field in subsequent get_media_buys responses.",
-          "pattern": "^[A-Z]{3}$"
+          "$ref": "/schemas/core/currency-code.json",
+          "description": "ISO 4217 currency code for monetary values at this media buy level. Echoed when the update affects budget or currency. Matches the currency field in subsequent get_media_buys responses."
         },
         "total_budget": {
           "type": "number",
@@ -56,7 +52,7 @@
           "description": "Post-update shared MediaBuy frequency cap. Echoed when the update sets or changes it; omitted after removal."
         },
         "budget_cap_timezone": {
-          "type": "string",
+          "$ref": "/schemas/core/iana-timezone.json",
           "description": "Post-update IANA timezone shared by every aggregate and package daily cap. Echoed whenever the update affects daily caps or their timezone."
         },
         "budget_allocation": {

@@ -6,18 +6,12 @@
   "type": "object",
   "properties": {
     "idempotency_key": {
-      "type": "string",
-      "description": "Sender-generated key stable across retries of the same fire. Sellers MUST generate a cryptographically random value (UUID v4 recommended) per distinct fire and reuse it on every retry of the same fire. Receivers MUST dedupe by this key, scoped to the authenticated sender identity.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Sender-generated key stable across retries of the same fire. Sellers MUST generate a cryptographically random value (UUID v4 recommended) per distinct fire and reuse it on every retry of the same fire. Receivers MUST dedupe by this key, scoped to the authenticated sender identity."
     },
     "notification_id": {
-      "type": "string",
-      "description": "Stable identifier for this logical capability-change event. Re-emissions of the same logical change reuse this value under a new idempotency_key; a later material capability revision receives a new id.",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+      "$ref": "/schemas/core/notification-id.json",
+      "description": "Stable identifier for this logical capability-change event. Re-emissions of the same logical change reuse this value under a new idempotency_key; a later material capability revision receives a new id."
     },
     "notification_type": {
       "type": "string",
@@ -30,11 +24,8 @@
       "description": "ISO 8601 timestamp when the seller initiated this fire. Distinct from `changed_at`, which is when the seller recorded the material capability change."
     },
     "subscriber_id": {
-      "type": "string",
-      "description": "Identifies which caller-scoped notification_configs[] entry is receiving this fire. Echoed verbatim from the entry's subscriber_id.",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+      "$ref": "/schemas/core/subscriber-id.json",
+      "description": "Identifies which caller-scoped notification_configs[] entry is receiving this fire. Echoed verbatim from the entry's subscriber_id."
     },
     "agent_url": {
       "type": "string",
@@ -60,10 +51,8 @@
       "description": "Coarse reason for the invalidation. This is advisory routing/debug metadata; receivers MUST re-read `get_adcp_capabilities` rather than relying on the reason to infer the new capability surface."
     },
     "capabilities_version": {
-      "type": "string",
-      "description": "Required opaque revision token for the capability document after the change. MUST equal `adcp.capability_changes.capabilities_version` on the authoritative `get_adcp_capabilities` response available before this webhook is sent. Receivers MUST treat the token as opaque and compare it only for equality.",
-      "minLength": 1,
-      "maxLength": 255
+      "$ref": "/schemas/core/capabilities-version.json",
+      "description": "Required opaque revision token for the capability document after the change. MUST equal `adcp.capability_changes.capabilities_version` on the authoritative `get_adcp_capabilities` response available before this webhook is sent. Receivers MUST treat the token as opaque and compare it only for equality."
     },
     "changed_paths": {
       "type": "array",

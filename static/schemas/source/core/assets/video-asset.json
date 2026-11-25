@@ -106,8 +106,7 @@
       "description": "Audio channel configuration"
     },
     "audio_bit_depth": {
-      "type": "integer",
-      "enum": [16, 24, 32],
+      "$ref": "/schemas/enums/audio-bit-depth.json",
       "description": "Audio bit depth"
     },
     "audio_bitrate_kbps": {

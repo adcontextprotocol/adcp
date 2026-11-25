@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/other-postal-system.json",
+  "title": "Other Postal System",
+  "description": "Postal code system for a country without a system of its own: postal_code or custom.",
+  "type": "string",
+  "enum": [
+    "postal_code",
+    "custom"
+  ]
+}

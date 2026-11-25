@@ -18,9 +18,8 @@
           "description": "Discriminator indicating the signal resolves through the selected product's included_signals or signal_targeting_options."
         },
         "signal_id": {
-          "type": "string",
-          "description": "Product-local signal identifier. For local signals exposed on both get_signals and get_products, this MUST match get_signals.signals[].signal_ref.signal_id for the same signal.",
-          "pattern": "^[a-zA-Z0-9_-]+$"
+          "$ref": "/schemas/core/signal-local-id.json",
+          "description": "Product-local signal identifier. For local signals exposed on both get_signals and get_products, this MUST match get_signals.signals[].signal_ref.signal_id for the same signal."
         }
       },
       "required": ["scope", "signal_id"],
@@ -45,14 +44,12 @@
           "description": "Discriminator indicating the signal resolves through a data provider's published adagents.json signals[]."
         },
         "data_provider_domain": {
-          "type": "string",
-          "description": "Domain that publishes the signal definition in its adagents.json signals[].",
-          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          "$ref": "/schemas/core/domain-name.json",
+          "description": "Domain that publishes the signal definition in its adagents.json signals[]."
         },
         "signal_id": {
-          "type": "string",
-          "description": "Signal identifier within the data provider's published adagents.json signals[].",
-          "pattern": "^[a-zA-Z0-9_-]+$"
+          "$ref": "/schemas/core/signal-local-id.json",
+          "description": "Signal identifier within the data provider's published adagents.json signals[]."
         }
       },
       "required": ["scope", "data_provider_domain", "signal_id"],
@@ -81,9 +78,8 @@
           "description": "URL of the signal source that issues this source-native signal."
         },
         "signal_id": {
-          "type": "string",
-          "description": "Signal identifier within the issuing signal source's signal set.",
-          "pattern": "^[a-zA-Z0-9_-]+$"
+          "$ref": "/schemas/core/signal-local-id.json",
+          "description": "Signal identifier within the issuing signal source's signal set."
         }
       },
       "required": ["scope", "signal_source_url", "signal_id"],

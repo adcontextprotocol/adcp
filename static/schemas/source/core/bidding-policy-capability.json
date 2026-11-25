@@ -59,8 +59,7 @@
           "type": "array",
           "description": "Supported standalone cost_per strengths in this profile. Required exactly when modes includes cost_per.",
           "items": {
-            "type": "string",
-            "enum": ["cap", "target"]
+            "$ref": "/schemas/enums/outcome-target-cost-strength.json"
           },
           "minItems": 1,
           "uniqueItems": true
@@ -69,8 +68,7 @@
           "type": "array",
           "description": "Supported standalone roas strengths in this profile. Required exactly when modes includes roas.",
           "items": {
-            "type": "string",
-            "enum": ["floor", "target"]
+            "$ref": "/schemas/enums/roas-strength.json"
           },
           "minItems": 1,
           "uniqueItems": true
@@ -119,7 +117,7 @@
         "cost_per_strengths": {
           "type": "array",
           "description": "cost_per strengths supported when combined with max_bid.",
-          "items": { "type": "string", "enum": ["cap", "target"] },
+          "items": { "$ref": "/schemas/enums/outcome-target-cost-strength.json" },
           "minItems": 1,
           "uniqueItems": true
         }
@@ -134,7 +132,7 @@
         "roas_strengths": {
           "type": "array",
           "description": "roas strengths supported when combined with max_bid.",
-          "items": { "type": "string", "enum": ["floor", "target"] },
+          "items": { "$ref": "/schemas/enums/roas-strength.json" },
           "minItems": 1,
           "uniqueItems": true
         }

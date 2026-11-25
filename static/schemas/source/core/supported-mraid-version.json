@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/supported-mraid-version.json",
+  "title": "Supported MRAID Version",
+  "description": "IAB MRAID version that a seller supports, in MAJOR.MINOR form, such as 1.0, 2.0, or 3.0.",
+  "type": "string",
+  "pattern": "^[0-9]+\\.[0-9]+$"
+}

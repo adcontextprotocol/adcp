@@ -15,12 +15,8 @@
       "description": "Receiving-surface accountability fact: the use mode the host accepted and committed to honor for this sponsored context.",
       "properties": {
         "status": {
-          "type": "string",
-          "description": "Whether the host accepted the declared sponsored context for use.",
-          "enum": [
-            "accepted",
-            "rejected"
-          ]
+          "$ref": "/schemas/enums/host-receipt-status.json",
+          "description": "Whether the host accepted the declared sponsored context for use."
         },
         "accepted_context_use": {
           "$ref": "/schemas/sponsored-intelligence/si-context-use.json",

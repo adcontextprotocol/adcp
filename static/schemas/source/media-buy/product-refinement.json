@@ -19,8 +19,7 @@
             "description": "Change scoped to the overall request."
           },
           "ask": {
-            "type": "string",
-            "minLength": 1,
+            "$ref": "/schemas/core/refinement-ask.json",
             "description": "What the buyer is asking for at the request level."
           }
         },
@@ -35,19 +34,16 @@
             "description": "Change scoped to a specific product."
           },
           "product_id": {
-            "type": "string",
-            "minLength": 1,
+            "$ref": "/schemas/core/product-id.json",
             "description": "Product ID from a previous product-discovery response."
           },
           "action": {
-            "type": "string",
-            "enum": ["include", "omit", "more_like_this"],
+            "$ref": "/schemas/enums/product-refinement-action.json",
             "default": "include",
             "description": "Requested product-level action."
           },
           "ask": {
-            "type": "string",
-            "minLength": 1,
+            "$ref": "/schemas/core/refinement-ask.json",
             "description": "What the buyer is asking for on this product."
           }
         },
@@ -62,19 +58,16 @@
             "description": "Change scoped to a specific proposal."
           },
           "proposal_id": {
-            "type": "string",
-            "minLength": 1,
+            "$ref": "/schemas/core/proposal-id.json",
             "description": "Proposal ID from a previous product-discovery response."
           },
           "action": {
-            "type": "string",
-            "enum": ["include", "omit", "finalize"],
+            "$ref": "/schemas/enums/proposal-refinement-action.json",
             "default": "include",
             "description": "Requested proposal-level action."
           },
           "ask": {
-            "type": "string",
-            "minLength": 1,
+            "$ref": "/schemas/core/refinement-ask.json",
             "description": "What the buyer is asking for on this proposal."
           }
         },

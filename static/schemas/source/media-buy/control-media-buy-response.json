@@ -16,13 +16,13 @@
       "type": "object",
       "properties": {
         "status": { "type": "string", "const": "completed" },
-        "media_buy_id": { "type": "string", "minLength": 1, "x-entity": "media_buy" },
+        "media_buy_id": { "$ref": "/schemas/core/media-buy-id.json" },
         "revision": { "type": "integer", "minimum": 1 },
         "media_buy_status": { "$ref": "/schemas/enums/media-buy-status.json" },
         "implementation_date": { "type": ["string", "null"], "format": "date-time" },
         "affected_package_ids": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1, "x-entity": "package" },
+          "items": { "$ref": "/schemas/core/package-id.json" },
           "uniqueItems": true
         },
         "available_actions": {

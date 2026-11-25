@@ -245,12 +245,8 @@
     },
     "budget_period_id": {
       "x-added-in": "3.3.0",
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^[A-Za-z0-9_.:-]+$",
-      "description": "Optional assertion of the plan budget period (`plans[].budget.periods[].budget_period_id`) this action belongs to. The buyer never has to name a period: the governance agent derives it from the action's flight. When present and different from the derived period, the check is denied. When the plan has no periods, or the action carries no flight, there is no derived period and the assertion cannot match, so the check is denied. The response carries the matched `budget_period_id` either way.",
-      "x-entity": "governance_budget_period"
+      "$ref": "/schemas/core/governance-budget-period-id.json",
+      "description": "Optional assertion of the plan budget period (`plans[].budget.periods[].budget_period_id`) this action belongs to. The buyer never has to name a period: the governance agent derives it from the action's flight. When present and different from the derived period, the check is denied. When the plan has no periods, or the action carries no flight, there is no derived period and the assertion cannot match, so the check is denied. The response carries the matched `budget_period_id` either way."
     },
     "target_agent": {
       "type": "string",
@@ -258,24 +254,12 @@
       "description": "Exact agent URL of the downstream service that will receive the governed task. Required on intent checks and copied byte-for-byte into the signed governance_context aud claim. This routing and authorization field is not part of payload: payload remains exactly the downstream task arguments. A consultation re-check MUST use the same target_agent."
     },
     "proposed_commitment": {
-      "type": "object",
-      "description": "Task-neutral monetary amount the intent would authorize. For update_media_buy and control_media_buy this is the buyer-computed positive incremental commitment, not the post-update total. For accept_proposal it is derived from the supplied proposal commercial_terms; for buy_products it is derived from the purchase payload. Amount 0 explicitly represents a verified no-cost action. The governance agent persists this value as authoritative check state.",
-      "properties": {
-        "amount": { "type": "number", "minimum": 0 },
-        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
-      },
-      "required": ["amount", "currency"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/money.json",
+      "description": "Task-neutral monetary amount the intent would authorize. For update_media_buy and control_media_buy this is the buyer-computed positive incremental commitment, not the post-update total. For accept_proposal it is derived from the supplied proposal commercial_terms; for buy_products it is derived from the purchase payload. Amount 0 explicitly represents a verified no-cost action. The governance agent persists this value as authoritative check state."
     },
     "execution_commitment": {
-      "type": "object",
-      "description": "Seller-computed positive incremental commitment for a MediaBuy execution check. The seller MUST derive this atomically from its authoritative proposal or current revision and the requested operation, and the governance agent MUST reject it when it exceeds the prior intent ceiling or uses another currency.",
-      "properties": {
-        "amount": { "type": "number", "minimum": 0 },
-        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
-      },
-      "required": ["amount", "currency"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/money.json",
+      "description": "Seller-computed positive incremental commitment for a MediaBuy execution check. The seller MUST derive this atomically from its authoritative proposal or current revision and the requested operation, and the governance agent MUST reject it when it exceeds the prior intent ceiling or uses another currency."
     },
     "tool": {
       "type": "string",
@@ -292,18 +276,12 @@
       "description": "Exact committed proposal being authorized for accept_proposal. The governance agent verifies proposal.terms_digest against commercial_terms as received and binds that digest into its decision state; the downstream payload carries the same digest without repeating the terms. A governance agent that cannot interpret every member of commercial_terms, including ext, denies the check (see commercial-terms.json)."
     },
     "governance_context": {
-      "type": "string",
-      "description": "Opaque authorization context from a prior approved check_governance response. Services pass it verbatim on execution and lifecycle checks; the issuing governance agent derives the plan and prior decision from the token. Intermediaries MUST NOT parse it for business logic. Governance agents MUST emit a compact JWS per the AdCP JWS profile.",
-      "minLength": 1,
-      "maxLength": 4096,
-      "pattern": "^[\\x20-\\x7E]+$"
+      "$ref": "/schemas/core/governance-context.json",
+      "description": "Opaque authorization context from a prior approved check_governance response. Services pass it verbatim on execution and lifecycle checks; the issuing governance agent derives the plan and prior decision from the token. Intermediaries MUST NOT parse it for business logic. Governance agents MUST emit a compact JWS per the AdCP JWS profile."
     },
     "consultation_context": {
-      "type": "string",
-      "description": "Opaque, non-authorizing handle returned with an intent conditions verdict. Pass it only when re-checking the adjusted intent so the governance agent can correlate negotiation attempts. The governance agent MUST resolve it under the authenticated principal and reject the re-check unless principal, caller, plan_id, tool, purchase_type, and target audience match the original conditions check. Services MUST NOT receive or accept this value as authorization.",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]+$"
+      "$ref": "/schemas/core/consultation-context.json",
+      "description": "Opaque, non-authorizing handle returned with an intent conditions verdict. Pass it only when re-checking the adjusted intent so the governance agent can correlate negotiation attempts. The governance agent MUST resolve it under the authenticated principal and reject the re-check unless principal, caller, plan_id, tool, purchase_type, and target audience match the original conditions check. Services MUST NOT receive or accept this value as authorization."
     },
     "phase": {
       "$ref": "/schemas/enums/governance-phase.json",
@@ -326,8 +304,7 @@
           "x-entity": "governance_delivery_statement"
         },
         "statement_digest": {
-          "type": "string",
-          "pattern": "^sha256:[a-f0-9]{64}$",
+          "$ref": "/schemas/core/sha256-digest.json",
           "description": "SHA-256 digest of RFC 8785 JCS over {seller_reference, delivery_metrics}, excluding statement_digest itself. The authenticated submission binds the seller to this digest."
         },
         "sequence": {
@@ -341,23 +318,8 @@
           "description": "When the seller issued the canonical statement."
         },
         "reporting_period": {
-          "type": "object",
-          "description": "Start and end timestamps for the reporting window.",
-          "properties": {
-            "start": {
-              "type": "string",
-              "format": "date-time"
-            },
-            "end": {
-              "type": "string",
-              "format": "date-time"
-            }
-          },
-          "required": [
-            "start",
-            "end"
-          ],
-          "additionalProperties": true
+          "$ref": "/schemas/core/datetime-range.json",
+          "description": "Start and end timestamps for the reporting window."
         },
         "spend": {
           "type": "number",
@@ -370,8 +332,7 @@
           "description": "Total spend since the governed action started."
         },
         "currency": {
-          "type": "string",
-          "pattern": "^[A-Z]{3}$",
+          "$ref": "/schemas/core/currency-code.json",
           "description": "Currency of spend fields; must match the plan and planned delivery."
         },
         "impressions": {
@@ -388,18 +349,14 @@
           "type": "object",
           "description": "Actual geographic distribution. Keys are ISO 3166-1 alpha-2 codes, values are percentages.",
           "additionalProperties": {
-            "type": "number",
-            "minimum": 0,
-            "maximum": 100
+            "$ref": "/schemas/core/percentage.json"
           }
         },
         "channel_distribution": {
           "type": "object",
           "description": "Actual channel distribution. Keys are channel enum values, values are percentages.",
           "additionalProperties": {
-            "type": "number",
-            "minimum": 0,
-            "maximum": 100
+            "$ref": "/schemas/core/percentage.json"
           }
         },
         "pacing": {
@@ -432,7 +389,7 @@
               "type": "object",
               "description": "Audience index values for the current reporting period. Keys are seller-defined dimension:value strings (e.g., 'age:25-34', 'gender:female', 'income:high'). The protocol does not mandate a taxonomy — dimensions and value labels vary by seller. Values are index relative to the declared baseline (1.0 = at parity, >1.0 = over-indexed, <1.0 = under-indexed).",
               "propertyNames": {
-                "pattern": "^[a-z_]+:.+$"
+                "$ref": "#/definitions/audience_dimension_key"
               },
               "additionalProperties": {
                 "type": "number",
@@ -443,7 +400,7 @@
               "type": "object",
               "description": "Cumulative audience index values since the governed action started. Same key format as indices (dimension:value). Use for detecting sustained bias drift that may not appear in a single reporting period.",
               "propertyNames": {
-                "pattern": "^[a-z_]+:.+$"
+                "$ref": "#/definitions/audience_dimension_key"
               },
               "additionalProperties": {
                 "type": "number",
@@ -514,5 +471,13 @@
   "required": [
     "caller"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "definitions": {
+    "audience_dimension_key": {
+      "title": "Audience Dimension Key",
+      "description": "Key of an audience distribution index, written as dimension:value.",
+      "type": "string",
+      "pattern": "^[a-z_]+:.+$"
+    }
+  }
 }

@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/verification-grading-profile.json",
+  "title": "Verification Grading Profile",
+  "description": "Grading profile that produced a verification badge: legacy or spec.",
+  "type": "string",
+  "enum": [
+    "legacy",
+    "spec"
+  ]
+}

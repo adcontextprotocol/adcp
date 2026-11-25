@@ -10,8 +10,7 @@
       "properties": {
         "kind": { "type": "string", "const": "metric" },
         "metric": {
-          "type": "string",
-          "enum": ["clicks", "views", "completed_views", "viewed_seconds", "viewable_rate", "engagements", "follows", "saves", "profile_visits", "reach"]
+          "$ref": "/schemas/enums/canonical-optimization-metric.json"
         },
         "standard": { "$ref": "/schemas/enums/viewability-standard.json" },
         "vendor": { "$ref": "/schemas/core/brand-key.json" },
@@ -64,9 +63,9 @@
           "items": {
             "type": "object",
             "properties": {
-              "event_source_id": { "type": "string", "minLength": 1, "x-entity": "event_source" },
+              "event_source_id": { "$ref": "/schemas/core/event-source-id.json", "x-entity": "event_source" },
               "event_type": { "$ref": "/schemas/enums/event-type.json" },
-              "custom_event_name": { "type": "string", "minLength": 1 },
+              "custom_event_name": { "$ref": "/schemas/core/custom-event-name.json" },
               "value_field": { "type": "string", "minLength": 1 },
               "value_factor": { "type": "number", "default": 1 }
             },

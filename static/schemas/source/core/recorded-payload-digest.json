@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/recorded-payload-digest.json",
+  "title": "Recorded Payload Digest",
+  "description": "SHA-256 digest of a recorded outbound request body, in lowercase hexadecimal.",
+  "type": "string",
+  "pattern": "^[a-f0-9]{64}$"
+}

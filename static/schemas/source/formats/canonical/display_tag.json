@@ -263,8 +263,7 @@
       "minItems": 1,
       "uniqueItems": true,
       "items": {
-        "type": "string",
-        "enum": ["tag_url", "inline_markup", "paired_redirect"]
+        "$ref": "/schemas/enums/display-tag-delivery-type.json"
       },
       "description": "Closed set of delivery types this format option can traffic. `paired_redirect` means one atomic ad-request/click-through pair (Internal Redirect semantics), never independently matchable URL slots."
     },

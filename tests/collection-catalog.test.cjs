@@ -12,6 +12,7 @@ const test = require('node:test');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 const { ensureBuiltSchemas, readBuiltSchema, builtSchemaFiles } = require('../scripts/built-schemas.cjs');
+const { addNamedScalarSchemas, resolveScalar } = require('./helpers/named-scalar-schemas.cjs');
 
 ensureBuiltSchemas();
 
@@ -46,10 +47,10 @@ test('the three card event types appear in every enumeration of webhook types', 
   const lists = {
     'enums/notification-type.json': read('enums/notification-type.json').enum,
     'core/notification-config.json event_types': read('core/notification-config.json').properties.event_types.items.enum,
-    'wholesale_feed_webhooks.event_types': read('protocol/get-adcp-capabilities-response.json')
-      .properties.wholesale_feed_webhooks.properties.event_types.items.enum,
-    'core/wholesale-feed-event.json event_type': read('core/wholesale-feed-event.json').properties.event_type.enum,
-    'core/wholesale-feed-webhook.json notification_type': read('core/wholesale-feed-webhook.json').properties.notification_type.enum,
+    'wholesale_feed_webhooks.event_types': resolveScalar(read('protocol/get-adcp-capabilities-response.json')
+      .properties.wholesale_feed_webhooks.properties.event_types.items).enum,
+    'core/wholesale-feed-event.json event_type': resolveScalar(read('core/wholesale-feed-event.json').properties.event_type).enum,
+    'core/wholesale-feed-webhook.json notification_type': resolveScalar(read('core/wholesale-feed-webhook.json').properties.notification_type).enum,
     'core/agent-notification-config.json account-anchored list': read('core/agent-notification-config.json')
       .if.properties.event_types.contains.enum,
   };

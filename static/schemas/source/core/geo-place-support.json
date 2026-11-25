@@ -9,7 +9,7 @@
       "type": "object",
       "description": "Supported place types keyed by ISO 3166-1 alpha-2 country. Only explicitly listed country/type pairs are supported.",
       "propertyNames": {
-        "pattern": "^[A-Z]{2}$"
+        "$ref": "/schemas/core/country-code.json"
       },
       "additionalProperties": {
         "type": "array",

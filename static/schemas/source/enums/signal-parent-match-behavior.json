@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/signal-parent-match-behavior.json",
+  "title": "Signal Parent Match Behavior",
+  "description": "Whether a signal definition supports treating a parent taxonomy node as a match.",
+  "type": "string",
+  "enum": [
+    "exact_only",
+    "descendants_supported",
+    "unknown"
+  ]
+}

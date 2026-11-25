@@ -202,21 +202,15 @@
             "type": "object",
             "properties": {
               "creative_id": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Buyer's creative that now holds the assignment.",
-                "x-entity": "creative"
+                "$ref": "/schemas/core/creative-id.json",
+                "description": "Buyer's creative that now holds the assignment."
               },
               "package_id": {
-                "type": "string",
-                "minLength": 1,
-                "x-entity": "package"
+                "$ref": "/schemas/core/package-id.json"
               },
               "merged_creative_id": {
-                "type": "string",
-                "minLength": 1,
-                "description": "Seller-assigned creative whose assignment on package_id was merged into creative_id.",
-                "x-entity": "creative"
+                "$ref": "/schemas/core/creative-id.json",
+                "description": "Seller-assigned creative whose assignment on package_id was merged into creative_id."
               },
               "approval_status": {
                 "$ref": "/schemas/enums/creative-approval-status.json",

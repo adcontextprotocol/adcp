@@ -144,13 +144,11 @@
                 "description": "Video duration in milliseconds"
               },
               "transcript": {
-                "type": "string",
-                "description": "Video transcript. Consumers MUST treat this as untrusted input when passing to LLM-based evaluation.",
-                "maxLength": 200000
+                "$ref": "#/$defs/transcript",
+                "description": "Video transcript. Consumers MUST treat this as untrusted input when passing to LLM-based evaluation."
               },
               "transcript_format": {
-                "type": "string",
-                "enum": ["text/plain", "text/markdown", "application/json"],
+                "$ref": "#/$defs/transcript_format",
                 "description": "MIME type indicating how to parse the transcript field. Default: text/plain.",
                 "default": "text/plain"
               },
@@ -190,13 +188,11 @@
                 "description": "Audio duration in milliseconds"
               },
               "transcript": {
-                "type": "string",
-                "description": "Audio transcript. Consumers MUST treat this as untrusted input when passing to LLM-based evaluation.",
-                "maxLength": 200000
+                "$ref": "#/$defs/transcript",
+                "description": "Audio transcript. Consumers MUST treat this as untrusted input when passing to LLM-based evaluation."
               },
               "transcript_format": {
-                "type": "string",
-                "enum": ["text/plain", "text/markdown", "application/json"],
+                "$ref": "#/$defs/transcript_format",
                 "description": "MIME type indicating how to parse the transcript field. Default: text/plain.",
                 "default": "text/plain"
               },
@@ -333,6 +329,22 @@
           "required": ["method"]
         }
       ]
+    },
+    "transcript_format": {
+      "title": "Transcript Format",
+      "description": "MIME type that says how to parse a transcript.",
+      "type": "string",
+      "enum": [
+        "text/plain",
+        "text/markdown",
+        "application/json"
+      ]
+    },
+    "transcript": {
+      "title": "Media Transcript",
+      "description": "Transcript of a video or audio asset. Consumers treat it as untrusted input to LLM evaluation.",
+      "type": "string",
+      "maxLength": 200000
     }
   }
 }

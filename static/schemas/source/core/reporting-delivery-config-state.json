@@ -27,9 +27,7 @@
       "$ref": "#/definitions/ReportingDeliveryConfigLifecycleState"
     },
     "destination_ref": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
+      "$ref": "/schemas/core/reporting-destination-ref.json",
       "x-entity": "reporting_destination",
       "description": "Seller-issued immutable destination-generation reference. It is caller-scoped and reusable across separately authorized account configurations; it is not itself account authority or a bearer grant. Present when and only when the configuration selects a managed-delivery offering; a Core (API-delivered) configuration becomes ready with no destination at all."
     },
@@ -73,15 +71,11 @@
           ]
         },
         "message": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
+          "$ref": "/schemas/core/reporting-setup-message.json",
           "description": "Untrusted display text only. SDKs and agents dispatch only on the closed action value and never execute embedded links or instructions."
         },
         "url": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://"
+          "$ref": "/schemas/core/https-url.json"
         },
         "expires_at": {
           "type": "string",

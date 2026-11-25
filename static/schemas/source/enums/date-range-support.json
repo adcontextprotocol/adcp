@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/date-range-support.json",
+  "title": "Date Range Support",
+  "description": "Whether delivery data can be filtered to arbitrary date ranges.",
+  "type": "string",
+  "enum": [
+    "date_range",
+    "lifetime_only"
+  ]
+}

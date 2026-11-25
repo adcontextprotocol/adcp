@@ -8,6 +8,7 @@ const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { resolveScalar } = require('./helpers/named-scalar-schemas.cjs');
 
 const SCHEMA_ROOT = path.join(__dirname, '..', 'static', 'schemas', 'source');
 
@@ -93,7 +94,7 @@ addFormats(ajv);
 for (const [file, pointer, oldPattern] of SITES) {
   test(`${file}#${pointer} accepts everything it accepted before`, () => {
     const doc = JSON.parse(fs.readFileSync(path.join(SCHEMA_ROOT, file), 'utf8'));
-    const node = pointerGet(doc, pointer);
+    const node = resolveScalar(pointerGet(doc, pointer), doc);
     assert.equal(node.format, 'uri');
     assert.equal(node.pattern, '^https://');
 

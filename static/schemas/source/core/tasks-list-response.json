@@ -69,11 +69,7 @@
               "type": "string"
             },
             "direction": {
-              "type": "string",
-              "enum": [
-                "asc",
-                "desc"
-              ]
+              "$ref": "/schemas/enums/sort-direction.json"
             }
           },
           "required": [
@@ -101,13 +97,8 @@
             "description": "Type of AdCP operation"
           },
           "domain": {
-            "type": "string",
-            "description": "AdCP domain this task belongs to",
-            "enum": [
-              "media-buy",
-              "signals",
-              "creative"
-            ]
+            "$ref": "/schemas/enums/task-domain.json",
+            "description": "AdCP domain this task belongs to"
           },
           "status": {
             "$ref": "/schemas/enums/task-status.json",

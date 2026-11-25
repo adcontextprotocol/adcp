@@ -1,0 +1,10 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/agent-operator-id.json",
+  "title": "Agent Operator ID",
+  "description": "Agent-scoped operator label.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 64,
+  "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+}

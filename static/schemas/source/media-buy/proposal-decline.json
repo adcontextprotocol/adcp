@@ -6,10 +6,7 @@
   "type": "object",
   "properties": {
     "proposal_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "x-entity": "proposal",
+      "$ref": "/schemas/core/proposal-id.json",
       "description": "Immutable proposal ID returned by request_proposals or refine_proposals."
     },
     "reason": { "$ref": "/schemas/enums/proposal-decline-reason.json" },

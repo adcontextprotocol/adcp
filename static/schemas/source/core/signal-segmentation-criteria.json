@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/signal-segmentation-criteria.json",
+  "title": "Signal Segmentation Criteria",
+  "description": "Rules that decide which identifiers a signal segment includes, as disclosed under the IAB Data Transparency Standard.",
+  "type": "string",
+  "maxLength": 500
+}

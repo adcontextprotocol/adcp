@@ -6,20 +6,15 @@
   "type": "object",
   "properties": {
     "evidence_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "audience_evidence"
+      "$ref": "/schemas/core/audience-evidence-id.json"
     },
     "snapshot_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "audience_evidence_snapshot"
+      "$ref": "/schemas/core/audience-evidence-snapshot-id.json"
     },
-    "version": { "type": "string", "minLength": 1 },
-    "content_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "version": { "$ref": "/schemas/core/audience-evidence-version.json" },
+    "content_digest": { "$ref": "/schemas/core/sha256-digest.json" },
     "decision_use": {
-      "type": "string",
-      "enum": ["recommendation", "eligibility", "package_construction"],
+      "$ref": "/schemas/enums/audience-evidence-decision-use.json",
       "description": "How this evidence affected the seller's decision. This is not targeting execution."
     },
     "evidence": {
@@ -43,14 +38,11 @@
                     "properties": {
                       "action_type": { "const": "https://adcontextprotocol.org/actions/audience-evidence-evaluation" },
                       "action_id": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 1024,
+                        "$ref": "/schemas/core/attestation-action-id.json",
                         "$comment": "x-entity deliberately omitted because the surrounding selection requires this value to equal snapshot_id."
                       },
                       "action_digest": {
-                        "type": "string",
-                        "pattern": "^sha256:[a-f0-9]{64}$"
+                        "$ref": "/schemas/core/sha256-digest.json"
                       }
                     },
                     "required": ["action_type", "action_id", "action_digest"],

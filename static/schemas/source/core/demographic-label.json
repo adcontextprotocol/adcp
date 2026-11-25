@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/demographic-label.json",
+  "title": "Demographic Label",
+  "description": "Demographic bucket label in the declared demographic system's notation, such as P25-54. It contains at least one non-whitespace character.",
+  "type": "string",
+  "minLength": 1,
+  "pattern": "\\S"
+}

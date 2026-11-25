@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/media-buy-delivery-status.json",
+  "title": "Media Buy Delivery Status",
+  "description": "Media buy lifecycle or reporting status in a delivery report.",
+  "type": "string",
+  "enum": [
+    "pending_creatives",
+    "pending_start",
+    "pending",
+    "active",
+    "paused",
+    "completed",
+    "rejected",
+    "canceled",
+    "failed",
+    "reporting_delayed"
+  ]
+}

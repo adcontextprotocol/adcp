@@ -22,9 +22,8 @@
               "type": "object",
               "properties": {
                 "provider": {
-                  "type": "string",
-                  "description": "TTS provider (elevenlabs, openai, etc.)",
-                  "maxLength": 128
+                  "$ref": "/schemas/core/voice-provider.json",
+                  "description": "TTS provider (elevenlabs, openai, etc.)"
                 },
                 "voice_id": {
                   "type": "string",
@@ -66,9 +65,8 @@
               "type": "object",
               "properties": {
                 "provider": {
-                  "type": "string",
-                  "description": "Avatar provider (d-id, heygen, synthesia, etc.)",
-                  "maxLength": 128
+                  "$ref": "/schemas/core/avatar-provider.json",
+                  "description": "Avatar provider (d-id, heygen, synthesia, etc.)"
                 },
                 "avatar_id": {
                   "type": "string",

@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/reporting-status-view.json",
+  "title": "Reporting Status View",
+  "description": "View that a reporting status request selects: summary, periods, or revision.",
+  "type": "string",
+  "enum": [
+    "summary",
+    "periods",
+    "revision"
+  ]
+}
