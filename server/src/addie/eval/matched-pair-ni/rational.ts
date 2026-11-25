@@ -6,6 +6,7 @@ export const MAX_EXTERNAL_DECIMAL_CHARACTERS = 80;
 /** Absolute guard for direct-module arithmetic and intermediate certificates. */
 export const MAX_RATIONAL_BITS = 8_192;
 const normalizedRationals = new WeakSet<object>();
+const RATIONAL_CEILING = 1n << BigInt(MAX_RATIONAL_BITS);
 
 /** Labels are part of the untrusted diagnostic boundary, never coercion hooks. */
 function primitiveLabel(value: unknown, fallback = 'Rational'): string {
@@ -45,10 +46,13 @@ function inertRecord(value: unknown, name: string, fields: readonly string[]): R
   return Object.freeze(copy);
 }
 
+/** Euclid remainder steps this realm has run; tests read it as the arithmetic's work count. */
+let gcdRemainderSteps = 0;
+export function gcdRemainderStepCount(): number { return gcdRemainderSteps; }
 function gcd(left: bigint, right: bigint): bigint {
   let a = left < 0n ? -left : left;
   let b = right < 0n ? -right : right;
-  while (b !== 0n) { const remainder = a % b; a = b; b = remainder; }
+  while (b !== 0n) { const remainder = a % b; a = b; b = remainder; gcdRemainderSteps++; }
   return a;
 }
 
@@ -58,16 +62,35 @@ export function rational(numerator: bigint | number, denominator: bigint | numbe
     if (typeof value === 'number' && Number.isSafeInteger(value)) return BigInt(value);
     throw new RangeError(`${name} must be a bigint or safe integer number`);
   };
-  let n = integer(numerator, 'Rational numerator');
-  let d = integer(denominator, 'Rational denominator');
-  if (bitLength(n) > MAX_RATIONAL_BITS || bitLength(d) > MAX_RATIONAL_BITS) throw new RangeError(`Rational exceeds ${MAX_RATIONAL_BITS}-bit arithmetic ceiling`);
+  return reduced(integer(numerator, 'Rational numerator'), integer(denominator, 'Rational denominator'), gcd);
+}
+/**
+ * n/d in lowest terms. `commonFactor(n, d)` returns gcd(n, d); the arithmetic
+ * below passes a cheaper route to the same gcd. The ceiling applies to n and
+ * d before reduction.
+ */
+function reduced(numerator: bigint, denominator: bigint, commonFactor: (n: bigint, d: bigint) => bigint): Rational {
+  let n = numerator;
+  let d = denominator;
+  // |v| >= 2^MAX_RATIONAL_BITS is bitLength(v) > MAX_RATIONAL_BITS, without a base-2 string.
+  if (n >= RATIONAL_CEILING || n <= -RATIONAL_CEILING || d >= RATIONAL_CEILING || d <= -RATIONAL_CEILING) throw new RangeError(`Rational exceeds ${MAX_RATIONAL_BITS}-bit arithmetic ceiling`);
   if (d === 0n) throw new RangeError('Rational denominator must not be zero');
   if (n === 0n) return ZERO;
   if (d < 0n) { n = -n; d = -d; }
-  const divisor = gcd(n, d);
+  const divisor = commonFactor(n, d);
   const result = Object.freeze({ numerator: n / divisor, denominator: d / divisor });
   normalizedRationals.add(result);
   return result;
+}
+/**
+ * gcd of a sum's numerator n and denominator b1 * b2, for normalized operands
+ * with denominators b1 and b2 (Henrici; Knuth, TAOCP vol. 2, 4.5.1): with
+ * g = gcd(b1, b2), n = t * g and the gcd is g * gcd(t, g). Both gcds take a
+ * denominator-sized operand, never two product-sized ones.
+ */
+function sumGcd(n: bigint, b1: bigint, b2: bigint): bigint {
+  const g = gcd(b1, b2);
+  return g === 1n ? 1n : g * gcd(n / g, g);
 }
 
 export const ZERO: Rational = Object.freeze({ numerator: 0n, denominator: 1n });
@@ -87,13 +110,17 @@ export function canonicalRational(value: Rational, name = 'Rational'): Rational 
   return rational(copy.numerator, copy.denominator);
 }
 export function validateBoundedRational(value: Rational, name: string): void { canonicalRational(value, name); }
-export function add(a: Rational, b: Rational): Rational { const left = canonicalRational(a, 'Left rational'); const right = canonicalRational(b, 'Right rational'); return rational(left.numerator * right.denominator + right.numerator * left.denominator, left.denominator * right.denominator); }
-export function subtract(a: Rational, b: Rational): Rational { const left = canonicalRational(a, 'Left rational'); const right = canonicalRational(b, 'Right rational'); return rational(left.numerator * right.denominator - right.numerator * left.denominator, left.denominator * right.denominator); }
-export function multiply(a: Rational, b: Rational): Rational { const left = canonicalRational(a, 'Left rational'); const right = canonicalRational(b, 'Right rational'); return rational(left.numerator * right.numerator, left.denominator * right.denominator); }
+// The operands are normalized, so each operation's gcd is assembled from gcds
+// of their parts (Knuth, TAOCP vol. 2, 4.5.1) instead of one gcd of two
+// product-sized numbers. The result is the same lowest-terms rational.
+export function add(a: Rational, b: Rational): Rational { const left = canonicalRational(a, 'Left rational'); const right = canonicalRational(b, 'Right rational'); return reduced(left.numerator * right.denominator + right.numerator * left.denominator, left.denominator * right.denominator, (n) => sumGcd(n, left.denominator, right.denominator)); }
+export function subtract(a: Rational, b: Rational): Rational { const left = canonicalRational(a, 'Left rational'); const right = canonicalRational(b, 'Right rational'); return reduced(left.numerator * right.denominator - right.numerator * left.denominator, left.denominator * right.denominator, (n) => sumGcd(n, left.denominator, right.denominator)); }
+/** gcd(n1 n2, d1 d2) = gcd(n1, d2) * gcd(n2, d1) when gcd(n1, d1) = gcd(n2, d2) = 1. */
+export function multiply(a: Rational, b: Rational): Rational { const left = canonicalRational(a, 'Left rational'); const right = canonicalRational(b, 'Right rational'); return reduced(left.numerator * right.numerator, left.denominator * right.denominator, () => gcd(left.numerator, right.denominator) * gcd(right.numerator, left.denominator)); }
 export function divide(a: Rational, b: Rational): Rational {
   const left = canonicalRational(a, 'Left rational'); const right = canonicalRational(b, 'Right rational');
   if (right.numerator === 0n) throw new RangeError('Rational division by zero');
-  return rational(left.numerator * right.denominator, left.denominator * right.numerator);
+  return reduced(left.numerator * right.denominator, left.denominator * right.numerator, () => gcd(left.numerator, right.numerator) * gcd(left.denominator, right.denominator));
 }
 export function negate(a: Rational): Rational { const normalized = canonicalRational(a); return rational(-normalized.numerator, normalized.denominator); }
 export function compare(a: Rational, b: Rational): -1 | 0 | 1 {

@@ -45,7 +45,7 @@ export const ISOLATED_UNIT_FILES: Record<string, string> = {
 // the file is long.
 export const FIRST_UNIT_FILES: Record<string, string> = {
   'tests/unit/addie/matched-pair-ni/exact-inference.test.ts':
-    'about 22 s: n=25 exact computations in-process and in three cold processes',
+    'the longest server file in a full run (about 60 s beside the rest of the suite on 40 cores): 40 exact-inference cases, one in a cold process',
 };
 
 const TEST_FILE = /\.(?:test|spec)\.[cm]?[jt]sx?$/;

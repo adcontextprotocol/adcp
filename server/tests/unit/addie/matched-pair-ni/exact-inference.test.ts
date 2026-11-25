@@ -19,8 +19,8 @@ import {
 } from './realm-probe.mjs';
 import { childLaunchesSince, childLaunchMark, typeScriptToolingIn, type ChildLaunch } from '../../../helpers/child-process-launches.js';
 import fixture from '../../../../src/addie/eval/matched-pair-ni/fixtures/published-lm-2008.json' with { type: 'json' };
-import { divideWithRemainder, isZero, polynomial, polynomialAdd, polynomialMultiply, polynomialPow, polynomialScale } from '../../../../src/addie/eval/matched-pair-ni/polynomial.js';
-import { interval, intervalDividePositive, isolateInteriorRoots, maximizePolynomial, sturmSequence } from '../../../../src/addie/eval/matched-pair-ni/algebraic.js';
+import { divideWithRemainder, evaluate, isZero, polynomial, polynomialAdd, polynomialMultiply, polynomialPow, polynomialScale } from '../../../../src/addie/eval/matched-pair-ni/polynomial.js';
+import { evaluateInterval, interval, intervalDividePositive, isolateInteriorRoots, maximizePolynomial, sturmSequence } from '../../../../src/addie/eval/matched-pair-ni/algebraic.js';
 import { denyMatchedPairNiPromotion, MATCHED_PAIR_NI_ADMISSION, matchedPairNiAdmission } from '../../../../src/addie/eval/matched-pair-ni/admission.js';
 import {
   conditionalMcNemarPValue,
@@ -33,7 +33,7 @@ import {
   restrictedPhiInterval,
   restrictedScoreEM,
 } from '../../../../src/addie/eval/matched-pair-ni/engine.js';
-import { abs, add, choose, compare, decimal, display, divide, midpoint, negate, pow, rational, subtract, ONE, TWO, ZERO } from '../../../../src/addie/eval/matched-pair-ni/rational.js';
+import { abs, add, choose, compare, decimal, display, divide, gcdRemainderStepCount, midpoint, negate, pow, rational, subtract, ONE, TWO, ZERO } from '../../../../src/addie/eval/matched-pair-ni/rational.js';
 import { WorkBudget } from '../../../../src/addie/eval/matched-pair-ni/work-budget.js';
 
 // Pass-through recorder: every launch runs for real; tests read how many
@@ -89,9 +89,9 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
   /**
    * The engine's wall-clock limits off: a determinate result then depends only
    * on its work budget, never on CPU load. Each call stays bounded by its
-   * test's timeout, and each cold child by its 25 s spawn timeout (a cold child takes
-   * 15.5 s on the idle noetis VM). A hung worker keeps its two slots, so later
-   * engine calls in this file would fall back as well.
+   * test's timeout, and the cold child by its 25 s spawn timeout. A hung
+   * worker keeps its two slots, so later engine calls in this file would fall
+   * back as well.
    */
   const BUDGET_ONLY = { computeMilliseconds: null, workerMilliseconds: null } as const;
 
@@ -397,20 +397,22 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     return sharedN25!.outcome;
   }
 
-  /** Three cold processes, one after another, each killed (SIGTERM) after 25 s. */
+  /**
+   * One cold process, killed (SIGTERM) after 25 s. With both wall-clock
+   * limits off, its outcome depends only on the request and the work budget,
+   * so a second identical process would repeat the same computation.
+   */
   async function expectsColdWorkerFixtureToBeDeterminate(): Promise<void> {
     const engineUrl = new URL('../../../../src/addie/eval/matched-pair-ni/engine.ts', import.meta.url).href;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const source = `import { restrictedScoreEM, parseMatchedPairNiDecimal as d } from ${JSON.stringify(engineUrl)};
-        const outcome = await restrictedScoreEM({ counts: { n11: 23, n10: 2, n01: 0, n00: 0 }, margin: d("0.10"), alpha: d("0.05") }, ${JSON.stringify(BUDGET_ONLY)});
-        process.exit(outcome.diagnostic.indeterminate ? 2 : 0);`;
-      const result = await runChild(['--import', 'tsx', '--input-type=module', '--eval', source], {
-        stdio: ['ignore', 'ignore', 'pipe'], timeout: 25_000,
-      });
-      expect(result.error, `cold child ${attempt}: ${result.stderr}`).toBeUndefined();
-      expect(result.signal, `cold child ${attempt}: ${result.stderr}`).toBeNull();
-      expect(result.status, `cold child ${attempt}: ${result.stderr}`).toBe(0);
-    }
+    const source = `import { restrictedScoreEM, parseMatchedPairNiDecimal as d } from ${JSON.stringify(engineUrl)};
+      const outcome = await restrictedScoreEM({ counts: { n11: 23, n10: 2, n01: 0, n00: 0 }, margin: d("0.10"), alpha: d("0.05") }, ${JSON.stringify(BUDGET_ONLY)});
+      process.exit(outcome.diagnostic.indeterminate ? 2 : 0);`;
+    const result = await runChild(['--import', 'tsx', '--input-type=module', '--eval', source], {
+      stdio: ['ignore', 'ignore', 'pipe'], timeout: 25_000,
+    });
+    expect(result.error, `cold child: ${result.stderr}`).toBeUndefined();
+    expect(result.signal, `cold child: ${result.stderr}`).toBeNull();
+    expect(result.status, `cold child: ${result.stderr}`).toBe(0);
   }
 
   it('reproduces the published n=25, x=2, t=2 score E+M fixture to four decimals', async () => {
@@ -437,9 +439,27 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
     expect(outcome.diagnostic.certificate?.maximization).toBe('rational_sturm_and_interval_bisection');
   }, 30_000);
 
-  it('repeats the published fixture in killable cold worker processes', async () => {
+  it('repeats the published fixture in a killable cold worker process', async () => {
+    const launches = childLaunchMark();
     await expectsColdWorkerFixtureToBeDeterminate();
-  }, 80_000);
+    expect(childLaunchesSince(launches).map(describeLaunch), 'the cold fixture run starts exactly one child process').toHaveLength(1);
+  });
+
+  it('evaluates an n=25 E-step tail over its nuisance interval without product-sized gcds', () => {
+    // The E step's hot path: a degree-25 null probability polynomial
+    // evaluated over its restricted phi interval. Over normalized operands
+    // multiply and add take gcds of the operands' parts: 6,878 remainder
+    // steps here, against 72,110 for one gcd of each product.
+    const state = { n: 25, x: 2, t: 2 };
+    const tail = reducedStateProbabilityPolynomial(state, margin);
+    const phi = restrictedPhiInterval(state, margin);
+    const before = gcdRemainderStepCount();
+    const value = evaluateInterval(tail, phi);
+    expect(gcdRemainderStepCount() - before).toBeLessThan(10_000);
+    const atLower = evaluate(tail, phi.lower);
+    expect(compare(value.lower, atLower)).toBeLessThanOrEqual(0);
+    expect(compare(atLower, value.upper)).toBeLessThanOrEqual(0);
+  });
 
   it('stops the computation once the clock passes the default 12 s compute deadline', () => {
     let now = 1_000;
@@ -600,7 +620,7 @@ describe('Lloyd--Moldovan restricted-score E+M diagnostic', () => {
       true,
     );
     expectNoChildProcessSince(launches);
-  }, 90_000);
+  });
 
   it('does not claim TypeScript source pre-evaluation isolation from the external tsx loader', async () => {
     const launches = childLaunchMark();
