@@ -10,5 +10,4 @@ price guidance in the non-guaranteed sales flow.
 Gate audit-observation assertions on the advertised sandbox query hook and
 retain the complete account reference across provenance discovery, creative
 submission, and audit queries. Require executable exclusion-check support before
-the filter storyboard seeds fixtures, including compatibility grading in the
-hosted runner while the SDK adopts the check.
+the filter storyboard seeds fixtures.
