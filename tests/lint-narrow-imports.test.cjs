@@ -136,6 +136,9 @@ function decodeEscapes(source) {
 // One decoded text per file and source text.
 const decodedCache = new Map();
 function decodedText(file, source) {
+  // A tracked file deleted in the working tree (git ls-files still lists it
+  // until the deletion is staged) holds no import.
+  if (source === undefined) return '';
   if (!source.includes('\\')) return source;
   const hit = decodedCache.get(file);
   if (hit && hit.source === source) return hit.text;
