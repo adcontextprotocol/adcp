@@ -103,6 +103,7 @@ function fromEngine(error: unknown, field?: string): never {
     case 'UNKNOWN_PRODUCT':
       throw new AdcpError('PRODUCT_NOT_FOUND', { recovery: 'correctable', message: error.message, ...(field && { field }) });
     case 'SOLD_OUT':
+    case 'INSUFFICIENT_INVENTORY':
       throw new AdcpError('PRODUCT_UNAVAILABLE', { recovery: 'correctable', message: error.message, ...(field && { field }) });
     case 'BOOKING_NOT_FOUND':
       throw new AdcpError('PACKAGE_NOT_FOUND', { recovery: 'correctable', message: error.message, ...(field && { field }) });
@@ -645,7 +646,10 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
             ...(product.delivery_type === 'non_guaranteed' && { bid_cpm: bid ?? (seededOption && floorPrice(seededOption)) ?? Math.min(...product.placement_ids.map(id => this.profile.seed.placements.find(p => p.placement_id === id)!.floor_cpm)) }),
           }, market.nowMs);
         } catch (error) {
-          fromEngine(error, field);
+          // A goal the forecast cannot cover is the impressions asked for, or
+          // what the budget buys when none were.
+          const goalField = impressions !== undefined ? `${field}.impressions` : `${field}.budget`;
+          fromEngine(error, error instanceof EngineError && error.code === 'INSUFFICIENT_INVENTORY' ? goalField : field);
         }
         const booking = market.sim.booking(packageId);
         records.push({
@@ -715,61 +719,87 @@ export class InventoryPlatform implements DecisioningPlatform<{ strict: boolean 
         }
         affected.add(pkg.package_id);
       };
-      if (patch.end_time !== undefined) {
-        const endMs = parseInstant(patch.end_time, 'end_time', market.nowMs);
-        buy.end_time = new Date(endMs).toISOString();
-        for (const pkg of buy.packages) {
-          if (pkg.canceled) continue;
-          pkg.end_time = buy.end_time;
-          apply(pkg, { flight_end_ms: endMs }, 'end_time');
-        }
-      }
-      (Array.isArray(patch.packages) ? patch.packages : []).forEach((change: Record<string, unknown>, index: number) => {
-        const field = `packages[${index}]`;
-        const pkg = buy.packages.find(candidate => candidate.package_id === change.package_id);
-        if (!pkg) throw new AdcpError('PACKAGE_NOT_FOUND', { recovery: 'correctable', message: `Unknown package ${String(change.package_id)}`, field: `${field}.package_id` });
-        if (pkg.canceled) {
-          if (change.canceled === true) throw new AdcpError('NOT_CANCELLABLE', { recovery: 'terminal', message: `Package ${pkg.package_id} is already canceled`, field: `${field}.canceled` });
-          throw new AdcpError('INVALID_STATE', { recovery: 'terminal', message: `Package ${pkg.package_id} is canceled`, field });
-        }
-        if (typeof change.budget === 'number') {
-          pkg.budget = change.budget;
-          apply(pkg, { budget: change.budget }, `${field}.budget`);
-        }
-        if (typeof change.impressions === 'number') {
-          pkg.impressions = change.impressions;
-          apply(pkg, { impression_goal: change.impressions }, `${field}.impressions`);
-        }
-        if (typeof change.bid_price === 'number') {
-          pkg.bid_price = change.bid_price;
-          apply(pkg, { bid_cpm: change.bid_price }, `${field}.bid_price`);
-        }
-        if (typeof change.paused === 'boolean') {
-          pkg.paused = change.paused;
-          apply(pkg, { status: change.paused || buy.paused ? 'paused' : 'active' }, `${field}.paused`);
-        }
-        if (change.canceled === true) {
-          pkg.canceled = true;
-          apply(pkg, { status: 'canceled' }, `${field}.canceled`);
-        }
-        if (this.applyPackageCreatives(market, accountIdOf(ctx), pkg, change, field, true)) affected.add(pkg.package_id);
-        if (isContext(change.context)) {
-          pkg.context = structuredClone(change.context);
-          affected.add(pkg.package_id);
-        }
-      });
-      if (typeof patch.paused === 'boolean') {
-        buy.paused = patch.paused;
-        for (const pkg of buy.packages) {
-          if (!pkg.canceled) apply(pkg, { status: patch.paused || pkg.paused ? 'paused' : 'active' }, 'paused');
-        }
-      }
       if (patch.canceled === true) {
+        // Root cancellation takes precedence over every other field.
         buy.canceled = true;
         for (const pkg of buy.packages) {
           if (pkg.canceled) continue;
           pkg.canceled = true;
           apply(pkg, { status: 'canceled' }, 'canceled');
+        }
+      } else {
+        if (patch.end_time !== undefined) {
+          const endMs = parseInstant(patch.end_time, 'end_time', market.nowMs);
+          buy.end_time = new Date(endMs).toISOString();
+          for (const pkg of buy.packages) {
+            if (pkg.canceled) continue;
+            pkg.end_time = buy.end_time;
+            apply(pkg, { flight_end_ms: endMs }, 'end_time');
+          }
+        }
+        // Raised goals go in after every other change, so each is weighed
+        // against what the whole request leaves, whatever its package order.
+        const raised: Array<{ pkg: PackageRecord; impressions: number; field: string }> = [];
+        (Array.isArray(patch.packages) ? patch.packages : []).forEach((change: Record<string, unknown>, index: number) => {
+          const field = `packages[${index}]`;
+          const pkg = buy.packages.find(candidate => candidate.package_id === change.package_id);
+          if (!pkg) throw new AdcpError('PACKAGE_NOT_FOUND', { recovery: 'correctable', message: `Unknown package ${String(change.package_id)}`, field: `${field}.package_id` });
+          if (pkg.canceled) {
+            if (change.canceled === true) throw new AdcpError('NOT_CANCELLABLE', { recovery: 'terminal', message: `Package ${pkg.package_id} is already canceled`, field: `${field}.canceled` });
+            throw new AdcpError('INVALID_STATE', { recovery: 'terminal', message: `Package ${pkg.package_id} is canceled`, field });
+          }
+          if (change.canceled === true) {
+            // A package's cancellation takes precedence over its other fields.
+            pkg.canceled = true;
+            apply(pkg, { status: 'canceled' }, `${field}.canceled`);
+            return;
+          }
+          if (typeof change.budget === 'number') {
+            pkg.budget = change.budget;
+            apply(pkg, { budget: change.budget }, `${field}.budget`);
+          }
+          if (typeof change.impressions === 'number') {
+            if (change.impressions > (market.sim.booking(pkg.package_id).impression_goal ?? Number.POSITIVE_INFINITY)) {
+              raised.push({ pkg, impressions: change.impressions, field: `${field}.impressions` });
+            } else {
+              pkg.impressions = change.impressions;
+              apply(pkg, { impression_goal: change.impressions }, `${field}.impressions`);
+            }
+          }
+          if (typeof change.bid_price === 'number') {
+            pkg.bid_price = change.bid_price;
+            apply(pkg, { bid_cpm: change.bid_price }, `${field}.bid_price`);
+          }
+          if (typeof change.paused === 'boolean') {
+            pkg.paused = change.paused;
+            apply(pkg, { status: change.paused || buy.paused ? 'paused' : 'active' }, `${field}.paused`);
+          }
+          if (this.applyPackageCreatives(market, accountIdOf(ctx), pkg, change, field, true)) affected.add(pkg.package_id);
+          if (isContext(change.context)) {
+            pkg.context = structuredClone(change.context);
+            affected.add(pkg.package_id);
+          }
+        });
+        if (typeof patch.paused === 'boolean') {
+          buy.paused = patch.paused;
+          for (const pkg of buy.packages) {
+            if (!pkg.canceled) apply(pkg, { status: patch.paused || pkg.paused ? 'paused' : 'active' }, 'paused');
+          }
+        }
+        for (const { pkg, impressions, field } of raised) {
+          pkg.impressions = impressions;
+          apply(pkg, { impression_goal: impressions }, field);
+        }
+        // Each raise was weighed before the ones after it went in; weigh them
+        // all again against the state they leave together.
+        if (raised.length > 1) {
+          for (const { pkg, field } of raised) {
+            try {
+              market.sim.requireGoalAvailable(pkg.package_id, market.nowMs);
+            } catch (error) {
+              fromEngine(error, field);
+            }
+          }
         }
       }
       buy.revision += 1;

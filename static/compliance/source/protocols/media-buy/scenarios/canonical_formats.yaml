@@ -1,5 +1,5 @@
 id: media_buy_seller/canonical_formats
-version: 1.1.1
+version: 1.2.0
 title: Canonical formats and deprecated named-format compatibility
 category: media_buy_seller
 summary: Validates canonical product formats and the optional, explicitly deprecated named-format compatibility projection.
@@ -38,6 +38,11 @@ narrative: |
   selector satisfies the canonical declaration after normalization, while a
   bare canonical image selector without dimensions does not satisfy a fixed
   300x250 product.
+
+  Sellers that accept inline package creatives also get a manifest routing
+  check on a seeded product with two image declarations: a manifest that
+  omits `format_option_ref` is rejected even though its assets fit only one
+  of them, while the same manifest naming its option is accepted.
 
   Custom and experimental declarations are covered by independent optional scenarios so their absence cannot suppress image and named-format compatibility coverage.
 agent:
@@ -1089,6 +1094,270 @@ phases:
           - check: error_code
             value: INVALID_REQUEST
             description: Seller rejects a schema-invalid fixed-size image selector
+  - id: canonical_manifest_routing
+    title: Manifest routing across repeated format kinds
+    # Seeds and reads its own product, so earlier phases do not gate it.
+    depends_on: []
+    requires_capability:
+      path: media_buy.features.inline_creative_management
+      equals: true
+    narrative: |
+      Runs only for sellers that accept inline package creatives on
+      create_media_buy, because the manifest and its target product must
+      travel in one request. The buyer seeds a product carrying two image
+      declarations, a fixed 300x250 and a fixed 728x90, and reads it back.
+
+      The same 300x250 image manifest is then sent twice, without a package
+      format selector. With `format_option_ref` naming the 300x250
+      declaration it is accepted. Without it the seller rejects the manifest:
+      when two or more declarations share the manifest's `format_kind`,
+      `format_option_ref` is required, however many of them the assets
+      would satisfy. A seller MUST NOT infer the option from which
+      declaration the assets fit. The accepted control shows the rejection
+      comes from the missing reference, not from the asset or the product.
+    steps:
+      - id: seed_canonical_formats_repeated_kind_display
+        title: Seed canonical_formats_repeated_kind_display
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        sample_request:
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_canonical_formats-a323283f
+            sandbox: true
+          scenario: seed_product
+          params:
+            product_id: canonical_formats_repeated_kind_display
+            fixture:
+              name: Canonical Formats Repeated Kind Display
+              description: Seeded wholesale product with two image declarations for manifest routing validation.
+              publisher_properties:
+                - publisher_domain: outdoormagazine.example
+                  selection_type: all
+              channels:
+                - display
+              delivery_type: non_guaranteed
+              format_options:
+                - format_kind: image
+                  format_option_id: canonical_formats_repeated_image_mrec
+                  display_name: Canonical Formats Repeated Image MREC
+                  params:
+                    width: 300
+                    height: 250
+                    max_file_size_kb: 200
+                    image_formats:
+                      - jpg
+                      - png
+                    ssl_required: true
+                    asset_source: buyer_uploaded
+                    buyer_asset_acceptance: accepted
+                    composition_model: deterministic
+                    slots:
+                      - asset_group_id: image_main
+                        asset_type: image
+                        required: true
+                - format_kind: image
+                  format_option_id: canonical_formats_repeated_image_leaderboard
+                  display_name: Canonical Formats Repeated Image Leaderboard
+                  params:
+                    width: 728
+                    height: 90
+                    max_file_size_kb: 200
+                    image_formats:
+                      - jpg
+                      - png
+                    ssl_required: true
+                    asset_source: buyer_uploaded
+                    buyer_asset_acceptance: accepted
+                    composition_model: deterministic
+                    slots:
+                      - asset_group_id: image_main
+                        asset_type: image
+                        required: true
+              pricing_options:
+                - pricing_option_id: canonical_formats_repeated_kind_cpm
+                  pricing_model: cpm
+                  currency: USD
+                  floor_price: 9
+              reporting_capabilities:
+                available_reporting_frequencies:
+                  - daily
+                expected_delay_minutes: 60
+                timezone: UTC
+                supports_webhooks: false
+                available_metrics:
+                  - impressions
+                  - clicks
+                  - spend
+                date_range_support: date_range
+        validations:
+          - check: field_value
+            path: success
+            value: true
+            description: The controller accepts the repeated-kind fixture
+      - id: get_repeated_kind_product
+        title: Read the product with two image declarations
+        narrative: |
+          Reread the wholesale feed so the runner's product context points at
+          `canonical_formats_repeated_kind_display`, and confirm the product
+          still publishes both image declarations under their own IDs.
+        task: get_products
+        schema_ref: media-buy/get-products-request.json
+        response_schema_ref: media-buy/get-products-response.json
+        doc_ref: /media-buy/task-reference/get_products
+        comply_scenario: schema_compliance
+        stateful: true
+        expected: |
+          Return the seeded canonical_formats_repeated_kind_display product
+          with two image declarations: canonical_formats_repeated_image_mrec
+          (300x250) and canonical_formats_repeated_image_leaderboard (728x90).
+        sample_request:
+          buying_mode: wholesale
+          filters:
+            channels:
+              - display
+            delivery_type: non_guaranteed
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_canonical_formats-a323283f
+            sandbox: true
+          context:
+            correlation_id: canonical_formats--get_repeated_kind_product
+        validations:
+          - check: response_schema
+            description: Response matches get-products-response.json schema
+          - check: field_contains
+            path: products[*]
+            value:
+              product_id: canonical_formats_repeated_kind_display
+              format_options:
+                - format_kind: image
+                  format_option_id: canonical_formats_repeated_image_mrec
+                  params:
+                    width: 300
+                    height: 250
+                - format_kind: image
+                  format_option_id: canonical_formats_repeated_image_leaderboard
+                  params:
+                    width: 728
+                    height: 90
+            description: The seeded product keeps both image declarations regardless of catalog or format ordering
+        collect_product_pages: true
+      - id: create_media_buy_with_repeated_kind_manifest_ref
+        title: Accept a manifest that names its format option
+        task: create_media_buy
+        schema_ref: media-buy/create-media-buy-request.json
+        response_schema_ref: media-buy/create-media-buy-response.json
+        doc_ref: /media-buy/task-reference/create_media_buy
+        stateful: true
+        expected: |
+          Accept the buy. The inline image manifest carries format_option_ref
+          for the 300x250 declaration, which routes it unambiguously.
+        sample_request:
+          brand:
+            domain: acmeoutdoor.example
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_canonical_formats-a323283f
+            sandbox: true
+          start_time: "2099-06-01T00:00:00Z"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: canonical_formats_repeated_kind_display
+              budget: 1000
+              pricing_option_id: canonical_formats_repeated_kind_cpm
+              creatives:
+                - creative_id: canonical_formats_repeated_kind_with_ref
+                  name: Canonical formats repeated-kind MREC with option reference
+                  format_kind: image
+                  format_option_ref:
+                    scope: product
+                    format_option_id: canonical_formats_repeated_image_mrec
+                  assets:
+                    image_main:
+                      asset_type: image
+                      url: https://test-assets.adcontextprotocol.org/acme-outdoor/hero-300x250.jpg
+                      width: 300
+                      height: 250
+                      format: jpg
+                      file_size_bytes: 48000
+              context:
+                buyer_ref: canonical_formats_repeated_kind_ref_positive
+          context:
+            correlation_id: canonical_formats--create_media_buy_with_repeated_kind_manifest_ref
+          idempotency_key: $generate:uuid_v4#canonical_formats_create_media_buy_with_repeated_kind_manifest_ref
+        validations:
+          - check: response_schema
+            description: Response matches create-media-buy-response.json schema
+          - check: field_present
+            path: media_buy_id
+            description: A manifest naming its format option is accepted on a product with two image declarations
+      - id: reject_repeated_kind_manifest_without_ref
+        title: Reject a manifest without format_option_ref on a repeated format kind
+        task: create_media_buy
+        schema_ref: media-buy/create-media-buy-request.json
+        response_schema_ref: media-buy/create-media-buy-response.json
+        doc_ref: /media-buy/task-reference/create_media_buy
+        expect_error: true
+        negative_path: payload_well_formed
+        # Enrich the auction bid so the request reaches format routing instead of failing on a missing bid.
+        enrich_request: true
+        stateful: true
+        expected: |
+          Reject the request. The product carries two image declarations, so
+          the manifest must name one with format_option_ref. Its 300x250
+          assets fit only the 300x250 declaration, but the seller must not
+          infer the option from asset fit.
+        sample_request:
+          brand:
+            domain: acmeoutdoor.example
+          account:
+            brand:
+              domain: acmeoutdoor.example
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: compliance-media_buy_seller_canonical_formats-a323283f
+            sandbox: true
+          start_time: "2099-06-01T00:00:00Z"
+          end_time: "2099-06-30T23:59:59Z"
+          packages:
+            - product_id: canonical_formats_repeated_kind_display
+              budget: 1000
+              pricing_option_id: canonical_formats_repeated_kind_cpm
+              creatives:
+                - creative_id: canonical_formats_repeated_kind_without_ref
+                  name: Canonical formats repeated-kind MREC without option reference
+                  format_kind: image
+                  assets:
+                    image_main:
+                      asset_type: image
+                      url: https://test-assets.adcontextprotocol.org/acme-outdoor/hero-300x250.jpg
+                      width: 300
+                      height: 250
+                      format: jpg
+                      file_size_bytes: 48000
+              context:
+                buyer_ref: canonical_formats_repeated_kind_ref_negative
+          context:
+            correlation_id: canonical_formats--reject_repeated_kind_manifest_without_ref
+          idempotency_key: $generate:uuid_v4#canonical_formats_reject_repeated_kind_manifest_without_ref
+        validations:
+          - check: error_code
+            allowed_values:
+              - VALIDATION_ERROR
+              - INVALID_REQUEST
+              - CREATIVE_VALIDATION_FAILED_GENERIC
+            description: Seller rejects a manifest that omits format_option_ref when two declarations share its format_kind
 requires_all_capabilities:
   - path: media_buy.buying_modes
     contains: wholesale

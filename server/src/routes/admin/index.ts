@@ -27,3 +27,4 @@ export { setupAnnouncementsRoutes } from './announcements.js';
 export { setupIntegrityRoutes } from './integrity.js';
 export { setupRegistryReviewRoutes } from './registry-review.js';
 export { setupAdminAgentsRoutes } from './agents.js';
+export { setupTrainingReportingRoutes } from './training-reporting.js';

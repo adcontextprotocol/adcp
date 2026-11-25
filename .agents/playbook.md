@@ -531,11 +531,11 @@ Default flow when a fix is needed in both lines:
    ```
    Branch name **must** start with `forward-merge/` — the changeset-check workflow skips on this prefix (the merge brings package-changing commits whose changesets were already consumed by 3.1.x's Version Packages cut).
 
-4. **Skip rules for release-machinery PRs.** The changeset-check workflow (`.github/workflows/changeset-check.yml`) skips PRs whose `head_ref` starts with:
+4. **Skip rules for release-machinery PRs.** The changeset-check workflow (`.github/workflows/changeset-check.yml`) skips PRs from a branch in this repository whose `head_ref` starts with:
    - `changeset-release/` — Version Packages PRs (changesets already consumed)
    - `forward-merge/` — forward-merge PRs (changesets explained by source branch's CHANGELOG, not by a new file on main)
 
-   Any other PR head triggers the check normally. Don't bypass via empty changeset padding — the skip is the right primitive.
+   Any other PR head, and every fork PR, triggers the check normally. Don't bypass via empty changeset padding — the skip is the right primitive.
 
 #### Patch eligibility
 
@@ -590,6 +590,15 @@ git commit -m "chore(release): enter pre mode for 3.2 beta"
 The pre-mode file and pending 3.2 changesets belong only on `main`; the
 forward-merge workflow preserves main's copies. Do not cherry-pick them to
 `3.1.x`.
+
+Each prerelease cut moves the changesets it consumes into `.changeset/pre/`.
+The stable cut consumes that archive again into the GA changelog, so treat it
+as release history. Only Version Packages (`changeset-release/`) adds, moves
+or deletes archive files as part of a cut. To correct one before GA, open a PR
+from a `release-audit/<version>` branch in this repository that only edits or
+deletes existing `.changeset/*.md` and `.changeset/pre/*.md` files. The
+changeset scope check rejects any other change to the archive
+(`.agents/shortcuts/cut-beta.md`).
 
 After the latest accepted beta has landed, prepare the beta-to-RC phase
 transition with the guarded release command documented in `RELEASING.md`:

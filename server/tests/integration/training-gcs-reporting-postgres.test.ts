@@ -84,11 +84,13 @@ describe.skipIf(!testUrl)('training GCS reporting against disposable PostgreSQL'
       await client.query('BEGIN');
       await client.query(`DROP SCHEMA IF EXISTS ${TRAINING_REPORTING_SCHEMA} CASCADE`);
       await client.query(`CREATE SCHEMA ${TRAINING_REPORTING_SCHEMA}`);
-      for (const migration of ['620_training_gcs_reporting.sql', '621_training_gcs_reporting_obligation_tombstones.sql', '624_training_gcs_reporting_destination_contract.sql', '630_training_gcs_reporting_history_start.sql']) {
+      for (const migration of ['620_training_gcs_reporting.sql', '621_training_gcs_reporting_obligation_tombstones.sql', '624_training_gcs_reporting_destination_contract.sql', '630_training_gcs_reporting_history_start.sql', '637_training_gcs_reporting_subscription_key.sql', '638_training_gcs_reporting_obligation_priority_indexes.sql']) {
         await client.query(await readFile(new URL(`../../src/db/migrations/${migration}`, import.meta.url), 'utf8'));
       }
-      // Replay the upgrade to verify it is safe when history_start already exists.
-      await client.query(await readFile(new URL('../../src/db/migrations/630_training_gcs_reporting_history_start.sql', import.meta.url), 'utf8'));
+      // Replay the upgrades to verify they are safe when their columns, indexes and dropped constraints already exist.
+      for (const migration of ['630_training_gcs_reporting_history_start.sql', '637_training_gcs_reporting_subscription_key.sql', '638_training_gcs_reporting_obligation_priority_indexes.sql']) {
+        await client.query(await readFile(new URL(`../../src/db/migrations/${migration}`, import.meta.url), 'utf8'));
+      }
       const legacy = await readFile(new URL('../../src/db/migrations/575_reporting_reliability_curriculum.sql', import.meta.url), 'utf8');
       await client.query('SET LOCAL search_path=public,pg_catalog');
       await client.query(legacy.slice(0, legacy.indexOf('UPDATE certification_modules')));
@@ -136,6 +138,63 @@ describe.skipIf(!testUrl)('training GCS reporting against disposable PostgreSQL'
     expect(await host.provision(config.canaryPrincipal, accountId, 'source-daily', 'destination-a')).toEqual(grant);
     await expect(host.provision(config.canaryPrincipal, accountId, 'source-daily', 'destination-b')).rejects.toThrow('pinned destination');
     expect(await host.grant('workos:other', accountId, 'destination-a', 1)).toBeNull();
+  });
+  it('keeps the subscription_key generation schema from migration 637 and writes it on install', async () => {
+    const schema = TRAINING_REPORTING_SCHEMA;
+    const column = await db.query(`SELECT data_type, is_nullable, column_default FROM information_schema.columns
+      WHERE table_schema = $1 AND table_name = 'adcp_reporting_configurations' AND column_name = 'subscription_key'`, [schema]);
+    expect(column.rows).toEqual([{ data_type: 'text', is_nullable: 'NO', column_default: "''::text" }]);
+    const indexes = await db.query(`SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = $1
+      AND indexname IN ('adcp_reporting_configurations_generation', 'adcp_reporting_managed_bindings_generation')`, [schema]);
+    const byName = new Map(indexes.rows.map(row => [row.indexname as string, row.indexdef as string]));
+    expect(byName.get('adcp_reporting_configurations_generation'))
+      .toContain('CREATE UNIQUE INDEX adcp_reporting_configurations_generation');
+    expect(byName.get('adcp_reporting_configurations_generation'))
+      .toContain('(account_id, delivery_config_id, delivery_config_version, subscription_key)');
+    expect(byName.get('adcp_reporting_managed_bindings_generation')).toBeDefined();
+    expect(byName.get('adcp_reporting_managed_bindings_generation')).not.toContain('UNIQUE');
+    // No unique constraint may remain on exactly (account_id, delivery_config_id, delivery_config_version).
+    const legacy = await db.query(`SELECT cls.relname AS table_name, con.conname FROM pg_constraint con
+      JOIN pg_class cls ON cls.oid = con.conrelid JOIN pg_namespace ns ON ns.oid = cls.relnamespace
+      WHERE ns.nspname = $1 AND con.contype = 'u'
+        AND cls.relname IN ('adcp_reporting_configurations', 'adcp_reporting_managed_bindings')
+        AND (SELECT array_agg(att.attname::text ORDER BY att.attname::text) FROM unnest(con.conkey) AS k(attnum)
+             JOIN pg_attribute att ON att.attrelid = con.conrelid AND att.attnum = k.attnum)
+          = ARRAY['account_id', 'delivery_config_id', 'delivery_config_version']::text[]`, [schema]);
+    expect(legacy.rows).toEqual([]);
+    // The store installed the provisioned account configuration through production code with an empty key.
+    const installed = await db.query(`SELECT subscription_key FROM adcp_reporting_configurations WHERE account_id = $1`, [accountId]);
+    expect(installed.rows.length).toBeGreaterThan(0);
+    expect(installed.rows.every(row => row.subscription_key === '')).toBe(true);
+  });
+  it('keeps the obligation claim-priority indexes from migration 638 valid and usable by the planner', async () => {
+    const expected = [
+      { name: 'adcp_reporting_obligations_priority_due', keys: "((COALESCE((data ->> 'history'::text), 'false'::text) = 'true'::text)), next_attempt_at, obligation_id" },
+      { name: 'adcp_reporting_obligations_account_priority_due', keys: "account_id, ((COALESCE((data ->> 'history'::text), 'false'::text) = 'true'::text)), next_attempt_at, obligation_id" },
+    ];
+    const rows = await db.query(`SELECT i.indexname, i.indexdef, x.indisvalid, x.indisunique FROM pg_indexes i
+      JOIN pg_class c ON c.relname = i.indexname JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = i.schemaname
+      JOIN pg_index x ON x.indexrelid = c.oid
+      WHERE i.schemaname = $1 AND i.tablename = 'adcp_reporting_obligations' AND i.indexname = ANY($2)`,
+      [TRAINING_REPORTING_SCHEMA, expected.map(e => e.name)]);
+    const byName = new Map(rows.rows.map(row => [row.indexname as string, row]));
+    for (const { name, keys } of expected) {
+      const row = byName.get(name);
+      expect(row, name).toBeDefined();
+      expect(row.indisvalid).toBe(true);
+      expect(row.indisunique).toBe(false);
+      expect(row.indexdef).not.toContain('UNIQUE');
+      expect(row.indexdef).toContain(`USING btree (${keys}) WHERE (state = 'pending'::text)`);
+    }
+    // The planner can serve the SDK's claim ordering from the global index without sorting the backlog.
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SET LOCAL enable_seqscan = off');
+      const plan = await client.query(`EXPLAIN SELECT obligation_id FROM adcp_reporting_obligations WHERE state = 'pending'
+        ORDER BY (COALESCE(data->>'history', 'false') = 'true'), next_attempt_at, obligation_id LIMIT 1`);
+      expect(plan.rows.map(row => row['QUERY PLAN']).join('\n')).toContain('adcp_reporting_obligations_priority_due');
+    } finally { await client.query('ROLLBACK'); client.release(); }
   });
   it('retains real source rows and manifest bytes across executor reconstruction', async () => {
     const offering = trainingGcsAdapter(db, config.bucket, host.contractPrefix).sourceOffering;
