@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-delivery-sla.json",
+  "title": "Reporting Delivery SLA",
+  "description": "Non-negative ISO 8601 duration after a reporting period ends by which its required revision is due, such as PT0S or P1D.",
+  "type": "string",
+  "maxLength": 64,
+  "pattern": "^P(?=\\d|T)(?=.*\\d)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$"
+}

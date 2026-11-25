@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-claim-use-case.json",
+  "title": "Brand Claim Use Case",
+  "description": "Caller-declared use case for a brand claim verification. The brand agent may scope its answer to it.",
+  "type": "string",
+  "maxLength": 100
+}

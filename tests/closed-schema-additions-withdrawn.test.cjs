@@ -13,6 +13,7 @@ const assert = require('node:assert/strict');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 const yaml = require('js-yaml');
+const { resolveSchema } = require('./helpers/named-scalar-schemas.cjs');
 
 const ROOT = path.join(__dirname, '..');
 const SCHEMA_ROOT = path.join(ROOT, 'static', 'schemas', 'source');
@@ -55,7 +56,7 @@ describe('metric_id on performance standards (entry 6)', () => {
 
   it('required_vendor_metrics keeps its metric_id, which 3.2 published', () => {
     const filters = readSchema('/schemas/core/product-offer-filters.json');
-    assert.equal(filters.properties.required_vendor_metrics.items.properties.metric_id.$ref, '/schemas/core/vendor-metric-id.json');
+    assert.equal(resolveSchema(filters.properties.required_vendor_metrics.items).properties.metric_id.$ref, '/schemas/core/vendor-metric-id.json');
   });
 
   it('the 4.0 compatibility registry plans it, with an anchor on the 4.0 page', () => {

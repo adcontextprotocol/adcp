@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/purchase-continuation-loss.json",
+  "title": "Purchase Continuation Loss",
+  "description": "Guarantee that a legacy purchase continuation gives up.",
+  "type": "string",
+  "enum": [
+    "feed_version_not_atomic",
+    "pricing_version_not_atomic",
+    "mutation_idempotency_not_guaranteed"
+  ]
+}

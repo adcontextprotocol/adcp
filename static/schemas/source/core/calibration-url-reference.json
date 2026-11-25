@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/calibration-url-reference.json",
+  "title": "Calibration URL Reference",
+  "description": "URL reference: a specific page to fetch and evaluate.",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "const": "url",
+      "description": "Indicates this is a URL reference",
+      "default": "url"
+    },
+    "value": {
+      "type": "string",
+      "format": "uri",
+      "description": "Full URL of a specific page to fetch and evaluate."
+    },
+    "language": {
+      "$ref": "/schemas/core/locale-tag.json",
+      "description": "BCP 47 language tag for content at this URL"
+    }
+  },
+  "required": [
+    "type",
+    "value"
+  ]
+}

@@ -26,7 +26,7 @@
   "required": ["signal_ref"],
   "properties": {
     "signal_agent_segment_id": {
-      "type": "string",
+      "$ref": "/schemas/core/signal-agent-segment-id.json",
       "description": "Optional opaque resolved-segment or seller execution handle for this signal. Omit when signal_ref plus the value expression is sufficient for the seller to resolve the signal. Include when the seller exposes a distinct runtime or activation handle that buyers must echo in packages[].targeting_overlay.signal_targeting_groups.groups[].signals[].signal_agent_segment_id. Buyers SHOULD echo this handle verbatim rather than reconstructing identity from categorical values; providers MAY namespace handles so cross-provider identity stays legible without a shared taxonomy registry.",
       "x-entity": "signal_activation_id"
     },
@@ -43,11 +43,7 @@
       "type": "array",
       "description": "How this signal may be used when composing package-level signal targeting groups. 'include' means the signal may appear in an 'any' child group. 'exclude' means the signal may appear in a 'none' child group. Omit when the signal is include-only. This field declares the allowed buy-time group operator; binary package signal entries still use value=true in both include and exclude groups.",
       "items": {
-        "type": "string",
-        "enum": [
-          "include",
-          "exclude"
-        ]
+        "$ref": "/schemas/enums/signal-targeting-mode.json"
       },
       "uniqueItems": true,
       "minItems": 1,

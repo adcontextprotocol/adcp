@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/media-buy-delivery-totals.json",
+  "title": "Media Buy Delivery Totals",
+  "description": "Delivery totals for a media buy, including the effective rate.",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/delivery-metrics.json"
+    },
+    {
+      "type": "object",
+      "description": "Aggregate metrics for this media buy across all packages. When the buy's packages report a metric_id under more than one qualifier set (whether in by_package[].metric_values or in a package's flat carrier), sellers MUST omit that metric's flat carrier (the whole nested object, e.g. viewability, brand_lift) from these totals rather than combine rows; buyers read the package rows. One row is one (scope, metric_id, qualifier) key.",
+      "properties": {
+        "effective_rate": {
+          "type": "number",
+          "description": "Effective rate paid per unit based on pricing_model (e.g., actual CPM for 'cpm', actual cost per completed view for 'cpcv', actual cost per point for 'cpp')",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": true
+    }
+  ]
+}

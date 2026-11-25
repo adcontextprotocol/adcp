@@ -8,6 +8,7 @@
     "kind": {
       "type": "string",
       "const": "device_type",
+      "default": "device_type",
       "description": "Dimension family discriminator."
     },
     "device_type": {

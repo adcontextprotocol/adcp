@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/vendor-metric-breakdown.json",
+  "title": "Vendor Metric Breakdown",
+  "description": "Structured payload for a vendor metric that does not fit a single scalar. The keys and value semantics are defined by the vendor.",
+  "type": "object",
+  "additionalProperties": true
+}

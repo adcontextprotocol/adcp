@@ -8,6 +8,7 @@
     "asset_type": {
       "type": "string",
       "const": "zip",
+      "default": "zip",
       "description": "Discriminator identifying this as a zip-bundled asset. See /schemas/creative/asset-types for the registry."
     },
     "url": {
@@ -35,43 +36,22 @@
       "description": "Fallback image URL for environments that cannot render the bundled creative (e.g., non-HTML5 endpoints, ad blockers). Recommended for HTML5 banners."
     },
     "digest": {
-      "type": "string",
-      "pattern": "^sha256:[a-f0-9]{64}$",
+      "$ref": "/schemas/core/sha256-digest.json",
       "description": "Optional SHA-256 content digest of the zip archive (sha256:<hex>) for integrity verification. Lets receivers detect tampered or stale archives."
     },
     "accessibility": {
-      "type": "object",
+      "$ref": "/schemas/core/opaque-creative-accessibility.json",
       "description": "Self-declared accessibility properties for this opaque creative",
-      "x-accessibility": true,
-      "properties": {
-        "alt_text": {
-          "type": "string",
-          "description": "Text alternative describing the creative content"
-        },
-        "keyboard_navigable": {
-          "type": "boolean",
-          "description": "Whether the creative can be fully operated via keyboard"
-        },
-        "motion_control": {
-          "type": "boolean",
-          "description": "Whether the creative respects prefers-reduced-motion or provides pause/stop controls"
-        },
-        "screen_reader_tested": {
-          "type": "boolean",
-          "description": "Whether the creative has been tested with screen readers"
-        }
-      }
+      "x-accessibility": true
     },
     "width": {
+      "$ref": "/schemas/core/pixel-length.json",
       "x-added-in": "3.3.0",
-      "type": "integer",
-      "minimum": 1,
       "description": "Rendered width in logical pixels of the entry canvas, independent of target placement and embedded image density. For expandable units, this is the initial width. When set, height must also be set. Mutually exclusive with sizes."
     },
     "height": {
+      "$ref": "/schemas/core/pixel-length.json",
       "x-added-in": "3.3.0",
-      "type": "integer",
-      "minimum": 1,
       "description": "Rendered height in logical pixels of the entry canvas. For expandable units, this is the initial height. When set, width must also be set. Mutually exclusive with sizes."
     },
     "sizes": {
@@ -79,15 +59,8 @@
       "type": "array",
       "minItems": 1,
       "items": {
-        "description": "Rejects `unit`: sizes are in pixels, and a unit would change what they mean.",
-        "type": "object",
-        "required": ["width", "height"],
-        "properties": {
-          "width": { "type": "integer", "minimum": 1 },
-          "height": { "type": "integer", "minimum": 1 }
-        },
-        "additionalProperties": true,
-        "not": { "required": ["unit"] }
+        "$ref": "/schemas/core/pixel-size.json",
+        "description": "Rejects `unit`: sizes are in pixels, and a unit would change what they mean."
       },
       "description": "Selectable entry-canvas sizes in logical pixels at which the same representation can render, rather than placement constraints or expanded states. Mutually exclusive with width/height. Omit all size fields for an unsized or responsive asset; absence does not establish compatibility with a size-constrained option."
     },

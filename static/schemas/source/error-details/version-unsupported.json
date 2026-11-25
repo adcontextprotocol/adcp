@@ -14,8 +14,7 @@
       "type": "array",
       "description": "Release-precision versions the seller speaks. Authoritative — buyers SHOULD select a value from this list and retry.",
       "items": {
-        "type": "string",
-        "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$"
+        "$ref": "/schemas/core/adcp-release-version.json"
       },
       "minItems": 1,
       "examples": [
@@ -36,9 +35,8 @@
       }
     },
     "build_version": {
-      "type": "string",
+      "$ref": "/schemas/core/adcp-build-version.json",
       "description": "Optional advisory: full semver build identifier of the seller's deployment (MAJOR.MINOR.PATCH plus optional pre-release and build-metadata segments per semver §9–§10), for incident triage. Buyers MUST NOT use this field for negotiation.",
-      "pattern": "^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?(\\+[a-zA-Z0-9.-]+)?$",
       "examples": [
         "3.1.2",
         "3.1.0-beta.3",

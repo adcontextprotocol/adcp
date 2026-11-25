@@ -61,9 +61,51 @@ test("input-field weight report attributes the largest transitive schema graphs"
   // Experimental installment refinement (#8967) adds installment-change-set,
   // installment-change and the closed canonical-installment-ref to the
   // refine_proposals input (+3 instances, +3 unique).
-  assert.equal(report.definition_instances, 714);
-  assert.equal(report.unique_definitions, 195);
-  assert.equal(report.repeated_definitions, 136);
+  // Naming the currency code, country code, idempotency key, domain name, and
+  // HTTPS URL (#8525) turns five inline subschemas into definitions (+78
+  // instances, +5 unique). Naming the further repeated scalar concepts adds 209
+  // instances and 61 unique definitions; naming repeated enums adds 27 and 8;
+  // naming every remaining repeat adds 95 and 27. Pointing every site at one
+  // definition adds 57 and 10. With installment refinement on top, whose
+  // product_id and action reference core/product-id.json and
+  // enums/membership-action.json, the report measures 1,182 instances and 306
+  // unique definitions. Naming the legacy webhook authentication object
+  // (#8907), reached from push_notification_config and reporting_webhook,
+  // adds 8 instances and 1 unique, repeated definition: 1,190, 307 and 206.
+  // Naming money (#8471), reached from the media-buy budgets and the
+  // governance commitments, adds 3 instances and 1 unique, repeated
+  // definition: 1,193, 308 and 207.
+  // Replacing repeated inline object copies with shared core definitions adds
+  // 31 definitions the media-buy inputs reach, 27 of them repeated, and 103
+  // instances: 1,296, 339 and 234. Giving the money, range, distance, and
+  // postal address fields one definition each adds 9 instances and 5 unique
+  // definitions, 1 of them repeated: 1,305, 344 and 235.
+  // Giving collection, list, and installment IDs one definition each adds
+  // 8 instances and 4 unique definitions, 1 of them
+  // repeated: 1,313, 348 and 236.
+  // Giving account and agent fields one definition each adds 8 instances and 1
+  // unique, repeated definition: 1,321, 349 and 237.
+  // Giving brand fields one definition each adds 24 instances and 2 unique,
+  // repeated definitions: 1,345, 351 and 239.
+  // Giving creative fields one definition each adds 4 instances and 1 unique,
+  // repeated definition: 1,349, 352 and 240.
+  // Giving DOOH, placement, and pixel length fields one definition each adds 7
+  // instances and 1 unique, repeated definition: 1,356, 353 and 241.
+  // Giving signal and audience fields one definition each adds 14 instances and
+  // 3 unique, repeated definitions: 1,370, 356 and 244.
+  // Giving each targeting and optimization field one definition adds 56
+  // instances and 14 unique, repeated definitions: 1,426, 370 and 258.
+  // Giving each delivery and reporting field one definition adds 6 instances
+  // and 6 unique definitions, none of them repeated: 1,432, 376 and 258.
+  // Giving each media buy field one definition adds 7 instances and 3 unique
+  // definitions, none of them repeated: 1,439, 379 and 258.
+  // Giving each pricing option field one definition adds 4 instances and 4
+  // unique definitions, none of them repeated: 1,443, 383 and 258. Giving the
+  // age intent, event goal target, and publisher domains their own documents
+  // adds 5 instances and 1 unique, repeated definition: 1,448, 384 and 259.
+  assert.equal(report.definition_instances, 1448);
+  assert.equal(report.unique_definitions, 384);
+  assert.equal(report.repeated_definitions, 259);
   assert.ok(report.repeated_definition_bytes > 180_000);
 
   assert.deepEqual(
@@ -190,7 +232,7 @@ test("shared dictionary resolves every experimental tool schema when explicitly 
 
   assert.equal(view.dictionary.$id, DICTIONARY_ID);
   // Must match the intentionally pinned unique-definition inventory above.
-  assert.equal(Object.keys(view.dictionary.$defs).length, 195);
+  assert.equal(Object.keys(view.dictionary.$defs).length, 384);
   for (const tool of Object.values(view.tools)) {
     assert.equal(tool.inputSchema.$defs, undefined);
     assert.match(
@@ -257,10 +299,13 @@ test("experiment report keeps all alternatives smaller than standalone model con
   // enough for the experiment comparisons to matter and below the projection
   // budget; the ratio and payload-consistency assertions below carry the
   // actual signal.
+  // The shared core definitions that replaced repeated inline objects carry
+  // their own titles and descriptions, which moved the standalone context to
+  // 409,997 bytes (400.39 KiB); the upper end of the band is 420 KiB.
   assert.ok(
     variants.standalone.context_bytes > 200_000 &&
-      variants.standalone.context_bytes < 400 * 1024,
-    `standalone context outside [200 KiB, 400 KiB]: ${variants.standalone.context_bytes}`
+      variants.standalone.context_bytes < 420 * 1024,
+    `standalone context outside [200 KiB, 420 KiB]: ${variants.standalone.context_bytes}`
   );
   // Baseline projection improvements also shrink the denominator, so a fixed
   // additional percentage is not stable. Require a material absolute saving:

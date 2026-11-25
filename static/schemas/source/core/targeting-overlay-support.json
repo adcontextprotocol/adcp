@@ -6,8 +6,7 @@
   "type": "object",
   "definitions": {
     "supported": {
-      "type": "boolean",
-      "const": true
+      "$ref": "/schemas/core/targeting-capability-flag.json"
     },
     "countrySupport": {
       "anyOf": [
@@ -38,15 +37,11 @@
           "$ref": "#/definitions/supported"
         },
         {
+          "title": "Geographic Metro Support",
           "type": "object",
           "properties": {
             "systems": {
-              "type": "array",
-              "items": {
-                "$ref": "/schemas/enums/metro-system.json"
-              },
-              "minItems": 1,
-              "uniqueItems": true
+              "$ref": "/schemas/core/metro-systems.json"
             },
             "max_values_per_package": {
               "type": "integer",
@@ -71,25 +66,16 @@
       "description": "Selectable country/type pairs and catalog versions for one identifier system.",
       "properties": {
         "countries": {
-          "type": "object",
-          "propertyNames": { "pattern": "^[A-Z]{2}$" },
-          "additionalProperties": {
-            "type": "array",
-            "items": { "$ref": "/schemas/core/geo-place-type.json" },
-            "minItems": 1,
-            "uniqueItems": true
-          },
-          "minProperties": 1
+          "$ref": "/schemas/core/geo-country-place-types.json"
         },
         "current_version": {
-          "type": "string",
-          "minLength": 1,
+          "$ref": "/schemas/core/geo-place-system-version.json",
           "description": "Version applied when a later package overlay omits system_version. Must be present in system_versions."
         },
         "system_versions": {
           "type": "array",
           "description": "Exact catalog versions selectable on later package overlays.",
-          "items": { "type": "string", "minLength": 1 },
+          "items": { "$ref": "/schemas/core/geo-place-system-version.json" },
           "minItems": 1,
           "uniqueItems": true
         },
@@ -103,14 +89,12 @@
       }
     },
     "placeSupport": {
+      "title": "Geographic Place Support",
       "type": "object",
       "description": "Binding permission to select named-place values later, keyed first by identifier system and then by country to avoid namespace and place-type collisions.",
       "properties": {
         "systems": {
-          "type": "object",
-          "propertyNames": { "$ref": "/schemas/core/geo-place-system.json" },
-          "additionalProperties": { "$ref": "#/definitions/placeCatalogSupport" },
-          "minProperties": 1
+          "$ref": "#/definitions/placeSystemsSupport"
         },
         "max_values_per_package": { "type": "integer", "minimum": 1 },
         "max_packages": {
@@ -156,12 +140,7 @@
           "type": "object",
           "properties": {
             "supported_match_types": {
-              "type": "array",
-              "items": {
-                "$ref": "/schemas/enums/match-type.json"
-              },
-              "minItems": 1,
-              "uniqueItems": true
+              "$ref": "/schemas/core/keyword-match-types.json"
             },
             "ext": {
               "$ref": "/schemas/core/ext.json"
@@ -180,10 +159,7 @@
           "description": "Canonical browser families that may be selected on packages later. This is executable targeting capability, not a guarantee of inventory for every family.",
           "properties": {
             "families": {
-              "type": "array",
-              "items": { "$ref": "/schemas/enums/browser-family.json" },
-              "minItems": 1,
-              "uniqueItems": true
+              "$ref": "/schemas/core/browser-families.json"
             },
             "ext": { "$ref": "/schemas/core/ext.json" }
           },
@@ -195,8 +171,7 @@
     "daypartSupport": {
       "anyOf": [
         {
-          "type": "boolean",
-          "const": true,
+          "$ref": "/schemas/core/targeting-capability-flag.json",
           "description": "Backward-compatible declaration of inventory_local, whole-hour daypart support. Use the structured form to opt in to concrete IANA timezone execution or finer time granularity."
         },
         {
@@ -204,10 +179,7 @@
           "description": "Binding timezone modes and time granularity this product can apply to package-level daypart targeting. 'inventory_local' covers the default seller-assigned local clock for each inventory unit. 'iana' opts the product into concrete IANA timezone execution and requires iana_timezones to declare whether every valid identifier or an exact subset is supported.",
           "properties": {
             "timezone_modes": {
-              "type": "array",
-              "items": { "$ref": "/schemas/enums/daypart-timezone-mode.json" },
-              "minItems": 1,
-              "uniqueItems": true
+              "$ref": "/schemas/core/daypart-timezone-modes.json"
             },
             "iana_timezones": {
               "description": "Concrete IANA timezone identifiers accepted by this product. true means every identifier valid in the seller's supported IANA TZDB; an array is the exact supported subset. Required when timezone_modes includes iana and forbidden otherwise.",
@@ -217,10 +189,7 @@
                   "const": true
                 },
                 {
-                  "type": "array",
-                  "items": { "$ref": "/schemas/core/iana-timezone.json" },
-                  "minItems": 1,
-                  "uniqueItems": true
+                  "$ref": "/schemas/core/iana-timezones.json"
                 }
               ]
             },
@@ -256,6 +225,18 @@
           "additionalProperties": true
         }
       ]
+    },
+    "placeSystemsSupport": {
+      "title": "Geographic Place Systems Support",
+      "description": "Selectable place catalogs keyed by identifier system.",
+      "type": "object",
+      "propertyNames": {
+        "$ref": "/schemas/core/geo-place-system.json"
+      },
+      "additionalProperties": {
+        "$ref": "#/definitions/placeCatalogSupport"
+      },
+      "minProperties": 1
     }
   },
   "properties": {
@@ -299,10 +280,7 @@
             "travel_time": { "$ref": "#/definitions/supported" },
             "geometry": { "$ref": "#/definitions/supported" },
             "transport_modes": {
-              "type": "array",
-              "items": { "$ref": "/schemas/enums/transport-mode.json" },
-              "minItems": 1,
-              "uniqueItems": true
+              "$ref": "/schemas/core/transport-modes.json"
             },
             "max_values_per_package": {
               "type": "integer",
@@ -335,6 +313,7 @@
           "description": "Deprecated in 3.3. The 3.2 shorthand for { age: true }. Senders MUST send the object; receivers MUST accept true."
         },
         {
+          "title": "Demographic Targeting Support",
           "type": "object",
           "properties": {
             "age": { "$ref": "#/definitions/supported" },
@@ -366,6 +345,7 @@
       "anyOf": [
         { "$ref": "#/definitions/supported" },
         {
+          "title": "Placement Selection Support",
           "type": "object",
           "properties": {
             "max_values_per_package": { "type": "integer", "minimum": 1 },

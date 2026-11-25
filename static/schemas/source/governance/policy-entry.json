@@ -25,8 +25,7 @@
       "description": "Human-readable name (e.g., \"UK HFSS Restrictions\"). Optional for inline bespoke policies — servers MAY default to policy_id."
     },
     "description": {
-      "type": "string",
-      "maxLength": 500,
+      "$ref": "/schemas/core/policy-summary.json",
       "description": "Brief summary of what this policy covers."
     },
     "category": {
@@ -90,6 +89,7 @@
       "description": "Name of the issuing body (e.g., \"UK Food Standards Agency\", \"US Federal Trade Commission\")."
     },
     "issuer": {
+      "title": "Policy Issuer",
       "type": "object",
       "description": "Machine-readable identity of the regulator, standards body, or platform operator that issued the policy. Registry publishers SHOULD provide this when independently versioned issuer policies must be distinguished.",
       "properties": {
@@ -98,7 +98,7 @@
           "pattern": "^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$",
           "description": "Lowercase registrable or organizational domain used as the stable issuer identifier."
         },
-        "name": { "type": "string", "minLength": 1 }
+        "name": { "$ref": "/schemas/core/policy-issuer-name.json" }
       },
       "required": ["domain"],
       "additionalProperties": true
@@ -117,6 +117,7 @@
       "description": "Implementation notes for governance agent developers. Not used in evaluation prompts."
     },
     "exemplars": {
+      "title": "Policy Exemplars",
       "type": "object",
       "description": "Calibration examples for governance agents, following the Content Standards pattern.",
       "properties": {

@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/signal-targeting-list.json",
+  "title": "Signal Targeting List",
+  "description": "Flat list of signal targeting entries, the form that signal_targeting_groups replaces.",
+  "type": "array",
+  "items": {
+    "$ref": "/schemas/core/signal-targeting.json"
+  },
+  "minItems": 1
+}

@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/agent-notification-config-registration.json",
+  "title": "Agent Notification Config Registration",
+  "description": "An agent-level notification config as a caller registers it. When authentication is present, it carries the write-only credentials, which reads never echo.",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/agent-notification-config.json"
+    },
+    {
+      "if": {
+        "required": [
+          "authentication"
+        ]
+      },
+      "then": {
+        "properties": {
+          "authentication": {
+            "required": [
+              "credentials"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

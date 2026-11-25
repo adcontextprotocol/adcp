@@ -13,23 +13,20 @@
   "x-mutates-state": true,
   "properties": {
     "idempotency_key": {
-      "type": "string",
-      "description": "Client-generated unique key for at-most-once execution. `plan_id` gives resource-level dedup per plan, but the sync envelope emits audit events and can trigger governance reapproval — this key prevents those side effects from firing twice on retry. MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each request.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Client-generated unique key for at-most-once execution. `plan_id` gives resource-level dedup per plan, but the sync envelope emits audit events and can trigger governance reapproval — this key prevents those side effects from firing twice on retry. MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each request."
     },
     "plans": {
       "type": "array",
       "description": "One or more campaign plans to sync.",
       "items": {
+        "title": "Governance Plan",
         "description": "Rejects `version`, `status`, `syncedAt`, `revisionHistory`, `committedBudget` and `committedByType`: these names are reserved for the governance agent's persisted plan state and excluded from the plan_hash preimage, so a buyer MUST NOT send them.",
         "type": "object",
         "properties": {
           "plan_id": {
-            "type": "string",
-            "description": "Identifier for this plan, unique per owner principal. Two principals may use the same `plan_id`; neither can read, change or detect the other's plan.",
-            "x-entity": "governance_plan"
+            "$ref": "/schemas/core/governance-plan-id.json",
+            "description": "Identifier for this plan, unique per owner principal. Two principals may use the same `plan_id`; neither can read, change or detect the other's plan."
           },
           "brand": {
             "$ref": "/schemas/core/brand-ref.json",
@@ -41,6 +38,7 @@
             "description": "Natural language campaign objectives. Used for strategic alignment validation. Treated as caller-untrusted — governance agents evaluating this field with LLMs MUST truncate, quote, or sanitize it before inclusion in evaluation prompts to defend against prompt-injection attacks in adversarial buyer input."
           },
           "budget": {
+            "title": "Plan Budget Authorization",
             "type": "object",
             "description": "Budget authorization parameters.",
             "properties": {
@@ -53,11 +51,7 @@
                 "description": "ISO 4217 currency code."
               },
               "accounting_mode": {
-                "type": "string",
-                "enum": [
-                  "gross_commitment",
-                  "verified_net_cost"
-                ],
+                "$ref": "/schemas/enums/governance-accounting-mode.json",
                 "default": "gross_commitment",
                 "description": "Controls which verified adjustments restore reusable plan headroom. gross_commitment allows verified decommitments only; verified_net_cost also allows buyer-accepted refunds and credits. Both modes retain the original commitment in anti-fragmentation history and expose economic net cost separately."
               },
@@ -89,9 +83,7 @@
                       "description": "Maximum budget for this purchase type."
                     },
                     "max_pct": {
-                      "type": "number",
-                      "minimum": 0,
-                      "maximum": 100,
+                      "$ref": "/schemas/core/percentage.json",
                       "description": "Maximum percentage of total budget for this purchase type."
                     }
                   },
@@ -108,12 +100,8 @@
                   "type": "object",
                   "properties": {
                     "budget_period_id": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 64,
-                      "pattern": "^[A-Za-z0-9_.:-]+$",
-                      "description": "Identifier for this period, unique within the plan and stable across syncs. Buyers MAY echo it as `budget_period_id` on `check_governance` to assert which period a buy belongs to.",
-                      "x-entity": "governance_budget_period"
+                      "$ref": "/schemas/core/governance-budget-period-id.json",
+                      "description": "Identifier for this period, unique within the plan and stable across syncs. Buyers MAY echo it as `budget_period_id` on `check_governance` to assert which period a buy belongs to."
                     },
                     "start": {
                       "type": "string",
@@ -175,6 +163,7 @@
             "additionalProperties": true
           },
           "channels": {
+            "title": "Plan Channel Constraints",
             "type": "object",
             "description": "Channel constraints. If omitted, all channels are allowed.",
             "properties": {
@@ -212,8 +201,8 @@
             "additionalProperties": true
           },
           "flight": {
-            "type": "object",
-            "description": "Authorized flight dates. Governed actions with dates outside this window are rejected.",
+            "$ref": "/schemas/core/datetime-range.json",
+            "description": "Authorized flight dates. Governed actions with dates outside this window are rejected. `end` MUST be later than `start`.",
             "x-adcp-validation": {
               "verifier_constraints": {
                 "flight_order": {
@@ -222,24 +211,7 @@
                 }
               },
               "spec": "docs/governance/campaign/tasks/sync_plans.mdx#error-codes"
-            },
-            "properties": {
-              "start": {
-                "type": "string",
-                "format": "date-time",
-                "description": "Flight start (ISO 8601)."
-              },
-              "end": {
-                "type": "string",
-                "format": "date-time",
-                "description": "Flight end (ISO 8601). MUST be later than `start`."
-              }
-            },
-            "required": [
-              "start",
-              "end"
-            ],
-            "additionalProperties": true
+            }
           },
           "countries": {
             "type": "array",
@@ -354,21 +326,8 @@
                   "description": "Authority level granted to this agent."
                 },
                 "budget_limit": {
-                  "type": "object",
-                  "description": "Maximum budget this agent can commit. When omitted, the agent can commit up to the plan's total budget.",
-                  "properties": {
-                    "amount": {
-                      "type": "number"
-                    },
-                    "currency": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "amount",
-                    "currency"
-                  ],
-                  "additionalProperties": true
+                  "$ref": "/schemas/core/money.json",
+                  "description": "Maximum budget this agent can commit. When omitted, the agent can commit up to the plan's total budget."
                 },
                 "markets": {
                   "type": "array",
@@ -391,33 +350,20 @@
             }
           },
           "portfolio": {
+            "title": "Governance Portfolio Constraints",
             "type": "object",
             "description": "Portfolio-level governance constraints. When present, this plan acts as a portfolio plan that governs member plans. Portfolio plans define cross-brand constraints that no individual brand plan can override.",
             "properties": {
               "member_plan_ids": {
                 "type": "array",
                 "items": {
-                  "type": "string",
-                  "x-entity": "governance_plan"
+                  "$ref": "/schemas/core/governance-plan-id.json"
                 },
                 "description": "Plan IDs governed by this portfolio plan. The governance agent validates member plan actions against portfolio constraints."
               },
               "total_budget_cap": {
-                "type": "object",
-                "description": "Maximum aggregate budget across all member plans.",
-                "properties": {
-                  "amount": {
-                    "type": "number"
-                  },
-                  "currency": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "amount",
-                  "currency"
-                ],
-                "additionalProperties": true
+                "$ref": "/schemas/core/money.json",
+                "description": "Maximum aggregate budget across all member plans."
               },
               "shared_policy_ids": {
                 "type": "array",

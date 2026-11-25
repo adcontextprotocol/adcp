@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/content-standards-feature-check-result.json",
+  "title": "Content Standards Feature Check Result",
+  "description": "Refines a feature check result (core/feature-check-result.json) for a content standards evaluation: its policy_id names a registry policy.",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/feature-check-result.json"
+    }
+  ],
+  "properties": {
+    "policy_id": {
+      "x-entity": "governance_registry_policy"
+    }
+  }
+}

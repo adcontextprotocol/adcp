@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/commission-basis-description.json",
+  "title": "Commission Basis Description",
+  "description": "Human-readable definition of the inclusions, exclusions, and return treatment used to calculate commissionable value.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 1000
+}

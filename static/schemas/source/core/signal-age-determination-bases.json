@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/signal-age-determination-bases.json",
+  "title": "Signal Age Determination Bases",
+  "description": "User-level bases by which the ages of a signal's members were established.",
+  "type": "array",
+  "items": {
+    "$ref": "/schemas/enums/age-determination-basis.json"
+  },
+  "minItems": 1,
+  "uniqueItems": true
+}

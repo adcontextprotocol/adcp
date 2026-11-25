@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/sharing-principal-identity.json",
+  "title": "Sharing Principal Identity",
+  "description": "Provider-interpreted identity of a principal in a data-sharing platform, such as a sharing identifier or an organization and account pair. It is an identifier, never a credential.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 512
+}

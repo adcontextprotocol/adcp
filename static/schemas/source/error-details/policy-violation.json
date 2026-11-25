@@ -31,9 +31,7 @@
       "description": "Specific rules that were violated"
     },
     "category": {
-      "type": "string",
-      "pattern": "^[a-z][a-z0-9_]*$",
-      "x-entity": "governance_policy_category",
+      "$ref": "/schemas/core/policy-category-id.json",
       "description": "Optional coarse policy category disclosed at the seller's discretion."
     }
   },

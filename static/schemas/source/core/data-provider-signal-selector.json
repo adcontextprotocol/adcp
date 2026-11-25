@@ -13,13 +13,13 @@
       "description": "Select all signals from the data provider",
       "properties": {
         "data_provider_domain": {
-          "type": "string",
-          "description": "Domain where data provider's adagents.json is hosted (e.g., 'polk.com')",
-          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          "$ref": "/schemas/core/domain-name.json",
+          "description": "Domain where data provider's adagents.json is hosted (e.g., 'polk.com')"
         },
         "selection_type": {
           "type": "string",
           "const": "all",
+          "default": "all",
           "description": "Discriminator indicating all signals from this data provider are included"
         }
       },
@@ -34,21 +34,20 @@
       "description": "Select specific signals by ID",
       "properties": {
         "data_provider_domain": {
-          "type": "string",
-          "description": "Domain where data provider's adagents.json is hosted (e.g., 'polk.com')",
-          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          "$ref": "/schemas/core/domain-name.json",
+          "description": "Domain where data provider's adagents.json is hosted (e.g., 'polk.com')"
         },
         "selection_type": {
           "type": "string",
           "const": "by_id",
+          "default": "by_id",
           "description": "Discriminator indicating selection by specific signal IDs"
         },
         "signal_ids": {
           "type": "array",
           "description": "Specific signal IDs from the data provider's published signal definitions",
           "items": {
-            "type": "string",
-            "pattern": "^[a-zA-Z0-9_-]+$"
+            "$ref": "/schemas/core/signal-local-id.json"
           },
           "minItems": 1
         }
@@ -65,21 +64,20 @@
       "description": "Select signals by tag membership",
       "properties": {
         "data_provider_domain": {
-          "type": "string",
-          "description": "Domain where data provider's adagents.json is hosted (e.g., 'polk.com')",
-          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          "$ref": "/schemas/core/domain-name.json",
+          "description": "Domain where data provider's adagents.json is hosted (e.g., 'polk.com')"
         },
         "selection_type": {
           "type": "string",
           "const": "by_tag",
+          "default": "by_tag",
           "description": "Discriminator indicating selection by signal tags"
         },
         "signal_tags": {
           "type": "array",
           "description": "Signal tags from the data provider's published signal definitions. Selector covers all signals with these tags",
           "items": {
-            "type": "string",
-            "pattern": "^[a-z0-9_-]+$"
+            "$ref": "/schemas/core/signal-tag.json"
           },
           "minItems": 1
         }

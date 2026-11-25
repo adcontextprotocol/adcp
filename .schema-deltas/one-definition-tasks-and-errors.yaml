@@ -1,0 +1,431 @@
+# Delta manifest (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  One definition per object: tasks and errors. The corrections the review chose; every other change is a $ref to an
+  identical definition.
+changes:
+  - location: core/async-response-data.json#
+    keyword: anyOf
+    old:
+      required:
+        - status
+      type:
+        - object
+      not:
+        anyOf:
+          - required:
+              - response_status
+          - required:
+              - task_status
+      properties:
+        adcp_error:
+          required:
+            - code
+            - message
+          type:
+            - object
+          dependencies:
+            buyer_reason:
+              - recovery
+          properties:
+            buyer_reason:
+              required:
+                - code
+                - message
+              type:
+                - object
+              properties:
+                code:
+                  $at: core/open-error-code.json#
+                message:
+                  $at: core/buyer-reason-message.json#
+            code:
+              maxLength: 64
+              minLength: 1
+              type:
+                - string
+            details:
+              type:
+                - object
+            field:
+              type:
+                - string
+            issues:
+              type:
+                - array
+              items:
+                $at: core/error.json#/properties/issues/items
+            message:
+              type:
+                - string
+            mutation_outcome:
+              maxLength: 32
+              minLength: 1
+              type:
+                - string
+            recovery:
+              enum:
+                - correctable
+                - terminal
+                - transient
+            retry_after:
+              maximum: 3600
+              minimum: 1
+              type:
+                - number
+            sdk_id:
+              type:
+                - string
+            source:
+              enum:
+                - producer
+                - sdk
+            suggestion:
+              type:
+                - string
+        adcp_major_version:
+          maximum: 99
+          minimum: 1
+          type:
+            - integer
+        adcp_version:
+          pattern: ^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$
+          type:
+            - string
+        context:
+          type:
+            - object
+        context_id:
+          type:
+            - string
+        current_step:
+          type:
+            - string
+        ext:
+          type:
+            - object
+        governance_context:
+          maxLength: 4096
+          minLength: 1
+          pattern: ^[\x20-\x7E]+$
+          type:
+            - string
+        message:
+          maxLength: 2000
+          type:
+            - string
+        payload:
+          type:
+            - object
+        percentage:
+          maximum: 100
+          minimum: 0
+          type:
+            - number
+        push_notification_config:
+          required:
+            - url
+          type:
+            - object
+          not:
+            required:
+              - authentication
+              - signing_profile
+          properties:
+            authentication:
+              required:
+                - credentials
+                - schemes
+              type:
+                - object
+              properties:
+                credentials:
+                  $at: core/auth-credential.json#
+                schemes:
+                  $at: core/webhook-authentication.json#/properties/schemes
+            operation_id:
+              maxLength: 255
+              minLength: 1
+              pattern: ^[A-Za-z0-9_.:-]{1,255}$
+              type:
+                - string
+            signing_profile:
+              enum:
+                - adcp/webhook-signing/v1
+                - web-bot-auth
+            token:
+              maxLength: 4096
+              minLength: 16
+              type:
+                - string
+            url:
+              format: uri
+              type:
+                - string
+        replayed:
+          type:
+            - boolean
+        status:
+          const: working
+          enum:
+            - auth-required
+            - canceled
+            - completed
+            - failed
+            - input-required
+            - rejected
+            - submitted
+            - unknown
+            - working
+        step_number:
+          type:
+            - integer
+        task_id:
+          minLength: 1
+          type:
+            - string
+        timestamp:
+          format: date-time
+          type:
+            - string
+        total_steps:
+          type:
+            - integer
+    direction: none
+    side: response
+    note: No witness, as declared.
+  - location: core/async-response-data.json#
+    keyword: anyOf
+    old:
+      required:
+        - status
+      type:
+        - object
+      not:
+        anyOf:
+          - required:
+              - response_status
+          - required:
+              - task_status
+      properties:
+        adcp_error:
+          required:
+            - code
+            - message
+          type:
+            - object
+          dependencies:
+            buyer_reason:
+              - recovery
+          properties:
+            buyer_reason:
+              required:
+                - code
+                - message
+              type:
+                - object
+              properties:
+                code:
+                  $at: core/open-error-code.json#
+                message:
+                  $at: core/buyer-reason-message.json#
+            code:
+              maxLength: 64
+              minLength: 1
+              type:
+                - string
+            details:
+              type:
+                - object
+            field:
+              type:
+                - string
+            issues:
+              type:
+                - array
+              items:
+                $at: core/error.json#/properties/issues/items
+            message:
+              type:
+                - string
+            mutation_outcome:
+              maxLength: 32
+              minLength: 1
+              type:
+                - string
+            recovery:
+              enum:
+                - correctable
+                - terminal
+                - transient
+            retry_after:
+              maximum: 3600
+              minimum: 1
+              type:
+                - number
+            sdk_id:
+              type:
+                - string
+            source:
+              enum:
+                - producer
+                - sdk
+            suggestion:
+              type:
+                - string
+        adcp_major_version:
+          maximum: 99
+          minimum: 1
+          type:
+            - integer
+        adcp_version:
+          pattern: ^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?)?$
+          type:
+            - string
+        context:
+          type:
+            - object
+        context_id:
+          type:
+            - string
+        current_step:
+          type:
+            - string
+        ext:
+          type:
+            - object
+        governance_context:
+          maxLength: 4096
+          minLength: 1
+          pattern: ^[\x20-\x7E]+$
+          type:
+            - string
+        message:
+          maxLength: 2000
+          type:
+            - string
+        payload:
+          type:
+            - object
+        percentage:
+          maximum: 100
+          minimum: 0
+          type:
+            - number
+        push_notification_config:
+          required:
+            - url
+          type:
+            - object
+          not:
+            required:
+              - authentication
+              - signing_profile
+          properties:
+            authentication:
+              required:
+                - credentials
+                - schemes
+              type:
+                - object
+              properties:
+                credentials:
+                  $at: core/auth-credential.json#
+                schemes:
+                  $at: core/webhook-authentication.json#/properties/schemes
+            operation_id:
+              maxLength: 255
+              minLength: 1
+              pattern: ^[A-Za-z0-9_.:-]{1,255}$
+              type:
+                - string
+            signing_profile:
+              enum:
+                - adcp/webhook-signing/v1
+                - web-bot-auth
+            token:
+              maxLength: 4096
+              minLength: 16
+              type:
+                - string
+            url:
+              format: uri
+              type:
+                - string
+        replayed:
+          type:
+            - boolean
+        status:
+          const: working
+          enum:
+            - auth-required
+            - canceled
+            - completed
+            - failed
+            - input-required
+            - rejected
+            - submitted
+            - unknown
+            - working
+        step_number:
+          minimum: 1
+          type:
+            - integer
+        task_id:
+          minLength: 1
+          type:
+            - string
+        timestamp:
+          format: date-time
+          type:
+            - string
+        total_steps:
+          minimum: 1
+          type:
+            - integer
+    direction: none
+    side: response
+    note: No witness, as declared.
+  - location: core/open-error-code.json#
+    keyword: maxLength
+    new: 64
+    direction: tighten
+    side: response
+    note: >-
+      core/tasks-get-response.json#/properties/error -> new:core/task-error-summary.json. Witness:
+      core/tasks-get-response.json /error/code = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      (tighten).
+  - location: core/open-error-code.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: response
+    note: >-
+      core/tasks-get-response.json#/properties/error -> new:core/task-error-summary.json. Witness:
+      core/tasks-get-response.json /error/code = "" (tighten).
+  - location: core/compact-task-working.json#/properties/current_step
+    keyword: maxLength
+    new: 500
+    direction: tighten
+    side: response
+    note: >-
+      media-buy/build-creative-async-response-working.json# -> core/compact-task-working.json#. Verdict delta:
+      current_step:maxLength:tighten:correction. Witness: media-buy/build-creative-async-response-working.json
+      /current_step = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa... (tighten).
+  - location: core/compact-task-working.json#/properties/step_number
+    keyword: minimum
+    new: 1
+    direction: tighten
+    side: response
+    note: >-
+      media-buy/get-products-async-response-working.json# -> core/compact-task-working.json#. Verdict delta:
+      step_number:minimum:tighten:correction; total_steps:minimum:tighten:correction. Witness:
+      media-buy/get-products-async-response-working.json /step_number = 0 (tighten).
+  - location: core/compact-task-working.json#/properties/total_steps
+    keyword: minimum
+    new: 1
+    direction: tighten
+    side: response
+    note: >-
+      media-buy/get-products-async-response-working.json# -> core/compact-task-working.json#. Verdict delta:
+      step_number:minimum:tighten:correction; total_steps:minimum:tighten:correction. Witness:
+      media-buy/get-products-async-response-working.json /total_steps = 0 (tighten).

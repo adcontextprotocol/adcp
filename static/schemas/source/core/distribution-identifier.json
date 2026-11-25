@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/distribution-identifier.json",
+  "title": "Distribution Identifier",
+  "description": "An identifier for a distribution: a type and a value.",
+  "type": "object",
+  "properties": {
+    "type": {
+      "$ref": "/schemas/enums/distribution-identifier-type.json",
+      "description": "Type of distribution identifier"
+    },
+    "value": {
+      "type": "string",
+      "description": "The identifier value"
+    }
+  },
+  "required": [
+    "type",
+    "value"
+  ],
+  "additionalProperties": true
+}

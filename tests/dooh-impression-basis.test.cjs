@@ -4,6 +4,7 @@ const Ajv = require("ajv");
 const addFormats = require("ajv-formats");
 const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
+const { resolveSchema } = require("./helpers/named-scalar-schemas.cjs");
 
 // DOOH impression basis (media_buy.dooh_impression_basis, RFC #7253): discovery, forecast and
 // delivery payloads of a product mixing sensor-equipped screens and screens without a sensor.
@@ -100,8 +101,8 @@ describe("DOOH impression basis schemas", () => {
     const dooh = readSchema("/schemas/core/delivery-metrics.json").properties.dooh_metrics;
     const venue = dooh.properties.venue_breakdown.items.properties;
     const point = readSchema("/schemas/core/forecast-point.json").properties;
-    const product = readSchema("/schemas/core/placement.json").definitions.ProductDoohPlacementAttributes.properties;
-    const canonical = readSchema("/schemas/core/canonical-placement.json").definitions.CanonicalDoohPlacementAttributes.properties;
+    const product = resolveSchema(readSchema("/schemas/core/placement.json").definitions.ProductDoohPlacementAttributes).properties;
+    const canonical = resolveSchema(readSchema("/schemas/core/canonical-placement.json").definitions.CanonicalDoohPlacementAttributes).properties;
     const canonicalPoint = readSchema("/schemas/core/canonical-forecast-point.json").properties;
     const nodes = [
       dooh.properties.impression_basis, dooh.properties.audience_multiplier, dooh.properties.basis_metric,
@@ -127,7 +128,7 @@ describe("DOOH impression basis schemas", () => {
 
   it("keeps the multiplier out of the forecastable metrics", () => {
     const point = readSchema("/schemas/core/forecast-point.json");
-    assert.equal(point.properties.metrics.properties.audience_multiplier, undefined);
+    assert.equal(resolveSchema(point.properties.metrics).properties.audience_multiplier, undefined);
     assert.ok(!readSchema("/schemas/enums/forecastable-metric.json").enum.includes("audience_multiplier"));
   });
 

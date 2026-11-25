@@ -64,6 +64,7 @@
       "description": "Primary identifier for the changed entity. For property.* events this is the property_rid; for agent.* events this is the agent_url; for publisher.adagents_changed this is the publisher domain; for authorization.* events this is the authorization row id or a stable agent/publisher composite."
     },
     "payload": {
+      "title": "Registry Event Payload",
       "type": "object",
       "description": "Event-type-specific payload. Shape is determined by event_type per the oneOf below."
     },
@@ -81,7 +82,7 @@
     {
       "description": "property.created - a new property_rid was assigned.",
       "properties": {
-        "event_type": { "type": "string", "const": "property.created" },
+        "event_type": { "type": "string", "const": "property.created", "default": "property.created" },
         "entity_type": { "type": "string", "const": "property" },
         "payload": {
           "allOf": [
@@ -98,7 +99,7 @@
     {
       "description": "property.updated - classification, identifiers, or metadata changed.",
       "properties": {
-        "event_type": { "type": "string", "const": "property.updated" },
+        "event_type": { "type": "string", "const": "property.updated", "default": "property.updated" },
         "entity_type": { "type": "string", "const": "property" },
         "payload": {
           "allOf": [
@@ -115,28 +116,11 @@
     {
       "description": "property.merged - one property_rid became an alias of another.",
       "properties": {
-        "event_type": { "type": "string", "const": "property.merged" },
+        "event_type": { "type": "string", "const": "property.merged", "default": "property.merged" },
         "entity_type": { "type": "string", "const": "property" },
         "payload": {
-          "type": "object",
-          "required": ["alias_rid", "canonical_rid"],
-          "properties": {
-            "alias_rid": {
-              "type": "string",
-              "format": "uuid",
-              "description": "Retired property_rid that now aliases to canonical_rid."
-            },
-            "canonical_rid": {
-              "type": "string",
-              "format": "uuid",
-              "description": "Canonical property_rid that consumers should retain."
-            },
-            "evidence": {
-              "type": "string",
-              "description": "Registry evidence source for the merge, such as adagents_json or manual_review."
-            }
-          },
-          "additionalProperties": true
+          "$ref": "#/$defs/ridMergePayload",
+          "description": "Property merge: alias_rid is the retired property_rid, and canonical_rid the property_rid consumers should retain."
         }
       },
       "required": ["event_type"]
@@ -144,9 +128,10 @@
     {
       "description": "property.stale - a property has aged out of active resolution.",
       "properties": {
-        "event_type": { "type": "string", "const": "property.stale" },
+        "event_type": { "type": "string", "const": "property.stale", "default": "property.stale" },
         "entity_type": { "type": "string", "const": "property" },
         "payload": {
+          "title": "Registry property stale payload",
           "type": "object",
           "required": ["property_rid"],
           "properties": {
@@ -162,7 +147,7 @@
     {
       "description": "property.reactivated - a stale property was resolved again.",
       "properties": {
-        "event_type": { "type": "string", "const": "property.reactivated" },
+        "event_type": { "type": "string", "const": "property.reactivated", "default": "property.reactivated" },
         "entity_type": { "type": "string", "const": "property" },
         "payload": {
           "allOf": [
@@ -182,7 +167,7 @@
     {
       "description": "collection.created - a new collection_rid was assigned.",
       "properties": {
-        "event_type": { "type": "string", "const": "collection.created" },
+        "event_type": { "type": "string", "const": "collection.created", "default": "collection.created" },
         "entity_type": { "type": "string", "const": "collection" },
         "payload": {
           "allOf": [
@@ -199,7 +184,7 @@
     {
       "description": "collection.updated - collection metadata or distribution identifiers changed.",
       "properties": {
-        "event_type": { "type": "string", "const": "collection.updated" },
+        "event_type": { "type": "string", "const": "collection.updated", "default": "collection.updated" },
         "entity_type": { "type": "string", "const": "collection" },
         "payload": {
           "allOf": [
@@ -216,28 +201,11 @@
     {
       "description": "collection.merged - one collection_rid became an alias of another.",
       "properties": {
-        "event_type": { "type": "string", "const": "collection.merged" },
+        "event_type": { "type": "string", "const": "collection.merged", "default": "collection.merged" },
         "entity_type": { "type": "string", "const": "collection" },
         "payload": {
-          "type": "object",
-          "required": ["alias_rid", "canonical_rid"],
-          "properties": {
-            "alias_rid": {
-              "type": "string",
-              "format": "uuid",
-              "description": "Retired collection_rid that now aliases to canonical_rid."
-            },
-            "canonical_rid": {
-              "type": "string",
-              "format": "uuid",
-              "description": "Canonical collection_rid that consumers should retain."
-            },
-            "evidence": {
-              "type": "string",
-              "description": "Registry evidence source for the merge, such as adagents_json or manual_review."
-            }
-          },
-          "additionalProperties": true
+          "$ref": "#/$defs/ridMergePayload",
+          "description": "Collection merge: alias_rid is the retired collection_rid, and canonical_rid the collection_rid consumers should retain."
         }
       },
       "required": ["event_type"]
@@ -245,7 +213,7 @@
     {
       "description": "collection.removed - a collection is no longer visible in the publisher's authoritative catalog.",
       "properties": {
-        "event_type": { "type": "string", "const": "collection.removed" },
+        "event_type": { "type": "string", "const": "collection.removed", "default": "collection.removed" },
         "entity_type": { "type": "string", "const": "collection" },
         "payload": {
           "allOf": [
@@ -265,7 +233,7 @@
     {
       "description": "agent.discovered - a new agent appeared in crawled registry data.",
       "properties": {
-        "event_type": { "type": "string", "const": "agent.discovered" },
+        "event_type": { "type": "string", "const": "agent.discovered", "default": "agent.discovered" },
         "entity_type": { "type": "string", "const": "agent" },
         "payload": {
           "allOf": [
@@ -282,9 +250,10 @@
     {
       "description": "agent.removed - an agent no longer appears in any crawled adagents.json authorization graph.",
       "properties": {
-        "event_type": { "type": "string", "const": "agent.removed" },
+        "event_type": { "type": "string", "const": "agent.removed", "default": "agent.removed" },
         "entity_type": { "type": "string", "const": "agent" },
         "payload": {
+          "title": "Registry agent removed payload",
           "type": "object",
           "required": ["agent_url"],
           "properties": {
@@ -303,7 +272,7 @@
     {
       "description": "agent.profile_updated - an agent inventory profile changed.",
       "properties": {
-        "event_type": { "type": "string", "const": "agent.profile_updated" },
+        "event_type": { "type": "string", "const": "agent.profile_updated", "default": "agent.profile_updated" },
         "entity_type": { "type": "string", "const": "agent" },
         "payload": {
           "allOf": [
@@ -323,7 +292,7 @@
     {
       "description": "agent.compliance_changed - an agent verification or compliance heartbeat changed status.",
       "properties": {
-        "event_type": { "type": "string", "const": "agent.compliance_changed" },
+        "event_type": { "type": "string", "const": "agent.compliance_changed", "default": "agent.compliance_changed" },
         "entity_type": { "type": "string", "const": "agent" },
         "payload": { "$ref": "#/$defs/compliancePayload" }
       },
@@ -332,7 +301,7 @@
     {
       "description": "agent.verification_earned - an agent earned an AAO Verified badge.",
       "properties": {
-        "event_type": { "type": "string", "const": "agent.verification_earned" },
+        "event_type": { "type": "string", "const": "agent.verification_earned", "default": "agent.verification_earned" },
         "entity_type": { "type": "string", "const": "agent" },
         "payload": {
           "type": "object",
@@ -343,12 +312,12 @@
             "verified_specialisms": {
               "type": "array",
               "items": { "type": "string" },
-              "minItems": 1
+              "minItems": 1,
+              "uniqueItems": true
             },
-            "adcp_version": { "type": "string" },
+            "adcp_version": { "$ref": "/schemas/core/verification-badge-version.json" },
             "grading_profile": {
-              "type": "string",
-              "enum": ["legacy", "spec"],
+              "$ref": "/schemas/enums/verification-grading-profile.json",
               "description": "Grading profile that produced the badge. Historical events emitted before profile selection may omit this field and are Legacy."
             }
           },
@@ -360,7 +329,7 @@
     {
       "description": "agent.verification_lost - an agent lost an AAO Verified badge.",
       "properties": {
-        "event_type": { "type": "string", "const": "agent.verification_lost" },
+        "event_type": { "type": "string", "const": "agent.verification_lost", "default": "agent.verification_lost" },
         "entity_type": { "type": "string", "const": "agent" },
         "payload": {
           "type": "object",
@@ -369,10 +338,9 @@
             "agent_url": { "type": "string", "format": "uri" },
             "role": { "$ref": "#/$defs/badgeRole" },
             "reason": { "type": "string" },
-            "adcp_version": { "type": "string" },
+            "adcp_version": { "$ref": "/schemas/core/verification-badge-version.json" },
             "grading_profile": {
-              "type": "string",
-              "enum": ["legacy", "spec"],
+              "$ref": "/schemas/enums/verification-grading-profile.json",
               "description": "Grading profile in force when the badge was lost. Historical events emitted before profile selection may omit this field and are Legacy."
             }
           },
@@ -384,7 +352,7 @@
     {
       "description": "publisher.adagents_discovered - the crawler found a publisher adagents.json file and projected it into the registry.",
       "properties": {
-        "event_type": { "type": "string", "const": "publisher.adagents_discovered" },
+        "event_type": { "type": "string", "const": "publisher.adagents_discovered", "default": "publisher.adagents_discovered" },
         "entity_type": { "type": "string", "const": "publisher" },
         "payload": { "$ref": "#/$defs/publisherAdagentsPayload" }
       },
@@ -393,36 +361,16 @@
     {
       "description": "publisher.adagents_changed - the registry crawler detected a semantic change anywhere in a publisher adagents.json document, including formats-only or placements-only revisions. Transport metadata such as $schema and last_updated does not trigger this event by itself.",
       "properties": {
-        "event_type": { "type": "string", "const": "publisher.adagents_changed" },
+        "event_type": { "type": "string", "const": "publisher.adagents_changed", "default": "publisher.adagents_changed" },
         "entity_type": { "type": "string", "const": "publisher" },
-        "payload": {
-          "allOf": [
-            { "$ref": "#/$defs/publisherAdagentsPayload" },
-            {
-              "type": "object",
-              "properties": {
-                "properties_added": { "type": "integer", "minimum": 0 },
-                "properties_removed": { "type": "integer", "minimum": 0 },
-                "agents_added": {
-                  "type": "array",
-                  "items": { "type": "string", "format": "uri" }
-                },
-                "agents_removed": {
-                  "type": "array",
-                  "items": { "type": "string", "format": "uri" }
-                },
-                "changed_fields": { "$ref": "#/$defs/changedFields" }
-              }
-            }
-          ]
-        }
+        "payload": { "$ref": "#/$defs/publisherAdagentsPayload" }
       },
       "required": ["event_type"]
     },
     {
       "description": "authorization.granted - an agent became authorized for a publisher or scoped inventory slice.",
       "properties": {
-        "event_type": { "type": "string", "const": "authorization.granted" },
+        "event_type": { "type": "string", "const": "authorization.granted", "default": "authorization.granted" },
         "entity_type": { "type": "string", "const": "authorization" },
         "payload": { "$ref": "#/$defs/authorizationPayload" }
       },
@@ -431,7 +379,7 @@
     {
       "description": "authorization.revoked - an agent authorization is no longer visible in the effective registry set.",
       "properties": {
-        "event_type": { "type": "string", "const": "authorization.revoked" },
+        "event_type": { "type": "string", "const": "authorization.revoked", "default": "authorization.revoked" },
         "entity_type": { "type": "string", "const": "authorization" },
         "payload": { "$ref": "#/$defs/authorizationPayload" }
       },
@@ -440,7 +388,7 @@
     {
       "description": "authorization.modified - an authorization row remained visible, but externally visible metadata changed.",
       "properties": {
-        "event_type": { "type": "string", "const": "authorization.modified" },
+        "event_type": { "type": "string", "const": "authorization.modified", "default": "authorization.modified" },
         "entity_type": { "type": "string", "const": "authorization" },
         "payload": { "$ref": "#/$defs/authorizationPayload" }
       },
@@ -449,8 +397,7 @@
   ],
   "$defs": {
     "domain": {
-      "type": "string",
-      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+      "$ref": "/schemas/core/domain-name.json"
     },
     "publisherAdagentsPayload": {
           "type": "object",
@@ -602,8 +549,7 @@
         "markets": {
           "type": "array",
           "items": {
-            "type": "string",
-            "pattern": "^[A-Z]{2}$"
+            "$ref": "/schemas/core/country-code.json"
           },
           "uniqueItems": true
         },
@@ -633,8 +579,7 @@
     "countries": {
       "type": "array",
       "items": {
-        "type": "string",
-        "pattern": "^[A-Z]{2}$"
+        "$ref": "/schemas/core/country-code.json"
       },
       "minItems": 1,
       "uniqueItems": true
@@ -715,8 +660,7 @@
         },
         "countries": { "$ref": "#/$defs/countries" },
         "delegation_type": {
-          "type": "string",
-          "enum": ["direct", "delegated", "ad_network"]
+          "$ref": "/schemas/enums/delegation-type.json"
         },
         "exclusive": { "type": "boolean" },
         "signing_keys": {
@@ -800,6 +744,31 @@
     "storyboardStatus": {
       "type": "string",
       "enum": ["passing", "failing", "partial", "untested", "skipped", "not_selected", "unknown"]
+    },
+    "ridMergePayload": {
+      "type": "object",
+      "description": "A registry ID merge: the retired ID now aliases to the canonical one.",
+      "required": [
+        "alias_rid",
+        "canonical_rid"
+      ],
+      "properties": {
+        "alias_rid": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Retired registry ID that now aliases to canonical_rid."
+        },
+        "canonical_rid": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Canonical registry ID that consumers should retain."
+        },
+        "evidence": {
+          "type": "string",
+          "description": "Registry evidence source for the merge, such as adagents_json or manual_review."
+        }
+      },
+      "additionalProperties": true
     }
   }
 }

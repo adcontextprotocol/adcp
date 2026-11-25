@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/maximize-value-target.json",
+  "title": "Maximize Value Target",
+  "description": "An optimization target that maximizes total conversion value within budget, with no specific return ratio.",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "const": "maximize_value",
+      "default": "maximize_value"
+    }
+  },
+  "required": [
+    "kind"
+  ],
+  "additionalProperties": true
+}

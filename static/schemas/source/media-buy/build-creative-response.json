@@ -53,76 +53,8 @@
           "description": "ISO 8601 timestamp when generated asset URLs in the manifest expire. Set to the earliest expiration across all generated assets. Re-build the creative after this time to get fresh URLs."
         },
         "preview": {
-          "type": "object",
-          "description": "Preview renders included when the request set include_preview to true and the agent supports it. Contains the same content fields as a preview_creative single response (previews, interactive_url, expires_at) minus the response_type discriminator, so clients can reuse the same preview rendering logic.",
-          "properties": {
-            "previews": {
-              "type": "array",
-              "description": "Array of preview variants. Each preview corresponds to an input set from preview_inputs, or a single default preview if no inputs were provided.",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "preview_id": {
-                    "type": "string",
-                    "description": "Unique identifier for this preview variant"
-                  },
-                  "renders": {
-                    "type": "array",
-                    "description": "Array of rendered pieces for this preview variant. Most formats render as a single piece. Companion ad formats render as multiple pieces.",
-                    "items": {
-                      "$ref": "/schemas/creative/preview-render.json"
-                    },
-                    "minItems": 1
-                  },
-                  "input": {
-                    "type": "object",
-                    "description": "The input parameters that generated this preview variant. Echoes back the request input or shows defaults used.",
-                    "properties": {
-                      "name": {
-                        "type": "string",
-                        "description": "Human-readable name for this variant"
-                      },
-                      "macros": {
-                        "type": "object",
-                        "description": "Macro values applied to this variant",
-                        "additionalProperties": {
-                          "type": "string"
-                        }
-                      },
-                      "context_description": {
-                        "type": "string",
-                        "description": "Context description applied to this variant"
-                      }
-                    },
-                    "required": [
-                      "name"
-                    ],
-                    "additionalProperties": true
-                  }
-                },
-                "required": [
-                  "preview_id",
-                  "renders",
-                  "input"
-                ]
-              },
-              "minItems": 1
-            },
-            "interactive_url": {
-              "type": "string",
-              "format": "uri",
-              "description": "Optional URL to an interactive testing page that shows all preview variants with controls to switch between them."
-            },
-            "expires_at": {
-              "type": "string",
-              "format": "date-time",
-              "description": "ISO 8601 timestamp when preview URLs expire. May differ from the manifest's expires_at."
-            }
-          },
-          "required": [
-            "previews",
-            "expires_at"
-          ]
+          "$ref": "/schemas/core/creative-preview.json",
+          "description": "Preview renders included when the request set include_preview to true and the agent supports it. Contains the same content fields as a preview_creative single response (previews, interactive_url, expires_at) minus the response_type discriminator, so clients can reuse the same preview rendering logic."
         },
         "preview_error": {
           "$ref": "/schemas/core/error.json",
@@ -139,8 +71,7 @@
           "description": "Cost incurred for this build, denominated in currency. May be 0 for CPM-priced creatives where cost accrues at serve time rather than build time."
         },
         "currency": {
-          "type": "string",
-          "pattern": "^[A-Z]{3}$",
+          "$ref": "/schemas/core/currency-code.json",
           "description": "ISO 4217 currency code for vendor_cost."
         },
         "consumption": {
@@ -198,61 +129,7 @@
               "type": "array",
               "description": "Array of preview entries, one per requested capability. Array order matches creative_manifests. Canonical responses use capability_id for explicit correlation.",
               "items": {
-                "type": "object",
-                "properties": {
-                  "preview_id": {
-                    "type": "string",
-                    "description": "Unique identifier for this preview"
-                  },
-                  "format_id": {
-                    "$ref": "/schemas/core/format-id.json",
-                    "deprecated": true,
-                    "description": "Deprecated named-format correlation for a legacy target_format_ids request."
-                  },
-                  "capability_id": {
-                    "type": "string",
-                    "pattern": "^[a-zA-Z0-9_-]+$",
-                    "description": "Canonical creative capability this preview was generated through. Matches one requested target_capability_ids entry."
-                  },
-                  "renders": {
-                    "type": "array",
-                    "description": "Array of rendered pieces for this format's preview. Most formats render as a single piece. Companion ad formats render as multiple pieces.",
-                    "items": {
-                      "$ref": "/schemas/creative/preview-render.json"
-                    },
-                    "minItems": 1
-                  },
-                  "input": {
-                    "type": "object",
-                    "description": "The input parameters that generated this preview. For multi-format responses, this is always a default input.",
-                    "properties": {
-                      "name": {
-                        "type": "string",
-                        "description": "Human-readable name for this preview"
-                      },
-                      "macros": {
-                        "type": "object",
-                        "description": "Macro values applied to this preview",
-                        "additionalProperties": {
-                          "type": "string"
-                        }
-                      },
-                      "context_description": {
-                        "type": "string",
-                        "description": "Context description applied to this preview"
-                      }
-                    },
-                    "required": [
-                      "name"
-                    ],
-                    "additionalProperties": true
-                  }
-                },
-                "required": ["preview_id", "renders", "input"],
-                "anyOf": [
-                  { "required": ["capability_id"] },
-                  { "required": ["format_id"] }
-                ]
+                "$ref": "/schemas/core/capability-preview-variant.json"
               },
               "minItems": 1
             },
@@ -268,8 +145,7 @@
             }
           },
           "required": [
-            "previews",
-            "expires_at"
+            "previews"
           ]
         },
         "preview_error": {
@@ -287,8 +163,7 @@
           "description": "Total cost incurred for this multi-format build, denominated in currency. May be 0 for CPM-priced creatives where cost accrues at serve time."
         },
         "currency": {
-          "type": "string",
-          "pattern": "^[A-Z]{3}$",
+          "$ref": "/schemas/core/currency-code.json",
           "description": "ISO 4217 currency code for vendor_cost."
         },
         "consumption": {
@@ -325,6 +200,7 @@
           "type": "array",
           "description": "One entry per produced creative group. With catalog fan-out, one entry per catalog item (bounded/sampled by max_creatives). This array is the produced group set; use variants[] inside each group for choose-among alternatives.",
           "items": {
+            "title": "Built Creative Group",
             "type": "object",
             "properties": {
               "build_creative_id": {
@@ -332,20 +208,8 @@
                 "description": "Build-time handle for this produced creative within this response. Distinct from a library creative_id — a build_creative_id is not yet persisted/servable; it acquires a creative_id when a chosen variant is trafficked or added to the library (lazy promotion)."
               },
               "catalog_item_ref": {
-                "type": "object",
-                "description": "When this creative was produced by fanning out over a catalog, identifies the source item.",
-                "properties": {
-                  "catalog_type": {
-                    "type": "string",
-                    "description": "The catalog type the item came from."
-                  },
-                  "item_id": {
-                    "type": "string",
-                    "description": "Identifier of the catalog item this creative was built for."
-                  }
-                },
-                "required": ["item_id"],
-                "additionalProperties": true
+                "$ref": "/schemas/core/build-catalog-item-ref.json",
+                "description": "When this creative was produced by fanning out over a catalog, identifies the source item."
               },
               "signal_condition": {
                 "$ref": "/schemas/core/signal-targeting.json",
@@ -432,8 +296,7 @@
                       "description": "Cost incurred for this variant leaf, denominated in currency. REQUIRED on every produced leaf whenever the build reports cost (the top-level aggregate `vendor_cost` is present) — leaves are the billing source of truth, and an untrafficked leaf is reconciled from this field alone (it never earns a `creative_id` / `report_usage` entry). A CPM-deferred leaf reports 0 here (a value, not an omission)."
                     },
                     "currency": {
-                      "type": "string",
-                      "pattern": "^[A-Z]{3}$",
+                      "$ref": "/schemas/core/currency-code.json",
                       "description": "ISO 4217 currency code for vendor_cost. Co-required with vendor_cost."
                     },
                     "consumption": {
@@ -492,13 +355,11 @@
           "description": "Aggregate cost across all variant leaves, denominated in currency. MUST equal the sum of the per-leaf vendor_cost values (leaves are the source of truth). When present, every produced leaf MUST carry its own vendor_cost + currency (enforced) so the sum invariant is checkable; omit this aggregate only for a genuinely free build."
         },
         "currency": {
-          "type": "string",
-          "pattern": "^[A-Z]{3}$",
+          "$ref": "/schemas/core/currency-code.json",
           "description": "ISO 4217 currency code for the aggregate vendor_cost."
         },
         "keep_mode_applied": {
-          "type": "string",
-          "enum": ["keep_all", "keep_one", "keep_some"],
+          "$ref": "/schemas/enums/variant-keep-mode.json",
           "description": "Echoes the `keep_mode` the agent applied (mirrors the request hint). Present when the request set `keep_mode`. `keep_mode` is advisory — it does not change what is produced or billed (you pay for every leaf in `variants[]`) — so this echo is the buyer's confirmation that the hint was received, the audit paper trail for a 'I asked for keep_one but was billed for N' dispute. Whether the agent acted on it shows in the `recommended`/`rank` it set on the leaves."
         },
         "selection_strategy_applied": {
@@ -577,7 +438,7 @@
             "conditions_total": { "type": "integer", "minimum": 1, "x-status": "experimental", "description": "Signal-fan-out conditions axis count (len(signal_conditions)). Present when signal_conditions was sent so leaves_total = items_to_produce × conditions_total × variants_per_item is legible before spend." },
             "variants_per_item": { "type": "integer", "minimum": 1, "description": "Alternatives per creative (max_variants)." },
             "leaves_total": { "type": "integer", "minimum": 0, "description": "Total billable leaves = items_to_produce × variants_per_item (× conditions_total when signal_conditions was sent — see conditions_total)." },
-            "currency": { "type": "string", "pattern": "^[A-Z]{3}$", "description": "ISO 4217 currency for the cost band." },
+            "currency": { "$ref": "/schemas/core/currency-code.json", "description": "ISO 4217 currency for the cost band." },
             "cost_low": { "type": "number", "minimum": 0, "description": "Low end of the projected aggregate vendor_cost." },
             "cost_high": { "type": "number", "minimum": 0, "description": "High end. For basis \"fixed\" this equals cost_low (exact)." },
             "cost_expected": { "type": "number", "minimum": 0, "description": "Optional point estimate within the band." },
@@ -592,7 +453,7 @@
               "items": {
                 "type": "object",
                 "properties": {
-                  "catalog_item_ref": { "type": "object", "additionalProperties": true },
+                  "catalog_item_ref": { "$ref": "/schemas/core/build-catalog-item-ref.json" },
                   "variant_axis_value": {},
                   "pricing_option_id": { "type": "string", "x-entity": "vendor_pricing_option" },
                   "cost_low": { "type": "number", "minimum": 0 },
@@ -687,26 +548,9 @@
       }
     },
     {
-      "allOf": [{ "$ref": "/schemas/core/task-submitted.json" }],
+      "allOf": [{ "$ref": "/schemas/core/task-submitted-response.json" }],
       "title": "BuildCreativeSubmitted",
-      "description": "Async task envelope returned when build_creative cannot be confirmed before the response — for example, when a slow generative pipeline or multi-minute LLM workflow is queued. The buyer invokes get_task_status with task_id or receives a webhook when the task completes; the creative_manifest(s) land in the terminal result, not this envelope.",
-      "type": "object",
-      "properties": {
-        "errors": {
-          "type": "array",
-          "description": "Optional advisory errors accompanying the submitted envelope. Use only for non-blocking warnings (e.g., throttled_severity advisories, governance observations). Terminal failures belong in the error branch, not here.",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          }
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
-        }
-      },
-      "additionalProperties": true
+      "description": "Async task envelope returned when build_creative cannot be confirmed before the response — for example, when a slow generative pipeline or multi-minute LLM workflow is queued. The buyer invokes get_task_status with task_id or receives a webhook when the task completes; the creative_manifest(s) land in the terminal result, not this envelope."
     }
   ],
   "properties": {}

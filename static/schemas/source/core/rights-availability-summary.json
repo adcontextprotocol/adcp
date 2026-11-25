@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/rights-availability-summary.json",
+  "title": "Rights Availability Summary",
+  "description": "A summary of a brand's licensable rights: available uses, countries and excluded countries, exclusivity model, and content restrictions. Detailed pricing and rights records come from get_rights.",
+  "type": "object",
+  "properties": {
+    "available_uses": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/enums/right-use.json"
+      }
+    },
+    "countries": {
+      "type": "array",
+      "description": "Countries where rights are available (ISO 3166-1 alpha-2). If omitted, rights are available worldwide.",
+      "items": {
+        "$ref": "/schemas/core/country-code.json"
+      }
+    },
+    "excluded_countries": {
+      "type": "array",
+      "description": "Countries excluded from availability (ISO 3166-1 alpha-2)",
+      "items": {
+        "$ref": "/schemas/core/country-code.json"
+      }
+    },
+    "exclusivity_model": {
+      "type": "string"
+    },
+    "content_restrictions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": true
+}

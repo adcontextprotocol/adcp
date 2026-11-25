@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/task-domain-breakdown.json",
+  "title": "Task Domain Breakdown",
+  "description": "Task counts by protocol domain.",
+  "type": "object",
+  "properties": {
+    "media-buy": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of media-buy tasks in results"
+    },
+    "signals": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of signals tasks in results"
+    },
+    "creative": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of creative tasks in results"
+    }
+  },
+  "additionalProperties": true
+}

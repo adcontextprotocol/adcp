@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/geo-coordinates.json",
+  "title": "Geo Coordinates",
+  "description": "A geographic point as latitude and longitude.",
+  "type": "object",
+  "properties": {
+    "lat": {
+      "$ref": "/schemas/core/latitude.json",
+      "description": "Latitude in decimal degrees (WGS 84)."
+    },
+    "lng": {
+      "$ref": "/schemas/core/longitude.json",
+      "description": "Longitude in decimal degrees (WGS 84)."
+    }
+  },
+  "required": [
+    "lat",
+    "lng"
+  ],
+  "additionalProperties": true
+}

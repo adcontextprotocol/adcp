@@ -6,18 +6,12 @@
   "type": "object",
   "properties": {
     "idempotency_key": {
-      "type": "string",
-      "description": "Sender-generated key stable across retries of the same fire.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Sender-generated key stable across retries of the same fire."
     },
     "notification_id": {
-      "type": "string",
-      "description": "Stable identifier for this purge event. Receivers correlate fires by this id; a single creative can only be purged once, so a new id implies a different creative or (rare) a re-emission of the same purge after retention-driven snapshot loss.",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+      "$ref": "/schemas/core/notification-id.json",
+      "description": "Stable identifier for this purge event. Receivers correlate fires by this id; a single creative can only be purged once, so a new id implies a different creative or (rare) a re-emission of the same purge after retention-driven snapshot loss."
     },
     "notification_type": {
       "type": "string",
@@ -30,11 +24,8 @@
       "description": "ISO 8601 timestamp when the seller initiated this fire. Sellers MUST fire `creative.purged` immediately after purge — coalescence is not permitted on this notification type."
     },
     "subscriber_id": {
-      "type": "string",
-      "description": "Identifies which `notification_configs[]` entry on the recipient account is receiving this fire.",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+      "$ref": "/schemas/core/subscriber-id.json",
+      "description": "Identifies which `notification_configs[]` entry on the recipient account is receiving this fire."
     },
     "account_id": {
       "type": "string",
@@ -47,11 +38,7 @@
       "x-entity": "creative"
     },
     "purge_kind": {
-      "type": "string",
-      "enum": [
-        "soft",
-        "hard"
-      ],
+      "$ref": "/schemas/enums/creative-purge-kind.json",
       "description": "`soft` — tombstone retained on `list_creatives` (with `include_purged: true`) for the seller's retention window (default 30 days, MUST match the `webhook_activity[]` retention rule). `hard` — no tombstone; the seller MUST NOT retain or echo the asset content elsewhere. `hard` is reserved for legal erasure or equivalent compelled destruction; sellers SHOULD default to `soft`."
     },
     "purged_at": {
@@ -64,16 +51,11 @@
       "description": "Categorical reason for the purge. Typical values: `retention_expired`, `legal_erasure`, `takedown_request`. Receivers MUST treat unknown reason codes as forward-compatible additions."
     },
     "reason_detail": {
-      "type": "string",
-      "maxLength": 500,
+      "$ref": "/schemas/core/reason-detail.json",
       "description": "Human-readable supplement. Sellers MUST NOT include third-party PII or the asset content in this field — the field is meant for operational context, not asset preservation."
     },
     "initiator": {
-      "type": "string",
-      "enum": [
-        "seller",
-        "system"
-      ],
+      "$ref": "/schemas/enums/creative-change-initiator.json",
       "description": "Who initiated the purge. `seller` — explicit decision (legal team, content policy, takedown handler). `system` — automated retention sweep, storage policy enforcement. `buyer` never appears on this event — buyer-initiated destruction (if and when supported) is acknowledged on the `sync_creatives` response path."
     },
     "ext": {

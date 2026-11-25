@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/governance-delivery-source.json",
+  "title": "Governance Delivery Source",
+  "description": "Whether a buyer forwards the seller statement or reports its own measurement.",
+  "type": "string",
+  "enum": [
+    "seller_statement_copy",
+    "buyer_measurement"
+  ]
+}

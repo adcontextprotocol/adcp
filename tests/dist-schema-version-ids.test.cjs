@@ -93,6 +93,14 @@ test('generated latest schemas publish absolute AdCP $id and external $ref URIs'
           if (!isLocalFragment && !isCanonicalAdcpUri) {
             failures.push(`${path.relative(path.join(__dirname, '..'), file)}: ${key}=${value}`);
           }
+          // latest/ schemas identify themselves under /schemas/latest/, and a
+          // $ref that pins a release must name a file that release published.
+          const target = isCanonicalAdcpUri && value.slice('https://adcontextprotocol.org/schemas/'.length).split('#', 1)[0];
+          if (key === '$id' && target && !target.startsWith('latest/')) {
+            failures.push(`${path.relative(path.join(__dirname, '..'), file)}: $id outside latest/: ${value}`);
+          } else if (key === '$ref' && target && !fs.existsSync(path.join(DIST_SCHEMAS_DIR, target))) {
+            failures.push(`${path.relative(path.join(__dirname, '..'), file)}: unresolved $ref ${value}`);
+          }
           continue;
         }
         visit(value);

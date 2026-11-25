@@ -7,32 +7,7 @@
   "required": ["target", "result_kind"],
   "properties": {
     "target": {
-      "type": "object",
-      "required": ["kind", "id"],
-      "properties": {
-        "kind": {
-          "type": "string",
-          "enum": ["canonical", "product", "third_party_format", "capability"]
-        },
-        "id": {
-          "type": "string",
-          "description": "Canonical format name (e.g., 'image'), product_id, URI-form third-party format identifier, or agent-local creative capability_id."
-        }
-      },
-      "allOf": [
-        {
-          "if": {
-            "properties": { "kind": { "const": "capability" } },
-            "required": ["kind"]
-          },
-          "then": {
-            "properties": {
-              "id": { "pattern": "^[a-zA-Z0-9_-]+$" }
-            }
-          }
-        }
-      ],
-      "additionalProperties": true
+      "$ref": "/schemas/core/validation-target.json"
     },
     "result_kind": {
       "type": "string",
@@ -61,6 +36,7 @@
             "description": "Path to the violating field (e.g., 'assets.video_main.duration_ms')."
           },
           "retry_with": {
+            "title": "Validate Input Retry Hint",
             "type": "object",
             "description": "Optional advisory adjustment hint. Platforms MAY suggest a corrected input shape; buyers MUST treat this as advisory, not authoritative.",
             "additionalProperties": true

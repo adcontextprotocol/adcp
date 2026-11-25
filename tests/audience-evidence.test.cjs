@@ -181,7 +181,7 @@ describe('audience evidence vectors', () => {
     assert.equal(validateEvidence(invalid), false);
 
     const signalSchema = readSchema('/schemas/core/signal-definition.json');
-    assert.equal(signalSchema.properties.methodology.enum.includes('projected'), false);
+    assert.equal(readSchema(signalSchema.properties.methodology.$ref).enum.includes('projected'), false);
     assert.equal(readSchema('/schemas/enums/audience-evidence-methodology.json').enum.includes('projected'), true);
   });
 

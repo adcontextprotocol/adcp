@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/readiness-resource.json",
+  "title": "Readiness Resource",
+  "description": "A resource that satisfies an execution requirement: its resource ID and an optional name.",
+  "type": "object",
+  "properties": {
+    "resource_id": {
+      "$ref": "/schemas/core/readiness-resource-id.json",
+      "description": "Directly usable in `binding_field`: the `event_source_id` from `sync_event_sources` (including a seller-managed source) or a `catalog_id`. Never a raw platform ID unless that is what the field accepts."
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name of the resource on the seller's platform."
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "resource_id"
+  ],
+  "additionalProperties": true
+}

@@ -8,6 +8,7 @@
     "kind": {
       "type": "string",
       "const": "time",
+      "default": "time",
       "description": "Dimension family discriminator."
     },
     "start_time": {

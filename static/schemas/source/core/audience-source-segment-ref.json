@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/audience-source-segment-ref.json",
+  "title": "Audience Source Segment Reference",
+  "description": "The vendor's identifier for a platform segment that feeds an audience, as the vendor issued it to the buyer.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 256
+}

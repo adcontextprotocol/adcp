@@ -85,6 +85,7 @@
       "description": "Canonical 3.2 direct selector. Names the canonical format shape this package targets when the buyer is not selecting a published `format_option_ref`. Pair with `params` for dimensions, duration, codecs, or other constraints. New buyers MUST NOT combine this route with `format_option_refs` or deprecated `format_ids`. Receivers handling older 3.x multi-route requests MUST equivalence-check every present route before applying precedence and reject disagreement with `CONFLICTING_SELECTORS`. Product satisfaction is directional: broad `{ format_kind: \"image\" }` does not satisfy a fixed-size product declaration."
     },
     "params": {
+      "title": "Canonical Format Selector Params",
       "type": "object",
       "description": "Parameters for the direct canonical selector in `format_kind`. Shape follows the selected canonical's parameter vocabulary: dimensions (`width`, `height`, `sizes`), duration (`duration_ms_exact`, `duration_ms_range`), codecs, asset-source and slot narrowing, or other canonical-specific constraints. Requires `format_kind`. For fixed-size image selectors, `width` and `height` MUST co-occur; a selector containing only one dimension is schema-invalid. New buyers omit `params` when selecting by `format_option_refs` or `format_ids`; older multi-route requests are accepted only when every route selects the same product option set.",
       "additionalProperties": true
@@ -203,6 +204,7 @@
               "scope": {
                 "type": "string",
                 "const": "standard",
+                "default": "standard",
                 "description": "Standard metric from the closed `available-metric.json` enum."
               },
               "metric_id": {
@@ -210,26 +212,8 @@
                 "description": "Identifier for the standard metric. MUST be present in the product's `reporting_capabilities.available_metrics`."
               },
               "qualifier": {
-                "type": "object",
-                "description": "Disambiguator — same shape as on the response-side `committed_metrics`. Required when the buyer wants to pin a specific measurement path: `viewability_standard` for MRC vs GroupM viewability; `completion_source` for seller- vs vendor-attested `completion_rate`; `attribution_methodology` for how attribution was computed (deterministic_purchase, probabilistic, panel_based, modeled); `attribution_window` for the time window over which outcomes are attributed. See response-side description for full semantics.",
-                "properties": {
-                  "viewability_standard": {
-                    "$ref": "/schemas/enums/viewability-standard.json"
-                  },
-                  "completion_source": {
-                    "$ref": "/schemas/enums/completion-source.json"
-                  },
-                  "attribution_methodology": {
-                    "$ref": "/schemas/enums/attribution-methodology.json"
-                  },
-                  "attribution_window": {
-                    "$ref": "/schemas/core/duration.json"
-                  },
-                  "lift_dimension": {
-                    "$ref": "/schemas/enums/lift-dimension.json"
-                  }
-                },
-                "additionalProperties": false
+                "$ref": "/schemas/core/canonical-metric-qualifier.json",
+                "description": "Disambiguator — same shape as on the response-side `committed_metrics`. Required when the buyer wants to pin a specific measurement path: `viewability_standard` for MRC vs GroupM viewability; `completion_source` for seller- vs vendor-attested `completion_rate`; `attribution_methodology` for how attribution was computed (deterministic_purchase, probabilistic, panel_based, modeled); `attribution_window` for the time window over which outcomes are attributed. See response-side description for full semantics."
               }
             },
             "required": ["scope", "metric_id"],
@@ -240,6 +224,7 @@
               "scope": {
                 "type": "string",
                 "const": "vendor",
+                "default": "vendor",
                 "description": "Vendor-defined metric, identified by the tuple `(vendor, metric_id)`."
               },
               "vendor": {
@@ -255,26 +240,8 @@
                 "description": "Optional buyer-proposed pin of the vendor's `measurement.metrics[].methodology_version`. The seller accepts by echoing it on the confirmed package's `committed_metrics` entry, normalizes to the version it can actually deliver, or rejects with `TERMS_REJECTED`. Opaque string — equality comparison only."
               },
               "qualifier": {
-                "type": "object",
-                "description": "Optional disambiguator for vendor metrics committed under more than one methodology or window — same closed key set as standard-scope entries.",
-                "properties": {
-                  "viewability_standard": {
-                    "$ref": "/schemas/enums/viewability-standard.json"
-                  },
-                  "completion_source": {
-                    "$ref": "/schemas/enums/completion-source.json"
-                  },
-                  "attribution_methodology": {
-                    "$ref": "/schemas/enums/attribution-methodology.json"
-                  },
-                  "attribution_window": {
-                    "$ref": "/schemas/core/duration.json"
-                  },
-                  "lift_dimension": {
-                    "$ref": "/schemas/enums/lift-dimension.json"
-                  }
-                },
-                "additionalProperties": false
+                "$ref": "/schemas/core/canonical-metric-qualifier.json",
+                "description": "Optional disambiguator for vendor metrics committed under more than one methodology or window — same closed key set as standard-scope entries."
               }
             },
             "required": ["scope", "vendor", "metric_id"],
@@ -309,17 +276,13 @@
       "type": "array",
       "description": "Upload creative assets inline and assign to this package. Native localization is not accepted on this path; use sync_creatives before assigning the library creative. When the seller also advertises creative.has_creative_library: true, these creatives enter the seller's creative library and can be reused by creative_id while retained; inline-only sellers may store them as package-scoped assets. Use creative_assignments instead for existing library creatives.",
       "items": {
-        "allOf": [
-          { "$ref": "/schemas/core/creative-asset.json" },
-          { "not": { "required": ["localization"] } }
-        ]
+        "$ref": "/schemas/core/inline-creative-asset.json"
       },
       "minItems": 1,
       "maxItems": 100
     },
     "agency_estimate_number": {
-      "type": "string",
-      "maxLength": 100,
+      "$ref": "/schemas/core/agency-estimate-number.json",
       "description": "Agency estimate or authorization number for this package. Overrides the media buy-level estimate number when different packages correspond to different agency estimates (e.g., different stations or flights within the same buy)."
     },
     "context": {

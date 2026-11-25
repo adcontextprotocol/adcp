@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/governance-delivery-statement.json",
+  "title": "Governance Delivery Statement",
+  "description": "A canonical, seller-attributed delivery statement: a statement ID and digest, sequence number, issue time, reporting period, cumulative spend, and canonical payload.",
+  "type": "object",
+  "properties": {
+    "statement_id": {
+      "type": "string",
+      "x-entity": "governance_delivery_statement"
+    },
+    "statement_digest": {
+      "$ref": "/schemas/core/sha256-digest.json"
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "issued_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "seller_reference": {
+      "type": "string"
+    },
+    "reporting_period": {
+      "$ref": "/schemas/core/datetime-range.json"
+    },
+    "cumulative_spend": {
+      "type": "number",
+      "minimum": 0
+    },
+    "currency": {
+      "$ref": "/schemas/core/currency-code.json"
+    },
+    "canonical_payload": {
+      "$ref": "/schemas/core/delivery-statement-canonical-payload.json",
+      "description": "Exact retained digest-bearing payload. To verify statement_digest, apply RFC 8785 JCS after removing delivery_metrics.statement_digest."
+    }
+  },
+  "required": [
+    "statement_id",
+    "statement_digest",
+    "sequence",
+    "issued_at",
+    "seller_reference",
+    "reporting_period",
+    "cumulative_spend",
+    "currency",
+    "canonical_payload"
+  ],
+  "additionalProperties": true
+}

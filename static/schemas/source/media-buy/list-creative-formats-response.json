@@ -34,28 +34,7 @@
       "deprecated": true,
       "description": "Deprecated recursive discovery projection retained for historical 3.x responses. New buyers query the registry's canonical creative capability index and confirm candidates with get_adcp_capabilities; they do not recursively walk agent-provided lists.",
       "items": {
-        "type": "object",
-        "properties": {
-          "agent_url": {
-            "type": "string",
-            "format": "uri",
-            "description": "Base URL for the creative agent (e.g., 'https://reference.example.com', 'https://dco.example.com')."
-          },
-          "agent_name": {
-            "type": "string",
-            "description": "Human-readable name for the creative agent"
-          },
-          "capabilities": {
-            "type": "array",
-            "description": "Capabilities this creative agent provides",
-            "items": {
-              "$ref": "/schemas/enums/creative-agent-capability.json"
-            }
-          }
-        },
-        "required": [
-          "agent_url"
-        ]
+        "$ref": "/schemas/core/creative-agent-entry.json"
       }
     },
     "errors": {

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/hashed-phone.json",
+  "title": "Hashed Phone",
+  "description": "Lowercase hexadecimal SHA-256 hash of a phone number in E.164 form. Pseudonymous personal data, not anonymous data.",
+  "type": "string",
+  "pattern": "^[a-f0-9]{64}$"
+}

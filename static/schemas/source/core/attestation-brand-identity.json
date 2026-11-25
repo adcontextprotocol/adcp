@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/attestation-brand-identity.json",
+  "title": "Attestation Brand Identity",
+  "description": "An attestation issuer identified by a brand.",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "const": "brand",
+      "default": "brand",
+      "description": "The issuer is identified by an AdCP BrandRef."
+    },
+    "brand": {
+      "$ref": "/schemas/core/brand-ref.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "type",
+    "brand"
+  ],
+  "additionalProperties": true
+}

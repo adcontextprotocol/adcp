@@ -49,39 +49,14 @@
       "additionalProperties": true
     },
     "component_assets": {
-      "type": "object",
-      "description": "Component-addressed canonical asset maps for `coordinated_placements`. Keys match coordinated component IDs. This field is preserved by creative-library sync and list readback; it MUST be absent for every other format kind.",
-      "patternProperties": {
-        "^[a-z][a-z0-9_]*$": { "$ref": "/schemas/core/creative-assets.json" }
-      },
-      "additionalProperties": false
+      "$ref": "/schemas/core/component-assets.json",
+      "description": "Component-addressed canonical asset maps for `coordinated_placements`. Keys match coordinated component IDs. This field is preserved by creative-library sync and list readback; it MUST be absent for every other format kind."
     },
     "inputs": {
       "type": "array",
       "description": "Preview contexts for generative formats - defines what scenarios to generate previews for",
       "items": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "description": "Human-readable name for this preview variant"
-          },
-          "macros": {
-            "type": "object",
-            "description": "Macro values to apply for this preview",
-            "additionalProperties": {
-              "type": "string"
-            }
-          },
-          "context_description": {
-            "type": "string",
-            "description": "Natural language description of the context for AI-generated content"
-          }
-        },
-        "required": [
-          "name"
-        ],
-        "additionalProperties": true
+        "$ref": "/schemas/core/preview-input.json"
       }
     },
     "tags": {
@@ -96,10 +71,8 @@
       "description": "For generative creatives: set to 'approved' to finalize, 'rejected' to request regeneration with updated assets/message. Omit for non-generative creatives (system will set based on processing state)."
     },
     "weight": {
-      "type": "number",
-      "description": "Optional delivery weight for creative rotation when uploading via create_media_buy or update_media_buy (0-100). If omitted, platform determines rotation. Only used during upload to media buy - not stored in creative library.",
-      "minimum": 0,
-      "maximum": 100
+      "$ref": "/schemas/core/creative-rotation-weight.json",
+      "description": "Optional delivery weight for creative rotation when uploading via create_media_buy or update_media_buy (0-100). If omitted, platform determines rotation. Only used during upload to media buy - not stored in creative library."
     },
     "placement_refs": {
       "type": "array",

@@ -1,0 +1,7 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/responsive-flag.json",
+  "title": "Responsive Flag",
+  "description": "Whether a rendered piece's size along one axis is responsive (fluid) rather than fixed.",
+  "type": "boolean"
+}

@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/keyword-match-types.json",
+  "title": "Keyword Match Types",
+  "description": "Keyword match types, each listed once.",
+  "type": "array",
+  "items": {
+    "$ref": "/schemas/enums/match-type.json"
+  },
+  "minItems": 1,
+  "uniqueItems": true
+}

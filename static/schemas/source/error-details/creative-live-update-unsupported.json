@@ -14,7 +14,7 @@
     },
     "live_package_ids": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1, "x-entity": "package" },
+      "items": { "$ref": "/schemas/core/package-id.json" },
       "uniqueItems": true,
       "description": "Packages in the caller's account on which the creative is live. These are the packages on which to replace it."
     }

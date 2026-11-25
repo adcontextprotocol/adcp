@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/governance-plan-status.json",
+  "title": "Governance Plan Status",
+  "description": "Lifecycle status of a governance plan.",
+  "type": "string",
+  "enum": [
+    "active",
+    "suspended",
+    "completed"
+  ]
+}

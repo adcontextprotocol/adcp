@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/change-summary.json",
+  "title": "Change Summary",
+  "description": "Short, untrusted human-readable summary of one recorded change to a resource.",
+  "type": "string",
+  "maxLength": 500
+}

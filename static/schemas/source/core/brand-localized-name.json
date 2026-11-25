@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-localized-name.json",
+  "title": "Brand Localized Name",
+  "description": "A localized name using the legacy underscore-separated language/region key convention (for example 'en_US', 'fr_CA', or 'zh_CN') and a name value. Bare language codes such as 'en' are also accepted for backwards compatibility. These keys are not AdCP locale-tag values: a bridge to /schemas/core/locale-tag.json replaces '_' with '-', applies the AdCP canonical wire profile, and validates the result rather than passing the key through unchanged.",
+  "type": "object",
+  "minProperties": 1,
+  "maxProperties": 1,
+  "additionalProperties": {
+    "type": "string",
+    "minLength": 1
+  }
+}

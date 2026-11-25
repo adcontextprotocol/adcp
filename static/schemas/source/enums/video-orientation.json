@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/video-orientation.json",
+  "title": "Video Orientation",
+  "description": "Orientation of a video: vertical, horizontal, or square.",
+  "type": "string",
+  "enum": [
+    "vertical",
+    "horizontal",
+    "square"
+  ]
+}

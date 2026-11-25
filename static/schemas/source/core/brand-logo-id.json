@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-logo-id.json",
+  "title": "Brand Logo Id",
+  "description": "Stable identifier for a logo entry within this brand.json document. Use lowercase words separated by underscores or hyphens; do not key integrations on mutable asset URLs.",
+  "type": "string",
+  "pattern": "^[a-z0-9][a-z0-9_-]*$"
+}

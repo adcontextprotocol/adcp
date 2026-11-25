@@ -19,6 +19,7 @@
       "minProperties": 1,
       "maxProperties": 1,
       "additionalProperties": {
+        "title": "A2UI Component Properties",
         "type": "object",
         "description": "Component properties"
       }

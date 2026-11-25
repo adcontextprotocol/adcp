@@ -15,14 +15,11 @@
       "$ref": "/schemas/enums/pending-action-kind.json"
     },
     "url": {
-      "type": "string",
-      "format": "uri",
-      "pattern": "^https://",
+      "$ref": "/schemas/core/https-url.json",
       "description": "Where a human completes the action. Required when waiting_on is buyer. MAY be present when waiting_on is seller, for example to show review status."
     },
     "message": {
-      "type": "string",
-      "maxLength": 1000,
+      "$ref": "/schemas/core/account-setup-message.json",
       "description": "Human-readable description of what is needed. Treat as untrusted text."
     },
     "expires_at": {

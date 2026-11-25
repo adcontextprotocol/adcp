@@ -3,12 +3,19 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const Ajv = require('ajv');
+const { addReferencedSchemas, resolveScalar } = require('./helpers/named-scalar-schemas.cjs');
 
 const ROOT = path.join(__dirname, '..');
 const SCHEMA_DIR = path.join(ROOT, 'static/schemas/source');
 
 function schema(relativePath) {
   return JSON.parse(fs.readFileSync(path.join(SCHEMA_DIR, relativePath), 'utf8'));
+}
+
+// core/error.json references named documents, including the error-details object.
+function compileError() {
+  const error = schema('core/error.json');
+  return addReferencedSchemas(new Ajv({ allErrors: true, strict: false }), error).compile(error);
 }
 
 const base = {
@@ -18,7 +25,7 @@ const base = {
 };
 
 test('core error accepts documented and unrecognized mutation_outcome values', () => {
-  const validate = new Ajv({ allErrors: true, strict: false }).compile(schema('core/error.json'));
+  const validate = compileError();
 
   assert.equal(validate(base), true, 'field is optional');
   for (const value of ['not_applied', 'unknown', 'applied', 'x_future_value']) {
@@ -31,7 +38,7 @@ test('core error accepts documented and unrecognized mutation_outcome values', (
 });
 
 test('core error rejects a non-string or empty mutation_outcome', () => {
-  const validate = new Ajv({ allErrors: true, strict: false }).compile(schema('core/error.json'));
+  const validate = compileError();
 
   assert.equal(validate({ ...base, mutation_outcome: '' }), false);
   assert.equal(validate({ ...base, mutation_outcome: true }), false);
@@ -42,7 +49,7 @@ test('mutation_outcome stays independent of code and recovery', () => {
   const error = schema('core/error.json');
   assert.equal(error.required.includes('mutation_outcome'), false);
   assert.equal(error.dependencies?.mutation_outcome, undefined);
-  assert.equal(error.properties.recovery.enum.includes('reconcile'), false);
+  assert.equal(resolveScalar(error.properties.recovery).enum.includes('reconcile'), false);
 });
 
 test('COMMITTED_RESOURCE_PURGED guidance agrees with mutation_outcome', () => {

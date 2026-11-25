@@ -21,7 +21,10 @@ const roots = new Map();
 // A document, or a sub-schema of one (`ref` is `<file>#/oneOf/1` and the like).
 function compile(ref) {
   const [file, pointer] = ref.split('#');
-  if (!roots.has(file)) roots.set(file, ajv.compileAsync(read(file)));
+  // A document another one references is already loaded; compile it once.
+  if (!roots.has(file)) {
+    roots.set(file, Promise.resolve(ajv.getSchema(`/schemas/${file}`) || ajv.compileAsync(read(file))));
+  }
   if (!pointer) return roots.get(file);
   if (!compiled.has(ref)) {
     compiled.set(ref, roots.get(file).then(() => ajv.compileAsync({ $ref: `/schemas/${file}#${pointer}` })));
@@ -165,27 +168,31 @@ test('adagents inline file carrying a non-HTTPS authoritative location is still 
 });
 
 const URL_REFERENCE = { type: 'url', value: 'https://example.com/article' };
+// Both requests reference core/calibration-exemplars.json, whose pass and fail
+// items are the core/calibration-exemplar.json union.
 const EXEMPLAR_SITES = [
   ['create', 'content-standards/create-content-standards-request.json'],
   ['update', 'content-standards/update-content-standards-request.json'],
 ].flatMap(([verb, file]) => ['pass', 'fail'].map((side) => ({
   label: `${verb} request ${side} exemplar`,
-  branches: `${file}#/properties/calibration_exemplars/properties/${side}/items/oneOf`,
+  side,
+  site: `${file}#/properties/calibration_exemplars`,
+  branches: 'core/calibration-exemplar.json#/oneOf',
 })));
 
-for (const { label, branches } of EXEMPLAR_SITES) {
+for (const { label, side, site, branches } of EXEMPLAR_SITES) {
   test(`${label} that is both a URL reference and an artifact is accepted as the artifact`, async () => {
     const both = { ...artifact, ...URL_REFERENCE };
-    await assertValid(branches.replace(/\/oneOf$/, ''), both);
+    await assertValid(site, { [side]: [both] });
     await assertValid(`${branches}/1`, both);
     await assertInvalid(`${branches}/0`, both);
   });
 
   test(`${label} that is only a URL reference is still accepted`, async () => {
-    await assertValid(branches.replace(/\/oneOf$/, ''), URL_REFERENCE);
+    await assertValid(site, { [side]: [URL_REFERENCE] });
   });
 
   test(`${label} that is only an artifact is still accepted`, async () => {
-    await assertValid(branches.replace(/\/oneOf$/, ''), artifact);
+    await assertValid(site, { [side]: [artifact] });
   });
 }

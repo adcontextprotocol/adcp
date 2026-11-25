@@ -8,6 +8,7 @@
   },
   "oneOf": [
     {
+      "title": "Binary Signal Expression",
       "type": "object",
       "description": "Binary signal expression. In grouped package targeting, value is always true; use a parent group with operator 'none' for exclusion.",
       "properties": {
@@ -18,6 +19,7 @@
         "value_type": {
           "type": "string",
           "const": "binary",
+          "default": "binary",
           "description": "Discriminator for binary signals."
         },
         "value": {
@@ -40,15 +42,12 @@
         "value_type": {
           "type": "string",
           "const": "categorical",
+          "default": "categorical",
           "description": "Discriminator for categorical signals."
         },
         "values": {
-          "type": "array",
-          "description": "Values to target. Users with any of these values match the expression.",
-          "items": {
-            "type": "string"
-          },
-          "minItems": 1
+          "$ref": "/schemas/core/categorical-signal-values.json",
+          "description": "Values to target. Users with any of these values match the expression."
         }
       },
       "required": ["signal_ref", "value_type", "values"],
@@ -65,6 +64,7 @@
         "value_type": {
           "type": "string",
           "const": "numeric",
+          "default": "numeric",
           "description": "Discriminator for numeric signals."
         },
         "min_value": {

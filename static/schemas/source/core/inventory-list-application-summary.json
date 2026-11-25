@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/inventory-list-application-summary.json",
+  "title": "Inventory List Application Summary",
+  "description": "Partition of every entry in the resolved list snapshot against this product's common pre-list inventory baseline.",
+  "type": "object",
+  "properties": {
+    "matched": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Resolved entries that matched at least one collection in this product."
+    },
+    "unmatched": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Resolved entries that did not match a collection in this product."
+    }
+  },
+  "required": [
+    "matched",
+    "unmatched"
+  ],
+  "additionalProperties": true
+}

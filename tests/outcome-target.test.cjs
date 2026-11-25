@@ -4,6 +4,7 @@ const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 const { before, describe, it } = require('node:test');
 const assert = require('node:assert/strict');
+const { addNamedScalarSchemas, resolveScalar } = require('./helpers/named-scalar-schemas.cjs');
 
 const SCHEMA_ROOT = path.join(__dirname, '..', 'static', 'schemas', 'source');
 
@@ -114,7 +115,7 @@ describe('outcome_target reverse-forecast criteria', () => {
     const costPer = readSchema('/schemas/core/outcome-target-cost-per.json');
     assert.equal(costPer.properties.strength.$ref, '/schemas/enums/outcome-target-cost-strength.json');
     const outcomeStrengths = readSchema('/schemas/enums/outcome-target-cost-strength.json').enum;
-    const biddingStrengths = readSchema('/schemas/core/bidding-policy.json').properties.cost_per.properties.strength.enum;
+    const biddingStrengths = resolveScalar(readSchema('/schemas/core/bidding-policy.json').properties.cost_per.properties.strength).enum;
     assert.deepEqual(outcomeStrengths, biddingStrengths);
   });
 

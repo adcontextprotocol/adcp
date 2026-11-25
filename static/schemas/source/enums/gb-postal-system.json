@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/gb-postal-system.json",
+  "title": "GB Postal System",
+  "description": "Postal code system for the United Kingdom: outward or full.",
+  "type": "string",
+  "enum": [
+    "outward",
+    "full"
+  ]
+}

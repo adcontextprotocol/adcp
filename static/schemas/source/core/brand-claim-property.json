@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-claim-property.json",
+  "title": "Brand Claim Property",
+  "description": "A brand claim that a digital property (website, app, podcast, and so on) belongs to the brand, with an optional caller-declared use case.",
+  "type": "object",
+  "properties": {
+    "property": {
+      "$ref": "/schemas/core/brand-property.json",
+      "description": "Shape matches brand.json properties[] entry."
+    },
+    "use_case": {
+      "$ref": "/schemas/core/brand-claim-use-case.json",
+      "description": "Optional caller-declared use case. The agent MAY scope its answer."
+    }
+  },
+  "required": [
+    "property"
+  ],
+  "additionalProperties": true
+}

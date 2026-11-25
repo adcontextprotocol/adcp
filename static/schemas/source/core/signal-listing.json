@@ -15,11 +15,11 @@
       "deprecated": true
     },
     "name": {
-      "type": "string",
+      "$ref": "/schemas/core/signal-name.json",
       "description": "Human-readable signal name. Required when signal_ref.scope is 'product'. For data_provider and signal_source refs, this is optional contextual display text; the referenced definition or source remains authoritative."
     },
     "description": {
-      "type": "string",
+      "$ref": "/schemas/core/signal-description.json",
       "description": "Detailed signal description. For data_provider and signal_source refs, this is optional contextual display text and MUST NOT replace the referenced definition."
     },
     "methodology_url": {
@@ -45,33 +45,16 @@
       "minItems": 1
     },
     "range": {
-      "type": "object",
-      "description": "Valid range for numeric signals. Present when value_type is 'numeric'.",
-      "properties": {
-        "min": {
-          "type": "number",
-          "description": "Minimum value, inclusive."
-        },
-        "max": {
-          "type": "number",
-          "description": "Maximum value, inclusive."
-        }
-      },
-      "required": ["min", "max"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/numeric-range.json",
+      "description": "Valid range for numeric signals. Present when value_type is 'numeric'."
     },
     "restricted_attributes": {
-      "type": "array",
-      "description": "Restricted attribute categories this listing touches. Required with demographic_predicate and must include age for age predicates and sex_gender for gender predicates. For referenced provider/source signals, any projected values must match the authoritative definition.",
-      "items": {
-        "$ref": "/schemas/enums/restricted-attribute.json"
-      },
-      "minItems": 1
+      "$ref": "/schemas/core/signal-restricted-attributes.json",
+      "description": "Restricted attribute categories this listing touches. Required with demographic_predicate and must include age for age predicates and sex_gender for gender predicates. For referenced provider/source signals, any projected values must match the authoritative definition."
     },
     "pricing_group": {
-      "type": "string",
+      "$ref": "/schemas/core/signal-pricing-group.json",
       "description": "Experimental (signals.pricing_groups). Optional seller-defined key naming the set of signals whose fees combine under one signal_pricing_group_rules entry when selected in the same package. The key is scoped to the listing surface (product options or the get_signals agent) it appears on. A product-scoped value overrides the get_signals value, as product-scoped pricing_options do; an option omitting it inherits. Omit when the fee is independent. Distinct from selection_group, which governs targeting composability, not fees.",
-      "minLength": 1,
       "x-status": "experimental",
       "x-added-in": "3.3.0"
     },
@@ -80,14 +63,9 @@
       "description": "Machine-readable demographic meaning. For product-local signals this listing is authoritative; for data-provider and signal-source refs, any projected value MUST match the referenced authoritative definition. Signal names alone never establish demographic semantics."
     },
     "age_determination_bases": {
-      "type": "array",
+      "$ref": "/schemas/core/signal-age-determination-bases.json",
       "x-added-in": "3.3.0",
-      "description": "User-level bases by which the ages of this signal's members were established: verified, declared, and/or inferred. Sibling of demographic_predicate, not nested in it; only valid when demographic_predicate.age is present. Population estimates are out of scope (aggregate composition cannot establish an individual's age; use audience_evidence). Absent means the signal makes no basis claim (for a listing that projects a data_provider or signal_source definition, resolve the value from that definition; only the resolved value counts), and a buyer whose request names accepted_bases MUST NOT treat a signal with no resolved basis as satisfying the age predicate. A signal satisfies a requested age predicate with accepted_bases only when its demographic_predicate.age is within the request AND every value in age_determination_bases is in accepted_bases. The bases describe how known ages were established; unknown-age membership is governed only by include_unknown. Forward note: when gender targeting (#7925, experimental) graduates, gender will need an equivalent disclosure; this field is age-specific and the enum is not generalized. For product-scoped listings this listing is authoritative; for data_provider and signal_source refs, any projected value MUST match the referenced authoritative definition, the same rule demographic_predicate follows.",
-      "items": {
-        "$ref": "/schemas/enums/age-determination-basis.json"
-      },
-      "minItems": 1,
-      "uniqueItems": true
+      "description": "User-level bases by which the ages of this signal's members were established: verified, declared, and/or inferred. Sibling of demographic_predicate, not nested in it; only valid when demographic_predicate.age is present. Population estimates are out of scope (aggregate composition cannot establish an individual's age; use audience_evidence). Absent means the signal makes no basis claim (for a listing that projects a data_provider or signal_source definition, resolve the value from that definition; only the resolved value counts), and a buyer whose request names accepted_bases MUST NOT treat a signal with no resolved basis as satisfying the age predicate. A signal satisfies a requested age predicate with accepted_bases only when its demographic_predicate.age is within the request AND every value in age_determination_bases is in accepted_bases. The bases describe how known ages were established; unknown-age membership is governed only by include_unknown. Forward note: when gender targeting (#7925, experimental) graduates, gender will need an equivalent disclosure; this field is age-specific and the enum is not generalized. For product-scoped listings this listing is authoritative; for data_provider and signal_source refs, any projected value MUST match the referenced authoritative definition, the same rule demographic_predicate follows."
     }
   },
   "anyOf": [

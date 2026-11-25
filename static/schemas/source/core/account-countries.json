@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/account-countries.json",
+  "title": "Account Countries",
+  "description": "Non-empty set of ISO 3166-1 alpha-2 countries an advertiser account serves. An account attribute: it does not identify the brand or the account, and it is not delivery targeting. Array order is not meaningful.",
+  "type": "array",
+  "items": {
+    "$ref": "/schemas/core/country-code.json"
+  },
+  "minItems": 1,
+  "uniqueItems": true,
+  "x-max-items-4.0": 256
+}

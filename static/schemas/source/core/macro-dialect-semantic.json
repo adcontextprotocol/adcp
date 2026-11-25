@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/macro-dialect-semantic.json",
+  "title": "Macro Dialect Semantic",
+  "description": "Exact semantic identifier of a macro in its dialect, such as CACHEBUSTING.",
+  "type": "string",
+  "minLength": 1
+}

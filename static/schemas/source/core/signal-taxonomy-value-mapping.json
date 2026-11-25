@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/signal-taxonomy-value-mapping.json",
+  "title": "Signal Taxonomy Value Mapping",
+  "description": "Maps one categorical allowed_values[] string to a stable taxonomy node identifier.",
+  "type": "object",
+  "properties": {
+    "value": {
+      "type": "string",
+      "description": "Categorical value from allowed_values[]."
+    },
+    "taxonomy_value_id": {
+      "$ref": "/schemas/core/signal-taxonomy-node-id.json",
+      "description": "Taxonomy node identifier corresponding to this categorical value."
+    },
+    "path": {
+      "type": "string",
+      "description": "Optional human-readable or taxonomy-native path for display and review."
+    },
+    "modifiers": {
+      "type": "array",
+      "description": "Optional taxonomy-specific modifiers that qualify the mapped value.",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "value",
+    "taxonomy_value_id"
+  ],
+  "additionalProperties": true
+}

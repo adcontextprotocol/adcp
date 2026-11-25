@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/sync-audiences-method.json",
+  "title": "AdCP audience sync",
+  "description": "Audience membership moves through the AdCP sync_audiences task.",
+  "type": "object",
+  "properties": {
+    "pattern": {
+      "type": "string",
+      "const": "sync_audiences",
+      "default": "sync_audiences"
+    }
+  },
+  "required": [
+    "pattern"
+  ],
+  "additionalProperties": true
+}

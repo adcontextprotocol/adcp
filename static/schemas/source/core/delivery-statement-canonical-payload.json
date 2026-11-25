@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/delivery-statement-canonical-payload.json",
+  "title": "Governance Delivery Statement Canonical Payload",
+  "description": "The canonical payload of a delivery statement: the seller reference and the delivery metrics.",
+  "type": "object",
+  "properties": {
+    "seller_reference": {
+      "type": "string"
+    },
+    "delivery_metrics": {
+      "$ref": "/schemas/core/governance-delivery-metrics.json"
+    }
+  },
+  "required": [
+    "seller_reference",
+    "delivery_metrics"
+  ],
+  "additionalProperties": true
+}

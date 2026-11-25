@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-agent.json",
+  "title": "Brand Agent",
+  "description": "Reference to an agent declared in a brand.json, by its endpoint URL and agent ID. The field that holds the reference says which agent role it names.",
+  "type": "object",
+  "properties": {
+    "url": {
+      "$ref": "/schemas/core/https-url.json",
+      "description": "Agent MCP endpoint URL. Callers comparing this URL against another value (e.g., resolving 'is this the brand's declared agent?' against a discovery cache) MUST canonicalize both sides per the AdCP URL canonicalization rules, not byte-equality. See docs/reference/url-canonicalization."
+    },
+    "id": {
+      "$ref": "/schemas/core/brand-agent-id.json",
+      "description": "Agent identifier (useful for logging, multi-tenant platforms)"
+    }
+  },
+  "required": [
+    "url",
+    "id"
+  ],
+  "additionalProperties": true
+}

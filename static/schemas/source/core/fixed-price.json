@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/fixed-price.json",
+  "title": "Fixed Price",
+  "description": "Fixed price of a pricing option, in the option's currency and for the unit its pricing model bills. A pricing option that carries it is fixed-price, not auction-based.",
+  "type": "number",
+  "minimum": 0
+}

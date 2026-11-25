@@ -106,8 +106,7 @@
       "description": "Complete creative manifest with all required assets for the format. In single mode, provide exactly one of creative_manifest or creative_id. Also accepted per item in batch mode."
     },
     "target_capability_id": {
-      "type": "string",
-      "pattern": "^[a-zA-Z0-9_-]+$",
+      "$ref": "/schemas/core/creative-capability-id.json",
       "description": "Canonical preview-operation selector. Identifies one get_adcp_capabilities creative.supported_formats[].capability_id entry whose operations contains preview. In single mode it selects the renderer for this request; in batch mode it is the default for items that omit their own target_capability_id. When omitted, the agent MAY resolve the renderer only if exactly one advertised preview capability satisfies the manifest's canonical declaration; zero matches or multiple matches MUST be rejected with FORMAT_NOT_SUPPORTED rather than choosing nondeterministically. Mutually exclusive with deprecated format_id."
     },
     "format_id": {
@@ -119,28 +118,7 @@
       "type": "array",
       "description": "Array of input sets for generating multiple preview variants. Each input set defines macros and context values for one preview rendering. Used in single mode.",
       "items": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "description": "Human-readable name for this input set (e.g., 'Sunny morning on mobile', 'Evening podcast ad', 'Desktop dark mode')"
-          },
-          "macros": {
-            "type": "object",
-            "description": "Macro values to use for this preview. Supports all universal macros from the format's supported_macros list.",
-            "additionalProperties": {
-              "type": "string"
-            }
-          },
-          "context_description": {
-            "type": "string",
-            "description": "Natural language description of the context for AI-generated content (e.g., 'User just searched for running shoes', 'Podcast discussing weather patterns')"
-          }
-        },
-        "required": [
-          "name"
-        ],
-        "additionalProperties": true
+        "$ref": "/schemas/core/preview-input.json"
       },
       "minItems": 1
     },
@@ -166,11 +144,11 @@
       "type": "array",
       "description": "Array of preview requests (1-50 items). Required when request_type is 'batch'. Each item follows the single request structure.",
       "items": {
+        "title": "Preview Creative Batch Item",
         "type": "object",
         "properties": {
           "target_capability_id": {
-            "type": "string",
-            "pattern": "^[a-zA-Z0-9_-]+$",
+            "$ref": "/schemas/core/creative-capability-id.json",
             "description": "Canonical preview-operation selector for this batch item. Overrides the batch-level target_capability_id and MUST identify an advertised capability whose operations contains preview. If neither item nor batch supplies one, renderer inference is permitted only for a unique compatible preview capability."
           },
           "format_id": {
@@ -191,28 +169,7 @@
             "type": "array",
             "description": "Array of input sets for generating multiple preview variants",
             "items": {
-              "type": "object",
-              "properties": {
-                "name": {
-                  "type": "string",
-                  "description": "Human-readable name for this input set"
-                },
-                "macros": {
-                  "type": "object",
-                  "description": "Macro values to use for this preview",
-                  "additionalProperties": {
-                    "type": "string"
-                  }
-                },
-                "context_description": {
-                  "type": "string",
-                  "description": "Natural language description of the context for AI-generated content"
-                }
-              },
-              "required": [
-                "name"
-              ],
-              "additionalProperties": true
+              "$ref": "/schemas/core/preview-input.json"
             },
             "minItems": 1
           },

@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/platform-independent-distribution-identifier.json",
+  "title": "Platform-Independent Distribution Identifier",
+  "description": "A distribution identifier that does not depend on one platform: a type and a value, where the type can't be `platform_channel_id`.",
+  "type": "object",
+  "properties": {
+    "type": {
+      "$ref": "/schemas/enums/distribution-identifier-type.json",
+      "description": "Type of distribution identifier"
+    },
+    "value": {
+      "type": "string",
+      "description": "The identifier value"
+    }
+  },
+  "required": [
+    "type",
+    "value"
+  ],
+  "additionalProperties": true,
+  "not": {
+    "required": [
+      "type"
+    ],
+    "properties": {
+      "type": {
+        "const": "platform_channel_id"
+      }
+    }
+  }
+}

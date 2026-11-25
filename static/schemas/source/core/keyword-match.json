@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/keyword-match.json",
+  "title": "Keyword Match",
+  "description": "A keyword and the match type it is matched with.",
+  "type": "object",
+  "properties": {
+    "keyword": {
+      "$ref": "/schemas/core/keyword.json",
+      "description": "The keyword."
+    },
+    "match_type": { "$ref": "/schemas/enums/match-type.json" }
+  },
+  "required": ["keyword", "match_type"],
+  "additionalProperties": true
+}

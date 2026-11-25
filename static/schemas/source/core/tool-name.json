@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/tool-name.json",
+  "title": "Tool Name",
+  "description": "Name of a tool in the protocol manifest, including tools that are not AdCP tasks.",
+  "type": "string",
+  "pattern": "^[a-z][a-z0-9_]*$"
+}

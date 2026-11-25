@@ -12,6 +12,7 @@ const Ajv2020 = require('ajv/dist/2020');
 const addFormats = require('ajv-formats');
 const yaml = require('js-yaml');
 const semver = require('semver');
+const { addNamedScalarSchemas } = require('./helpers/named-scalar-schemas.cjs');
 const { reportingSummaryCases } = require('./helpers/reporting-summary-cases.cjs');
 const {
   normalizeStoryboardSampleRequests,
@@ -34,6 +35,7 @@ const {
   buildRuntimeToolsList,
   collectExternalRefs,
   compactDraft07Schema,
+  followComposedRoot,
   inlineMarkedModelContextDefinitions,
   measureSchema,
   projectDraft07Node,
@@ -137,12 +139,58 @@ const ACTIVE_SURFACE_VERSION = semver.prerelease(PACKAGE_VERSION)
 // 3.3.0-beta.1 window: the queued account, pricing, seller-terms and creative
 // PRs each add a few hundred bytes to a few KiB (measured 465-467 KiB each on
 // top of main). Bound at 476 KiB once for the window; resume per-PR bounding
-// after the beta.1 cut.
+// after the beta.1 cut. Naming five repeated scalar subschemas (#8525) makes
+// each a shared definition, which brings the media-buy context to 496,720
+// bytes / 485.08 KiB. Naming the further repeated scalar concepts brings it to
+// 529,573 bytes / 517.16 KiB, and repeated enums to 533,507 bytes / 521.00 KiB.
+// Naming every remaining repeat, including repeats inside one document, brings
+// it to 551,679 bytes / 538.75 KiB. Pointing every site at one definition
+// brings it to 561,291 bytes / 548.14 KiB; bound it at 549 KiB.
 // Named rejections (DR-0036) are validation, so the model-context view omits
 // them with the bounds; the budget is unchanged.
+// Replacing repeated inline object copies with shared core definitions adds 31
+// definitions to the media-buy inputs, each with its own title and description:
+// 558,798 → 567,927 bytes (545.70 → 554.62 KiB measured); bound it at 555 KiB.
+// Merged with main's single-value deprecations (#9123) and
+// PROPOSAL_TERMS_CHANGED (#9171), the media-buy inputs measure 571,034 bytes
+// (557.65 KiB); bound it at 558 KiB. One definition per money, range,
+// distance, and postal address field brings them to 572,722 bytes
+// (559.30 KiB); bound it at 560 KiB.
+// One definition per collection, list, and installment ID: 573,888 bytes
+// (560.44 KiB); bound it at 561 KiB.
+// One definition per account and agent field: 575,653 bytes (562.16 KiB);
+// bound it at 563 KiB.
+// One definition per brand field: 581,252 bytes (567.63 KiB); bound it at
+// 568 KiB.
+// One definition per creative field: 582,597 bytes (568.94 KiB); bound it at
+// 569 KiB.
+// One definition per DOOH, placement, and pixel length field: 584,844 bytes
+// (571.14 KiB); bound it at 572 KiB.
+// One definition per signal and audience field: 587,018 bytes (573.26 KiB);
+// bound it at 574 KiB.
+// One definition per targeting and optimization field: 592,672 bytes (578.78
+// KiB); bound it at 579 KiB.
+// One definition per delivery and reporting field: 593,713 bytes (579.80
+// KiB); bound it at 580 KiB.
+// One definition per media buy field: 594,581 bytes (580.65 KiB); bound it
+// at 581 KiB.
+// One definition per pricing option field: 595,239 bytes (581.29 KiB); bound
+// it at 582 KiB.
+// Stating the bounds with no published text: 597,524 bytes (583.52 KiB);
+// bound it at 584 KiB.
 const MODEL_CONTEXT_BUDGET_KIB = {
-  'media-buy': 476,
-  creative: 410,
+  'media-buy': 584,
+  // The further repeated scalar concepts of #8525 bring it to 434,267 bytes /
+  // 424.09 KiB, repeated enums to 436,047 bytes / 425.83 KiB, and every remaining
+  // repeat to 446,778 bytes / 436.31 KiB, and pointing every site at one
+  // definition to 453,051 bytes / 442.43 KiB. One definition per brand field
+  // brings it to 459,046 bytes / 448.29 KiB, and one definition per creative
+  // field to 460,899 bytes / 450.10 KiB, and one definition per DOOH,
+  // placement, and pixel length field to 465,311 bytes / 454.41 KiB.
+  // One definition per media buy field: 466,273 bytes / 455.34 KiB.
+  // One definition per content standards field: 467,742 bytes / 456.78 KiB.
+  // Stating the bounds with no published text: 469,944 bytes / 458.93 KiB.
+  creative: 459,
 };
 // Keep parity compilation materially tighter than the 4 MiB protocol schema
 // bound while allowing example-bearing schemas to carry the complete Product
@@ -233,7 +281,48 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // Reserved-word enum replacements (#8791) add a replacement value and its
 // deprecation metadata to enums in the controller closure; merged with the
 // above they stay within 1_388_000.
-const PARITY_COMPILE_LIMIT = 1_388_000;
+// Naming five repeated scalar subschemas (#8525) brings the
+// controller to 1_378_383 bytes, and the further repeated
+// scalar concepts to 1_401_918, repeated enums to 1_412_332, and every remaining
+// repeat to 1_442_008, pointing every site at one definition to 1_452_778,
+// and building the incomplete scope from the product incomplete scope to
+// 1_453_708, all measured before match keys. With match keys on top, the
+// controller measures 1_461_855 bytes; bound it at 1_462_000.
+// Merged with main's withdrawals and the reserved-word enum replacements, the
+// controller measures 1_424_038 bytes; bound it at 1_425_000.
+// Naming the two legacy webhook authentication objects (#8907) puts them in
+// the controller closure as shared definitions: 1_425_903 bytes, bound at
+// 1_426_000. The 4.0 length annotations on the named URL and ID schemas
+// (#8899, #8900) bring it to 1_426_550 bytes; bound at 1_427_000.
+// Defaulting every tagged-union tag to its const brings it to 1_430_635 bytes.
+// Replacing repeated inline object copies with shared definitions puts their
+// titles and descriptions in the controller closure: 1_452_389 bytes measured;
+// bound at 1_453_000.
+// Merged with main's reporting dimension systems (#9049), single-value
+// deprecations (#9123), and PROPOSAL_TERMS_CHANGED (#9171), the controller
+// measures 1_456_358 bytes; bound at 1_457_000. One definition per money,
+// range, distance, and postal address field: 1_458_268 bytes; bound at
+// 1_459_000.
+// One definition per collection, list, and installment ID: 1_459_470 bytes;
+// bound at 1_460_000.
+// One definition per account and agent field: 1_460_408 bytes; bound at
+// 1_461_000.
+// One definition per brand field: 1_461_636 bytes; bound at 1_462_000.
+// One definition per creative field: 1_463_396 bytes; bound at 1_464_000.
+// One definition per DOOH, placement, and pixel length field: 1_465_331
+// bytes; bound at 1_466_000.
+// One definition per signal and audience field: 1_473_193 bytes; bound at
+// 1_474_000.
+// One definition per targeting and optimization field: 1_478_286 bytes;
+// bound at 1_479_000.
+// One definition per delivery and reporting field: 1_480_723 bytes; bound at
+// 1_481_000.
+// One definition per media buy field: 1_482_889 bytes; bound at 1_483_000.
+// One definition per pricing option field: 1_486_628 bytes; bound at 1_487_000.
+// One definition per task and error field: 1_487_288 bytes; bound at 1_488_000.
+// Giving three shared definitions their own documents: 1_488_278 bytes; bound
+// at 1_489_000.
+const PARITY_COMPILE_LIMIT = 1_489_000;
 
 function readJson(filename) {
   return JSON.parse(fs.readFileSync(filename, 'utf8'));
@@ -799,6 +888,87 @@ test('MCP discovery defers omitted root constraints to canonical call validation
   assert.equal(validateCanonical(discoveryValidCanonicalInvalid), false);
 });
 
+test('MCP discovery reads a root-only composed request as the document it composes', () => {
+  const sourceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'adcp-mcp-composed-root-'));
+  try {
+    const write = (relativePath, schema) => {
+      const file = path.join(sourceDir, relativePath);
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(schema));
+      return file;
+    };
+    write('core/task-id.json', {
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      $id: '/schemas/core/task-id.json',
+      type: 'string',
+      minLength: 1,
+    });
+    const task = {
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      $id: '/schemas/core/task-request.json',
+      title: 'Task Request',
+      description: 'The composed document.',
+      type: 'object',
+      definitions: { Depth: { type: 'integer', minimum: 1 } },
+      properties: {
+        task_id: { $ref: 'task-id.json' },
+        depth: { $ref: '#/definitions/Depth' },
+      },
+      required: ['task_id'],
+      anyOf: [{ required: ['depth'] }, { not: { required: ['depth'] } }],
+      additionalProperties: false,
+      examples: [{ data: { task_id: 'composed' } }],
+    };
+    write('core/task-request.json', task);
+    const annotations = {
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      $id: '/schemas/protocol/get-task-request.json',
+      title: 'Get Task Request',
+      description: 'The tool document.',
+      'x-tool-summary': 'Get a task.',
+    };
+    const examples = [{ data: { task_id: 'tool' } }];
+    const fullCopy = write('protocol/full-copy.json', {
+      ...annotations,
+      ...Object.fromEntries(Object.entries(task).filter(([key]) => !['$schema', '$id', 'title', 'description', 'examples'].includes(key))),
+      properties: { task_id: { $ref: '/schemas/core/task-id.json' }, depth: task.properties.depth },
+      examples,
+    });
+    const composedByAllOf = write('protocol/by-all-of.json', {
+      ...annotations,
+      allOf: [{ $ref: '/schemas/core/task-request.json' }],
+      examples,
+    });
+    const composedByRef = write('protocol/by-ref.json', {
+      ...annotations,
+      $ref: '/schemas/core/task-request.json',
+      examples,
+    });
+    const project = (file, annotationMode, discoveryInput) => projectSourceSchema(
+      readJson(file),
+      file,
+      sourceDir,
+      '3.3.0',
+      'protocol/get-task-request.json',
+      annotationMode,
+      undefined,
+      discoveryInput,
+    );
+
+    for (const annotationMode of ['full', 'structural', 'model-context']) {
+      const expected = project(fullCopy, annotationMode, true);
+      assert.equal(expected.type, 'object', annotationMode);
+      for (const composed of [composedByAllOf, composedByRef]) {
+        assert.deepEqual(project(composed, annotationMode, true), expected, `${annotationMode} ${composed}`);
+      }
+    }
+    // An output projection keeps the composition it already preserves.
+    assert.deepEqual(project(composedByAllOf, 'full', false).allOf.length, 1);
+  } finally {
+    fs.rmSync(sourceDir, { recursive: true, force: true });
+  }
+});
+
 test('projection rewrites only definitions keyword segments in local refs', () => {
   const projected = projectDraft07Node({
     $schema: 'http://json-schema.org/draft-07/schema#',
@@ -1042,7 +1212,7 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   const canonicalManifest = readJson(path.join(LATEST_DIR, 'manifest.json'));
   const projectionManifest = readJson(path.join(PROJECTION_DIR, 'manifest.json'));
   const storyboardFixtures = collectStoryboardRequestFixtures();
-  const validateCanonicalManifest = createValidator(AjvDraft07).compile(
+  const validateCanonicalManifest = addNamedScalarSchemas(createValidator(AjvDraft07)).compile(
     readJson(path.join(SOURCE_DIR, 'manifest.schema.json'))
   );
   assert.equal(
@@ -1307,8 +1477,17 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
   // requests, reached from request_account and list_accounts (23,090,968 bytes
   // measured), so the cap moves to 23 MiB. Composing the protocol envelope
   // into every task response (every response bundles the envelope) also
-  // grows it; the 23 MiB cap holds both.
-  assert.ok(totalBytes < 23 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
+  // grows it; the 23 MiB cap holds both. Naming five repeated scalar subschemas
+  // (#8525) brings it to 24,176,139 bytes, the further concepts to 25,034,871
+  // bytes, naming every remaining repeat to 25,664,885 bytes (24.48 MiB), and
+  // pointing every site at one definition to 25,961,497 bytes (24.76 MiB), so
+  // the cap moves to 25 MiB. Replacing repeated inline object copies with
+  // shared definitions takes it from 26,030,614 bytes (24.82 MiB) at the start
+  // of this series to 26,317,378 bytes (25.10 MiB), so the cap moves to 26 MiB.
+  // Pointing the remaining object copies at their definitions, through the
+  // content standards fields, brings it to 27,268,533 bytes (26.01 MiB), so
+  // the cap moves to 27 MiB.
+  assert.ok(totalBytes < 27 * 1024 * 1024, `projection is unexpectedly large: ${totalBytes} bytes`);
 
   const draft07 = createValidator(AjvDraft07);
   const draft2020 = createValidator(Ajv2020);
@@ -1351,7 +1530,9 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
     }
 
     assert.ok(firstValidFixture, `${relativePath} needs at least one valid storyboard fixture`);
-    assert.equal(sourceSchema.type, 'object', `${relativePath} parity mutation assumes an object root`);
+    // A root-only composed tool document validates as the document it composes.
+    const { schema: rootSchema } = followComposedRoot(sourceSchema, sourcePath, SOURCE_DIR);
+    assert.equal(rootSchema.type, 'object', `${relativePath} parity mutation assumes an object root`);
     const invalidRootMutation = [structuredClone(firstValidFixture)];
     assert.equal(validateSource(invalidRootMutation), false, `${relativePath} root mutation must be invalid`);
     assert.equal(
@@ -1361,7 +1542,7 @@ test('generated MCP projection covers every tool within AdCP safety bounds', () 
     );
     invalidParityCaseCount++;
 
-    const requiredKey = sourceSchema.required?.find(key => Object.hasOwn(firstValidFixture, key));
+    const requiredKey = rootSchema.required?.find(key => Object.hasOwn(firstValidFixture, key));
     if (requiredKey) {
       const missingRequired = structuredClone(firstValidFixture);
       delete missingRequired[requiredKey];

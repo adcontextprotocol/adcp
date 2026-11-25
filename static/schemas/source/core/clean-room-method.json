@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/clean-room-method.json",
+  "title": "Clean room",
+  "description": "Audience data meets in the named vendor's clean room; neither party sees the other's raw rows.",
+  "type": "object",
+  "properties": {
+    "pattern": {
+      "type": "string",
+      "const": "clean_room",
+      "default": "clean_room"
+    },
+    "vendor": {
+      "$ref": "/schemas/core/brand-ref.json",
+      "description": "Operating domain of the clean-room product."
+    }
+  },
+  "required": [
+    "pattern",
+    "vendor"
+  ],
+  "additionalProperties": true
+}

@@ -18,25 +18,12 @@
       "description": "Description of what this feature measures or represents"
     },
     "type": {
-      "type": "string",
-      "enum": ["binary", "quantitative", "categorical"],
+      "$ref": "/schemas/enums/property-feature-type.json",
       "description": "The type of values this feature produces: binary (true/false), quantitative (numeric range), categorical (enumerated values)"
     },
     "range": {
-      "type": "object",
-      "description": "For quantitative features, the valid range of values",
-      "properties": {
-        "min": {
-          "type": "number",
-          "description": "Minimum value"
-        },
-        "max": {
-          "type": "number",
-          "description": "Maximum value"
-        }
-      },
-      "required": ["min", "max"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/numeric-range.json",
+      "description": "For quantitative features, the valid range of values"
     },
     "allowed_values": {
       "type": "array",

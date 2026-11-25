@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/product-placement-mode.json",
+  "title": "Product Placement Mode",
+  "description": "Product-level relationship to a placement: targetable or included.",
+  "type": "string",
+  "enum": [
+    "targetable",
+    "included"
+  ]
+}

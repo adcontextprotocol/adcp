@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/creative-delivery-page-limit.json",
+  "title": "Creative Delivery Page Limit",
+  "description": "Maximum number of creatives requested for one page of get_creative_delivery offset pagination.",
+  "type": "integer",
+  "minimum": 1
+}

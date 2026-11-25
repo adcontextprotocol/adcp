@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { resolveSchema } = require('./helpers/named-scalar-schemas.cjs');
 
 const SCHEMA_BASE_DIR = path.join(__dirname, '../static/schemas/source');
 
@@ -450,7 +451,7 @@ async function runTests() {
     }
 
     for (let i = 0; i < schema.oneOf.length; i++) {
-      const variant = schema.oneOf[i];
+      const variant = resolveSchema(schema.oneOf[i], schema);
       if (!variant.properties || !variant.properties.ext) {
         throw new Error(`oneOf variant ${i} missing ext field`);
       }

@@ -1,0 +1,48 @@
+# Delta manifest (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  One definition per object: sponsored intelligence. The corrections the review chose; every other change is a $ref to
+  an identical definition.
+changes:
+  - location: core/si-brand-agent-response.json#
+    keyword: properties
+    new:
+      required:
+        - components
+        - surfaceId
+      type:
+        - object
+      properties:
+        catalogId:
+          type:
+            - string
+        components:
+          type:
+            - array
+          items:
+            required:
+              - component
+              - id
+            type:
+              - object
+            properties:
+              component:
+                $at: a2ui/component.json#/properties/component
+              id:
+                $at: a2ui/component.json#/properties/id
+              parentId:
+                $at: a2ui/component.json#/properties/parentId
+        dataModel:
+          type:
+            - object
+        rootId:
+          type:
+            - string
+        surfaceId:
+          type:
+            - string
+    direction: tighten
+    side: response
+    note: >-
+      sponsored-intelligence/si-initiate-session-response.json#/properties/response ->
+      new:core/si-brand-agent-response.json. Verdict delta: surface:property:tighten:correction. Witness:
+      sponsored-intelligence/si-initiate-session-response.json /response/surface = null (tighten).

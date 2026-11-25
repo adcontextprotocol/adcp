@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/card-media-type.json",
+  "title": "Card Media Type",
+  "description": "Media type that an image carousel card can carry: image or video.",
+  "type": "string",
+  "enum": [
+    "image",
+    "video"
+  ]
+}

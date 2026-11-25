@@ -6,8 +6,7 @@
   "type": "object",
   "properties": {
     "domain": {
-      "type": "string",
-      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$",
+      "$ref": "/schemas/core/provider-domain.json",
       "description": "Lowercase dotted provider domain, such as a provider's operating domain. Single-label and localhost-style names are invalid."
     }
   },

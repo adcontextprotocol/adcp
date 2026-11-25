@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-source-provider.json",
+  "title": "Reporting Source Provider",
+  "description": "The provider of a report source, identified by domain.",
+  "type": "object",
+  "properties": {
+    "domain": {
+      "$ref": "/schemas/core/domain-name.json"
+    }
+  },
+  "required": [
+    "domain"
+  ],
+  "additionalProperties": true
+}

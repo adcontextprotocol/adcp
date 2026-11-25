@@ -63,19 +63,11 @@ const ALLOWED = new Set([
   // Mixins composed through `allOf`; each composing branch declares `asset_type`.
   'core/format.json|/$defs/baseGroupAsset|asset_type',
   'core/format.json|/$defs/baseIndividualAsset|asset_type',
-  // Known declaration gaps in comply_test_controller injected rows, tracked in
+  // Known declaration gap in comply_test_controller injected rows, tracked in
   // https://github.com/adcontextprotocol/adcp/issues/8345. The rows are
-  // specified as complete core/ rows, so the fix is a `$ref` choice, not a bare type. Remove each
+  // specified as complete core/ rows, so the fix is a `$ref` choice, not a bare type. Remove the
   // entry when its declaration lands.
   'compliance/comply-test-controller-request.json|/allOf/1/then/properties/account|account_id',
-  'compliance/comply-test-controller-request.json|/properties/params/properties/installment_property_delivery/items/properties/identifier|type',
-  'compliance/comply-test-controller-request.json|/properties/params/properties/installment_property_delivery/items/properties/identifier|value',
-  'compliance/comply-test-controller-request.json|/properties/params/properties/installment_property_delivery/items/properties/installment_ref|collection_ref',
-  'compliance/comply-test-controller-request.json|/properties/params/properties/installment_property_delivery/items/properties/installment_ref|installment_id',
-  'compliance/comply-test-controller-request.json|/properties/params/properties/installment_delivery/items/properties/installment_ref|collection_ref',
-  'compliance/comply-test-controller-request.json|/properties/params/properties/installment_delivery/items/properties/installment_ref|installment_id',
-  'compliance/comply-test-controller-request.json|/properties/params/properties/property_delivery/items/properties/identifier|type',
-  'compliance/comply-test-controller-request.json|/properties/params/properties/property_delivery/items/properties/identifier|value',
   // `params` is an open per-format_kind object that declares neither `width` nor `height` (#8345).
   'media-buy/package-request.json|/allOf/2/then/properties/params/dependencies/height|width',
   'media-buy/package-request.json|/allOf/2/then/properties/params/dependencies/width|height',

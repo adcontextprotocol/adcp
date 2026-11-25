@@ -23,6 +23,7 @@
         "value_type": {
           "type": "string",
           "const": "binary",
+          "default": "binary",
           "description": "Discriminator for binary signals"
         },
         "value": {
@@ -53,15 +54,12 @@
         "value_type": {
           "type": "string",
           "const": "categorical",
+          "default": "categorical",
           "description": "Discriminator for categorical signals"
         },
         "values": {
-          "type": "array",
-          "description": "Values to target. Users with any of these values will be included.",
-          "items": {
-            "type": "string"
-          },
-          "minItems": 1
+          "$ref": "/schemas/core/categorical-signal-values.json",
+          "description": "Values to target. Users with any of these values will be included."
         }
       },
       "required": ["value_type", "values"],
@@ -87,6 +85,7 @@
         "value_type": {
           "type": "string",
           "const": "numeric",
+          "default": "numeric",
           "description": "Discriminator for numeric signals"
         },
         "min_value": {

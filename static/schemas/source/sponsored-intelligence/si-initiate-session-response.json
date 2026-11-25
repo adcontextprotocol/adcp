@@ -17,22 +17,8 @@
       "x-entity": "si_session"
     },
     "response": {
-      "type": "object",
-      "description": "Brand agent's initial response",
-      "properties": {
-        "message": {
-          "type": "string",
-          "description": "Conversational message from brand agent"
-        },
-        "ui_elements": {
-          "type": "array",
-          "items": {
-            "$ref": "/schemas/sponsored-intelligence/si-ui-element.json"
-          },
-          "description": "Visual components to render"
-        }
-      },
-      "additionalProperties": true
+      "$ref": "/schemas/core/si-brand-agent-response.json",
+      "description": "Brand agent's initial response"
     },
     "negotiated_capabilities": {
       "$ref": "/schemas/sponsored-intelligence/si-capabilities.json",

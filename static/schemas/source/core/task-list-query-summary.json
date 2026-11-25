@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/task-list-query-summary.json",
+  "title": "Task List Query Summary",
+  "description": "A summary of a task list query: matching and returned counts, breakdowns by domain and status, and the filters and sort applied.",
+  "type": "object",
+  "properties": {
+    "total_matching": {
+      "type": "integer",
+      "description": "Total number of tasks matching filters (across all pages)",
+      "minimum": 0
+    },
+    "returned": {
+      "type": "integer",
+      "description": "Number of tasks returned in this response",
+      "minimum": 0
+    },
+    "domain_breakdown": {
+      "$ref": "/schemas/core/task-domain-breakdown.json",
+      "description": "Count of tasks by domain"
+    },
+    "status_breakdown": {
+      "$ref": "/schemas/core/task-status-breakdown.json",
+      "description": "Count of tasks by status"
+    },
+    "filters_applied": {
+      "type": "array",
+      "description": "List of filters that were applied to the query",
+      "items": {
+        "type": "string"
+      }
+    },
+    "sort_applied": {
+      "$ref": "/schemas/core/applied-task-sort.json",
+      "description": "Sort order that was applied"
+    }
+  },
+  "required": [],
+  "additionalProperties": true
+}

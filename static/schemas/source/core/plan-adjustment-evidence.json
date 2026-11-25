@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/plan-adjustment-evidence.json",
+  "title": "Plan Adjustment Evidence",
+  "description": "An integrity-bound source record for a plan adjustment: evidence ID and type, digest, and issue time.",
+  "type": "object",
+  "properties": {
+    "evidence_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "description": "Immutable identifier in the authenticated seller's namespace. Reuse with different adjustment evidence is a conflict.",
+      "x-entity": "governance_adjustment_evidence"
+    },
+    "evidence_type": {
+      "$ref": "/schemas/enums/plan-adjustment-evidence-type.json"
+    },
+    "digest": {
+      "$ref": "/schemas/core/sha256-digest.json"
+    },
+    "issued_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "evidence_id",
+    "evidence_type",
+    "digest",
+    "issued_at"
+  ],
+  "additionalProperties": true
+}

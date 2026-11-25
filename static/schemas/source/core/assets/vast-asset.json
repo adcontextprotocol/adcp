@@ -8,6 +8,7 @@
     "asset_type": {
       "type": "string",
       "const": "vast",
+      "default": "vast",
       "description": "Discriminator identifying this as a VAST asset. See /schemas/creative/asset-types for the registry."
     },
     "vast_version": {
@@ -62,6 +63,7 @@
         "delivery_type": {
           "type": "string",
           "const": "url",
+          "default": "url",
           "description": "Discriminator indicating VAST is delivered via URL endpoint"
         },
         "url": {
@@ -69,7 +71,9 @@
           "description": "URL endpoint returning VAST XML. Macro delimiters remain byte-preserved; declarations distinguish occurrences in this locator URL from occurrences in inline or fetched VAST content."
         },
         "macro_declarations": {
-          "items": { "properties": { "location": { "properties": { "field": { "const": "url" } } } } }
+          "items": {
+            "$ref": "/schemas/core/url-macro-location.json"
+          }
         }
       },
       "required": [
@@ -82,6 +86,7 @@
         "delivery_type": {
           "type": "string",
           "const": "inline",
+          "default": "inline",
           "description": "Discriminator indicating VAST is delivered as inline XML content"
         },
         "content": {
@@ -89,7 +94,9 @@
           "description": "Inline VAST XML content"
         },
         "macro_declarations": {
-          "items": { "properties": { "location": { "properties": { "field": { "const": "content" } } } } }
+          "items": {
+            "$ref": "/schemas/core/content-macro-location.json"
+          }
         }
       },
       "required": [

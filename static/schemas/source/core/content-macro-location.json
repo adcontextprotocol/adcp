@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/content-macro-location.json",
+  "title": "Content Macro Location",
+  "description": "Refines a macro declaration (core/macro-declaration.json) to a token occurrence in the asset's inline `content` field.",
+  "properties": {
+    "location": {
+      "properties": {
+        "field": { "const": "content" }
+      }
+    }
+  }
+}

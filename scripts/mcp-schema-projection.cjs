@@ -1080,9 +1080,71 @@ function enforceSchemaBounds(schema, label) {
   return metrics;
 }
 
+const DOCUMENT_ANNOTATION_KEYWORDS = new Set(['$schema', '$id', '$comment', 'title', 'description', 'examples']);
+
+function isDocumentAnnotation(key) {
+  return DOCUMENT_ANNOTATION_KEYWORDS.has(key) || key.startsWith('x-');
+}
+
+/**
+ * The document a root-only composed discovery input stands for.
+ *
+ * A tool request document can name a task and carry its own annotations while
+ * its validation is another document's: its root is a `$ref` to that document,
+ * or an `allOf` whose single member is that `$ref`, beside annotations only.
+ * Such a root has no `type: object`, which the discovery projection requires.
+ * The discovery projection reads it as the composed document with the
+ * composing document's annotations: that validates the same payloads and
+ * projects to the same schema as a full copy would. Chains are followed; any
+ * other root is returned unchanged. Output projections keep the composition,
+ * which they already preserve.
+ */
+function followComposedRoot(schema, rootFile, sourceDir) {
+  const seen = new Set([rootFile]);
+  let current = { schema, rootFile };
+  for (;;) {
+    const root = current.schema;
+    if (!root || typeof root !== 'object' || Array.isArray(root)) return current;
+    const validation = Object.keys(root).filter(key => !isDocumentAnnotation(key));
+    let ref;
+    if (validation.length === 1 && validation[0] === '$ref') {
+      ref = root.$ref;
+    } else if (
+      validation.length === 1
+      && validation[0] === 'allOf'
+      && Array.isArray(root.allOf)
+      && root.allOf.length === 1
+      && root.allOf[0]
+      && typeof root.allOf[0] === 'object'
+      && !Array.isArray(root.allOf[0])
+      && Object.keys(root.allOf[0]).length === 1
+    ) {
+      ref = root.allOf[0].$ref;
+    }
+    if (typeof ref !== 'string' || ref.startsWith('#')) return current;
+    const { resolved, fragment } = parseExternalRef(ref, current.rootFile, sourceDir);
+    if (fragment || seen.has(resolved)) return current;
+    seen.add(resolved);
+    const target = JSON.parse(fs.readFileSync(resolved, 'utf8'));
+    if (!target || typeof target !== 'object' || Array.isArray(target)) return current;
+    // The composing document's annotations replace the composed document's;
+    // keys keep the order a full copy has, with the identity keys first.
+    const merged = {};
+    for (const [key, value] of Object.entries(root)) {
+      if (key !== 'examples' && isDocumentAnnotation(key)) merged[key] = value;
+    }
+    for (const [key, value] of Object.entries(target)) {
+      if (Object.hasOwn(merged, key)) continue;
+      merged[key] = key === 'examples' && Object.hasOwn(root, 'examples') ? root.examples : value;
+    }
+    if (Object.hasOwn(root, 'examples') && !Object.hasOwn(merged, 'examples')) merged.examples = root.examples;
+    current = { schema: merged, rootFile: resolved };
+  }
+}
+
 function projectSourceSchema(
-  schema,
-  rootFile,
+  sourceSchema,
+  sourceFile,
   sourceDir,
   urlVersion,
   relativePath,
@@ -1091,6 +1153,9 @@ function projectSourceSchema(
   discoveryInput = false,
   rewriteEmbeddedRefs = false,
 ) {
+  const { schema, rootFile } = discoveryInput
+    ? followComposedRoot(sourceSchema, sourceFile, sourceDir)
+    : { schema: sourceSchema, rootFile: sourceFile };
   const projectionId = `${SCHEMA_ORIGIN}/schemas/${schemaUrlPrefix}/${relativePath}`;
   // Prompt-only model-context views intentionally omit document metadata and
   // are never validation registries. Validation projections and profiles keep
@@ -1402,6 +1467,7 @@ module.exports = {
   collectExternalRefs,
   compactDraft07Schema,
   enforceSchemaBounds,
+  followComposedRoot,
   generateMcpSchemaProjection,
   inlineMarkedModelContextDefinitions,
   measureSchema,

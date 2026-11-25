@@ -13,7 +13,7 @@
           "type": "object",
           "description": "Plan against a seller-tracked delivery metric. The response forecast carries this metric as a key in points' metrics.",
           "properties": {
-            "kind": { "type": "string", "const": "metric" },
+            "kind": { "type": "string", "const": "metric", "default": "metric" },
             "metric": {
               "$ref": "/schemas/enums/forecastable-metric.json",
               "description": "Delivery metric to plan for, in the same vocabulary forecast points report."
@@ -26,14 +26,13 @@
           "type": "object",
           "description": "Plan against an advertiser conversion event. The response forecast carries this event type as a key in points' metrics.",
           "properties": {
-            "kind": { "type": "string", "const": "event" },
+            "kind": { "type": "string", "const": "event", "default": "event" },
             "event_type": {
               "$ref": "/schemas/enums/event-type.json",
               "description": "Conversion event to plan for, in the same vocabulary forecast points report."
             },
             "custom_event_name": {
-              "type": "string",
-              "minLength": 1,
+              "$ref": "/schemas/core/custom-event-name.json",
               "description": "Required when event_type is 'custom'. Platform-specific name for the custom event."
             }
           },
@@ -50,7 +49,7 @@
           "x-added-in": "3.3.0",
           "description": "Plan against a vendor-measured outcome, such as store visits. The (vendor, metric_id) pair is the key optimization goals and delivery's vendor_metric_values[] use. The forecast carries the flight total in points' vendor_metric_values[] with the vendor's declared unit, not in metrics, and the proposal binds the goal and a vendor reporting commitment on every purchase. Rejects `metric`, which belongs to the metric goal, and `target`, the deprecated target shape.",
           "properties": {
-            "kind": { "type": "string", "const": "vendor_metric" },
+            "kind": { "type": "string", "const": "vendor_metric", "default": "vendor_metric" },
             "vendor": {
               "$ref": "/schemas/core/brand-key.json",
               "description": "Measurement vendor, keyed as in the canonical optimization goal. Matched on domain and brand_id; countries is ignored. Asserts no buyer-vendor relationship: the seller's declared pair is the only planning-time eligibility test."

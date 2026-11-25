@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/identity-match-serve-window.json",
+  "title": "Identity Match Serve Window",
+  "description": "Per-package single-impression frequency window in seconds. After one impression on each eligible package in the window, the publisher queries Identity Match again.",
+  "type": "integer",
+  "minimum": 1,
+  "maximum": 300
+}

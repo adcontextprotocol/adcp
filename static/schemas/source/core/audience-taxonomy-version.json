@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/audience-taxonomy-version.json",
+  "title": "Audience Taxonomy Version",
+  "description": "Version of the external taxonomy that defines an audience characteristic dimension or value.",
+  "type": "string",
+  "minLength": 1
+}

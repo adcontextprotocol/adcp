@@ -6,17 +6,13 @@
   "type": "object",
   "properties": {
     "evidence_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "audience_evidence"
+      "$ref": "/schemas/core/audience-evidence-id.json"
     },
     "snapshot_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "audience_evidence_snapshot"
+      "$ref": "/schemas/core/audience-evidence-snapshot-id.json"
     },
-    "version": { "type": "string", "minLength": 1 },
-    "content_digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "version": { "$ref": "/schemas/core/audience-evidence-version.json" },
+    "content_digest": { "$ref": "/schemas/core/sha256-digest.json" },
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "required": ["evidence_id", "snapshot_id", "version", "content_digest"],

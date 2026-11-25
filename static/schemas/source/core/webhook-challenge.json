@@ -11,11 +11,8 @@
       "description": "Discriminator for endpoint proof-of-control challenges."
     },
     "challenge": {
-      "type": "string",
-      "description": "Opaque, cryptographically random value that the receiver must echo in the response body. Recommended encoding: base64url without padding.",
-      "minLength": 32,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{32,255}$"
+      "$ref": "/schemas/core/webhook-challenge-value.json",
+      "description": "Opaque, cryptographically random value that the receiver must echo in the response body. Recommended encoding: base64url without padding."
     },
     "account_id": {
       "type": "string",
@@ -23,11 +20,8 @@
       "x-entity": "account"
     },
     "subscriber_id": {
-      "type": "string",
-      "description": "Buyer-supplied subscriber identifier from the notification_configs[] entry being challenged.",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^[A-Za-z0-9_.:-]{1,64}$"
+      "$ref": "/schemas/core/subscriber-id.json",
+      "description": "Buyer-supplied subscriber identifier from the notification_configs[] entry being challenged."
     },
     "seller_agent_url": {
       "type": "string",
@@ -35,71 +29,8 @@
       "description": "Exact seller agent URL whose RFC 9421 webhook profile key signs this challenge and that will send subsequent webhooks."
     },
     "delivery_auth": {
-      "type": "object",
-      "description": "Authentication/signing mode the seller will use for subsequent webhooks delivered to this notification config.",
-      "properties": {
-        "mode": {
-          "type": "string",
-          "enum": [
-            "rfc9421",
-            "Bearer",
-            "HMAC-SHA256"
-          ],
-          "description": "Future webhook delivery authentication mode. `rfc9421` is used when notification_configs[].authentication is absent; Bearer and HMAC-SHA256 are the deprecated legacy modes selected by notification_configs[].authentication."
-        },
-        "credential_fingerprint": {
-          "type": "string",
-          "description": "SHA-256 hex fingerprint of the exact legacy credential string supplied in notification_configs[].authentication.credentials. Required when mode is Bearer or HMAC-SHA256; absent for rfc9421.",
-          "pattern": "^[a-f0-9]{64}$"
-        }
-      },
-      "required": [
-        "mode"
-      ],
-      "allOf": [
-        {
-          "if": {
-            "properties": {
-              "mode": {
-                "type": "string",
-                "const": "rfc9421"
-              }
-            },
-            "required": [
-              "mode"
-            ]
-          },
-          "then": {
-            "not": {
-              "required": [
-                "credential_fingerprint"
-              ]
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "mode": {
-                "type": "string",
-                "enum": [
-                  "Bearer",
-                  "HMAC-SHA256"
-                ]
-              }
-            },
-            "required": [
-              "mode"
-            ]
-          },
-          "then": {
-            "required": [
-              "credential_fingerprint"
-            ]
-          }
-        }
-      ],
-      "additionalProperties": true
+      "$ref": "/schemas/core/webhook-delivery-auth.json",
+      "description": "Authentication/signing mode the seller will use for subsequent webhooks delivered to this notification config."
     },
     "event_types": {
       "type": "array",

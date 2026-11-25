@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/principal-operation-failure.json",
+  "title": "Principal Operation Failure",
+  "description": "A failed principal operation result: kind `failed` with one to 16 errors.",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "const": "failed",
+      "default": "failed"
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/error.json"
+      },
+      "minItems": 1,
+      "maxItems": 16
+    }
+  },
+  "required": [
+    "kind",
+    "errors"
+  ],
+  "additionalProperties": false
+}

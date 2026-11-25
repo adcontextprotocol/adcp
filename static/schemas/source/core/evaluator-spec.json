@@ -37,22 +37,8 @@
       "minItems": 1
     },
     "feature_agent": {
-      "type": "object",
-      "description": "Optional buyer-attached pointer to a get_creative_features-capable creative-feature / governance agent the producing agent calls to evaluate each leaf (the gate's SOURCE of feature values). This is the buyer-represents → seller-calls pattern #5280 established for provenance, generalized to the evaluator gate: the buyer REPRESENTS which agent it used, but the seller is the verifier-of-record and decides which agent it actually calls. `agent_url` MUST appear (canonicalized per /docs/reference/url-canonicalization) in the seller's `creative_policy.accepted_verifiers[].agent_url`; an off-list agent is rejected with `EVALUATOR_AGENT_NOT_ACCEPTED` (mirrors PROVENANCE_VERIFIER_NOT_ACCEPTED) before any outbound call. The outbound evaluator call authenticates on the transport; this pointer MUST NOT carry API keys, bearer tokens, client secrets, authorization values, JWKs, JWKS documents, or JWKS URIs. Reuses the same allowlist mechanism — no new allowlist is introduced. Distinct from the `agent_url` oneOf form, which names the evaluator's source directly; `feature_agent` attaches the gate's measurement source alongside either form.",
-      "properties": {
-        "agent_url": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://",
-          "description": "URL of the get_creative_features-capable agent the producing agent calls to obtain creative-feature values for the gate. MUST use https:// and MUST match an entry in the seller's `creative_policy.accepted_verifiers[].agent_url`; off-list → `EVALUATOR_AGENT_NOT_ACCEPTED`."
-        },
-        "feature_id": {
-          "type": "string",
-          "description": "Optional canonical feature_id the producing agent SHOULD request against this agent. When present it SHOULD match the agent's `accepted_verifiers[].feature_id` or be omitted; when absent the seller selects a feature at evaluation time. Resolves selector ambiguity exactly as the provenance verify_agent.feature_id does."
-        }
-      },
-      "required": ["agent_url"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/verifier-agent-ref.json",
+      "description": "Optional buyer-attached pointer to a get_creative_features-capable creative-feature / governance agent the producing agent calls to evaluate each leaf (the gate's SOURCE of feature values). This is the buyer-represents → seller-calls pattern #5280 established for provenance, generalized to the evaluator gate: the buyer REPRESENTS which agent it used, but the seller is the verifier-of-record and decides which agent it actually calls. `agent_url` MUST appear (canonicalized per /docs/reference/url-canonicalization) in the seller's `creative_policy.accepted_verifiers[].agent_url`; an off-list agent is rejected with `EVALUATOR_AGENT_NOT_ACCEPTED` (mirrors PROVENANCE_VERIFIER_NOT_ACCEPTED) before any outbound call. The outbound evaluator call authenticates on the transport; this pointer MUST NOT carry API keys, bearer tokens, client secrets, authorization values, JWKs, JWKS documents, or JWKS URIs. Reuses the same allowlist mechanism — no new allowlist is introduced. Distinct from the `agent_url` oneOf form, which names the evaluator's source directly; `feature_agent` attaches the gate's measurement source alongside either form."
     },
     "eval_budget": {
       "type": "object",
@@ -101,27 +87,32 @@
               },
               "description": "Artifacts exemplifying variants the buyer considers bad — the low end (≈0) of the calibrated prediction feature."
             }
-          }
+          },
+          "allOf": [
+            {
+              "$ref": "/schemas/core/calibration-exemplars.json"
+            }
+          ]
         }
       },
       "additionalProperties": true
     },
     {
-      "type": "object",
       "description": "Agent form: an external judge agent the seller calls via the get_creative_features contract (/docs/governance/creative/get_creative_features) to produce creative-feature values for each leaf — the SAME contract and the same results[] (creative-feature-result[]) shape get_creative_features returns. One creative-feature agent contract spans gate, rank, and provenance. Subject to the same `creative_policy.accepted_verifiers[]` allowlist as `feature_agent`: an off-list agent_url is rejected with `EVALUATOR_AGENT_NOT_ACCEPTED` before any outbound call. The producing agent authenticates the outbound evaluator call on the transport (request signing/JWKS, mTLS, or a pre-provisioned static credential); this object only names the evaluator and MUST NOT carry credentials or caller-supplied trust material. eval_budget bounds the calls; sellers SHOULD populate calls_used/seconds_used on the leaf eval block when agent_url was used and eval_budget was supplied (reuse the oracle's vendor_cost/consumption for cost).",
-      "required": [
-        "agent_url"
-      ],
-      "properties": {
-        "agent_url": {
-          "type": "string",
-          "format": "uri",
-          "pattern": "^https://",
-          "description": "URL of an external get_creative_features-capable judge agent the seller calls to score the produced leaves. MUST match an entry in the seller's `creative_policy.accepted_verifiers[].agent_url` (off-list → `EVALUATOR_AGENT_NOT_ACCEPTED`); an on-list agent that is unreachable or rejects the producing agent's transport authentication degrades to seller-default ranking (advisory errors[] note), not a failure. Authentication and trust material for this call belongs on the transport or in account provisioning, not in the evaluator payload.",
-          "x-added-in": "3.3.0"
+      "allOf": [
+        {
+          "$ref": "/schemas/core/agent-url-reference.json"
+        },
+        {
+          "properties": {
+            "agent_url": {
+              "$ref": "/schemas/core/https-url.json",
+              "description": "URL of an external get_creative_features-capable judge agent the seller calls to score the produced leaves. MUST match an entry in the seller's `creative_policy.accepted_verifiers[].agent_url` (off-list → `EVALUATOR_AGENT_NOT_ACCEPTED`); an on-list agent that is unreachable or rejects the producing agent's transport authentication degrades to seller-default ranking (advisory errors[] note), not a failure. Authentication and trust material for this call belongs on the transport or in account provisioning, not in the evaluator payload.",
+              "x-added-in": "3.3.0"
+            }
+          }
         }
-      },
-      "additionalProperties": true
+      ]
     }
   ],
   "additionalProperties": true

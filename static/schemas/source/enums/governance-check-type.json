@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/governance-check-type.json",
+  "title": "Governance Check Type",
+  "description": "Whether a check was an intent check or an execution check.",
+  "type": "string",
+  "enum": [
+    "intent",
+    "execution"
+  ]
+}

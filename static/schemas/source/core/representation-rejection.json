@@ -19,8 +19,8 @@
         "other"
       ]
     },
-    "message": { "type": "string", "minLength": 1 },
-    "details": { "type": "object", "additionalProperties": true }
+    "message": { "$ref": "/schemas/core/representation-rejection-message.json" },
+    "details": { "$ref": "/schemas/core/error-details.json" }
   },
   "required": ["representation_id", "code", "message"],
   "additionalProperties": true

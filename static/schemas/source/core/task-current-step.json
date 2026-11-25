@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/task-current-step.json",
+  "title": "Task Current Step",
+  "description": "The step or phase a working task is in, as short human-readable text.",
+  "type": "string",
+  "maxLength": 500
+}

@@ -8,14 +8,13 @@
       "type": "object",
       "properties": {
         "selector_id": {
-          "type": "string",
-          "minLength": 1,
-          "x-entity": "tracker_execution_selector",
+          "$ref": "#/definitions/selector_id",
           "description": "Stable identifier unique within the materialized execution contract."
         },
         "asset_type": {
           "type": "string",
-          "const": "pixel_tracker"
+          "const": "pixel_tracker",
+          "default": "pixel_tracker"
         },
         "event": { "$ref": "/schemas/enums/pixel-tracking-event.json" },
         "method": {
@@ -24,8 +23,7 @@
           "description": "AdCP 3.2 execution contracts cover image-pixel initiation only; JavaScript response evaluation is outside this contract version."
         },
         "custom_event_name": {
-          "type": "string",
-          "minLength": 1,
+          "$ref": "/schemas/core/custom-event-name.json",
           "description": "Required only when event is custom."
         },
         "execution_actor": {
@@ -63,17 +61,16 @@
       "type": "object",
       "properties": {
         "selector_id": {
-          "type": "string",
-          "minLength": 1,
-          "x-entity": "tracker_execution_selector",
+          "$ref": "#/definitions/selector_id",
           "description": "Stable identifier unique within the materialized execution contract."
         },
         "asset_type": {
           "type": "string",
-          "const": "vast_tracker"
+          "const": "vast_tracker",
+          "default": "vast_tracker"
         },
         "vast_versions": {
-          "$ref": "/schemas/core/vast-tracker-constraints.json#/definitions/vast_versions"
+          "$ref": "/schemas/core/vast-versions.json"
         },
         "vast_event": {
           "$ref": "/schemas/core/vast-tracker-constraints.json#/definitions/vast_event"
@@ -113,14 +110,13 @@
       "type": "object",
       "properties": {
         "selector_id": {
-          "type": "string",
-          "minLength": 1,
-          "x-entity": "tracker_execution_selector",
+          "$ref": "#/definitions/selector_id",
           "description": "Stable identifier unique within the materialized execution contract."
         },
         "asset_type": {
           "type": "string",
-          "const": "daast_tracker"
+          "const": "daast_tracker",
+          "default": "daast_tracker"
         },
         "daast_versions": {
           "$ref": "/schemas/core/daast-tracker-constraints.json#/definitions/daast_versions"
@@ -160,5 +156,14 @@
       "additionalProperties": true
     }
   ],
-  "discriminator": { "propertyName": "asset_type" }
+  "discriminator": { "propertyName": "asset_type" },
+  "definitions": {
+    "selector_id": {
+      "title": "Tracker Selector ID",
+      "description": "Stable identifier of one tracker selector, unique within its execution contract.",
+      "type": "string",
+      "minLength": 1,
+      "x-entity": "tracker_execution_selector"
+    }
+  }
 }

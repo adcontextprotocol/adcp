@@ -10,21 +10,16 @@
       "type": "object",
       "properties": {
         "name": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128,
-          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,127}$"
+          "$ref": "/schemas/core/control-total-name.json"
         },
         "value": {
           "type": "string",
           "pattern": "^-?(?:0|[1-9][0-9]*)$",
           "description": "Canonical base-10 integer with no exponent, grouping separator, decimal point, or insignificant leading zeroes."
         },
-        "value_type": { "type": "string", "const": "integer" },
+        "value_type": { "type": "string", "const": "integer", "default": "integer" },
         "unit": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 32,
+          "$ref": "/schemas/core/control-total-unit.json",
           "description": "Profile-defined unit such as impressions or an ISO 4217 currency code."
         }
       },
@@ -36,21 +31,16 @@
       "type": "object",
       "properties": {
         "name": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128,
-          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,127}$"
+          "$ref": "/schemas/core/control-total-name.json"
         },
         "value": {
           "type": "string",
           "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$",
           "description": "Canonical base-10 decimal with no exponent, grouping separator, or insignificant leading zeroes."
         },
-        "value_type": { "type": "string", "const": "decimal" },
+        "value_type": { "type": "string", "const": "decimal", "default": "decimal" },
         "unit": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 32,
+          "$ref": "/schemas/core/control-total-unit.json",
           "description": "Profile-defined unit such as impressions or an ISO 4217 currency code."
         }
       },

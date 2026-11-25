@@ -7,28 +7,18 @@
   "type": "object",
   "oneOf": [
     {
-      "title": "AdCP audience sync",
-      "description": "Push membership to the destination's sync_audiences task.",
-      "type": "object",
-      "properties": {
-        "pattern": {
-          "type": "string",
-          "const": "sync_audiences"
-        }
-      },
-      "required": [
-        "pattern"
-      ],
-      "additionalProperties": true
+      "$ref": "/schemas/core/sync-audiences-method.json",
+      "description": "Push membership to the destination's sync_audiences task."
     },
     {
-      "title": "File transfer",
+      "title": "Signal file transfer",
       "description": "Write a membership file to a destination bucket over the storage protocol.",
       "type": "object",
       "properties": {
         "pattern": {
           "type": "string",
-          "const": "file_transfer"
+          "const": "file_transfer",
+          "default": "file_transfer"
         },
         "transport": {
           "$ref": "/schemas/enums/cloud-storage-protocol.json",
@@ -47,13 +37,14 @@
       "additionalProperties": true
     },
     {
-      "title": "Dataset query",
+      "title": "Signal dataset query",
       "description": "Publish a grantee-identified share on the vendor for the destination to read.",
       "type": "object",
       "properties": {
         "pattern": {
           "type": "string",
-          "const": "dataset_query"
+          "const": "dataset_query",
+          "default": "dataset_query"
         },
         "vendor": {
           "$ref": "/schemas/core/brand-ref.json",
@@ -68,33 +59,18 @@
       "not": { "required": ["consumer_identities"] }
     },
     {
-      "title": "Clean room",
-      "description": "Land output in the vendor's clean room.",
-      "type": "object",
-      "properties": {
-        "pattern": {
-          "type": "string",
-          "const": "clean_room"
-        },
-        "vendor": {
-          "$ref": "/schemas/core/brand-ref.json",
-          "description": "Vendor whose rails are used."
-        }
-      },
-      "required": [
-        "pattern",
-        "vendor"
-      ],
-      "additionalProperties": true
+      "$ref": "/schemas/core/clean-room-method.json",
+      "description": "Land output in the vendor's clean room."
     },
     {
-      "title": "Platform distribution",
+      "title": "Signal platform distribution",
       "description": "Initiate distribution on the vendor's rails to the destination.",
       "type": "object",
       "properties": {
         "pattern": {
           "type": "string",
-          "const": "platform_distribution"
+          "const": "platform_distribution",
+          "default": "platform_distribution"
         },
         "vendor": {
           "$ref": "/schemas/core/brand-ref.json",

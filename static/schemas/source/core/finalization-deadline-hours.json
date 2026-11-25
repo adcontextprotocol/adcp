@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/finalization-deadline-hours.json",
+  "title": "Finalization Deadline Hours",
+  "description": "Maximum number of hours by which the authoritative party must publish a final measurement record.",
+  "type": "integer",
+  "minimum": 0
+}

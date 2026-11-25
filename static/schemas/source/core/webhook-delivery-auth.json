@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/webhook-delivery-auth.json",
+  "title": "Webhook Delivery Auth",
+  "description": "Authentication/signing mode the seller will use for subsequent webhooks delivered to this notification config.",
+  "type": "object",
+  "properties": {
+    "mode": {
+      "$ref": "/schemas/enums/webhook-delivery-auth-mode.json",
+      "description": "Future webhook delivery authentication mode. `rfc9421` is used when notification_configs[].authentication is absent; Bearer and HMAC-SHA256 are the deprecated legacy modes selected by notification_configs[].authentication."
+    },
+    "credential_fingerprint": {
+      "$ref": "/schemas/core/credential-fingerprint.json",
+      "description": "SHA-256 hex fingerprint of the exact legacy credential string supplied in notification_configs[].authentication.credentials. Required when mode is Bearer or HMAC-SHA256; absent for rfc9421."
+    }
+  },
+  "required": [
+    "mode"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "const": "rfc9421"
+          }
+        },
+        "required": [
+          "mode"
+        ]
+      },
+      "then": {
+        "not": {
+          "required": [
+            "credential_fingerprint"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "Bearer",
+              "HMAC-SHA256"
+            ]
+          }
+        },
+        "required": [
+          "mode"
+        ]
+      },
+      "then": {
+        "required": [
+          "credential_fingerprint"
+        ]
+      }
+    }
+  ],
+  "additionalProperties": true
+}

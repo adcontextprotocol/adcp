@@ -43,7 +43,11 @@ describe('get_creative_features retry and reconciliation contract', () => {
     assert.equal(request['x-mutates-state'], true);
     assert.equal(request['x-idempotency-key-required'], false);
     assert.equal(request.required.includes('idempotency_key'), false);
-    assert.equal(request.properties.idempotency_key.minLength, 16);
+    assert.equal(request.properties.idempotency_key.$ref, '/schemas/core/idempotency-key.json');
+    assert.equal(
+      JSON.parse(fs.readFileSync(path.join(__dirname, '../static/schemas/source/core/idempotency-key.json'), 'utf8')).minLength,
+      16,
+    );
     assert.match(request.properties.idempotency_key.description, /at least 24 hours/);
     assert.match(request.properties.idempotency_key.description, /required in AdCP 4\.0/);
     assert.equal(

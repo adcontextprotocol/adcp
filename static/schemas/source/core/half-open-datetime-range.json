@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/half-open-datetime-range.json",
+  "title": "Half-Open Datetime Range",
+  "description": "A half-open date-time range: `start` is inclusive and `end` is exclusive.",
+  "type": "object",
+  "properties": {
+    "start": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "end": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "start",
+    "end"
+  ],
+  "additionalProperties": true
+}

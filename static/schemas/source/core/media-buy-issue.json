@@ -7,47 +7,25 @@
   "type": "object",
   "properties": {
     "issue_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "media_buy_issue"
+      "$ref": "/schemas/core/media-buy-issue-id.json"
     },
     "media_buy_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "media_buy"
+      "$ref": "/schemas/core/media-buy-id.json"
     },
     "package_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "package"
+      "$ref": "/schemas/core/package-id.json"
     },
     "creative_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "creative"
+      "$ref": "/schemas/core/creative-id.json"
     },
     "severity": {
-      "type": "string",
-      "enum": [
-        "critical",
-        "warning"
-      ]
+      "$ref": "/schemas/enums/media-buy-issue-severity.json"
     },
     "category": {
-      "type": "string",
-      "enum": [
-        "malicious_creative",
-        "wrong_creative",
-        "brand_safety",
-        "tracking",
-        "delivery",
-        "other"
-      ]
+      "$ref": "/schemas/enums/media-buy-issue-category.json"
     },
     "description": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 4000
+      "$ref": "/schemas/core/media-buy-issue-description.json"
     },
     "status": {
       "type": "string",

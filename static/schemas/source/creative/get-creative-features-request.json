@@ -14,11 +14,8 @@
   ],
   "properties": {
     "idempotency_key": {
-      "type": "string",
-      "description": "Optional in AdCP 3.x for wire compatibility; clients SHOULD send a unique key for every logical evaluation. When supplied to a provider that advertises adcp.idempotency.supported: true, exact retries with the same canonical payload MUST return the cached initial response with replayed: true and MUST NOT dispatch a second provider evaluation or record a second consumption or cost event. Reusing the key with a different creative_manifest, account, or feature_ids payload returns IDEMPOTENCY_CONFLICT. The provider MUST retain the replay record for at least 24 hours. Keys MUST be unique per (provider, request) pair to prevent cross-provider correlation. This field becomes required in AdCP 4.0; use a fresh UUID v4 for each logical evaluation.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Optional in AdCP 3.x for wire compatibility; clients SHOULD send a unique key for every logical evaluation. When supplied to a provider that advertises adcp.idempotency.supported: true, exact retries with the same canonical payload MUST return the cached initial response with replayed: true and MUST NOT dispatch a second provider evaluation or record a second consumption or cost event. Reusing the key with a different creative_manifest, account, or feature_ids payload returns IDEMPOTENCY_CONFLICT. The provider MUST retain the replay record for at least 24 hours. Keys MUST be unique per (provider, request) pair to prevent cross-provider correlation. This field becomes required in AdCP 4.0; use a fresh UUID v4 for each logical evaluation."
     },
     "creative_manifest": {
       "$ref": "/schemas/core/creative-manifest.json",

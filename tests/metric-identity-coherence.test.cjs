@@ -4,6 +4,7 @@ const Ajv = require("ajv");
 const addFormats = require("ajv-formats");
 const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
+const { addNamedScalarSchemas, resolveScalar } = require('./helpers/named-scalar-schemas.cjs');
 
 const SCHEMA_ROOT = path.join(__dirname, "..", "static", "schemas", "source");
 
@@ -115,7 +116,7 @@ describe("metric identity coherence", () => {
       assert.ok(sortMetrics.has(leaf), `${leaf} missing from sort-metric.json`);
       const nested = deliveryMetrics.properties[container];
       assert.ok(nested, `${container} missing from delivery-metrics.json`);
-      const target = nested.properties[field];
+      const target = resolveScalar(nested.properties[field]);
       assert.ok(target, `${container}.${field} missing from delivery-metrics.json`);
       const types = Array.isArray(target.type) ? target.type : [target.type];
       assert.ok(

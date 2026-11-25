@@ -36,32 +36,42 @@
       "description": "Required experience level."
     },
     "salary": {
-      "type": "object",
+      "title": "Salary Range",
       "description": "Salary range. Specify min and/or max with currency and period.",
-      "properties": {
-        "min": {
-          "type": "number",
-          "minimum": 0,
-          "description": "Minimum salary."
+      "allOf": [
+        {
+          "$ref": "/schemas/core/open-ended-numeric-range.json"
         },
-        "max": {
-          "type": "number",
-          "minimum": 0,
-          "description": "Maximum salary."
-        },
-        "currency": {
-          "type": "string",
-          "pattern": "^[A-Z]{3}$",
-          "description": "ISO 4217 currency code."
-        },
-        "period": {
-          "type": "string",
-          "enum": ["hour", "month", "year"],
-          "description": "Pay period."
+        {
+          "properties": {
+            "min": {
+              "minimum": 0,
+              "description": "Minimum salary."
+            },
+            "max": {
+              "minimum": 0,
+              "description": "Maximum salary."
+            },
+            "currency": {
+              "$ref": "/schemas/core/currency-code.json",
+              "description": "ISO 4217 currency code."
+            },
+            "period": {
+              "type": "string",
+              "enum": [
+                "hour",
+                "month",
+                "year"
+              ],
+              "description": "Pay period."
+            }
+          },
+          "required": [
+            "currency",
+            "period"
+          ]
         }
-      },
-      "required": ["currency", "period"],
-      "additionalProperties": true
+      ]
     },
     "date_posted": {
       "type": "string",

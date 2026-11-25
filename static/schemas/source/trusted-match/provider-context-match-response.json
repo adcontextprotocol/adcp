@@ -12,26 +12,8 @@
   "x-status": "experimental",
   "definitions": {
     "targeting_kvs": {
-      "type": "array",
-      "description": "Provider-local key-value pairs for ad-server targeting. The router preserves each pair unchanged under the emitting provider's registered provider_id.",
-      "items": {
-        "type": "object",
-        "properties": {
-          "key": {
-            "type": "string",
-            "description": "Provider-local targeting key. It is not a globally unique or publisher-owned ad-server destination."
-          },
-          "value": {
-            "type": "string",
-            "description": "Targeting value that the router preserves unchanged."
-          }
-        },
-        "required": [
-          "key",
-          "value"
-        ],
-        "additionalProperties": true
-      }
+      "$ref": "/schemas/core/trusted-match-targeting-kvs.json",
+      "description": "Provider-local key-value pairs for ad-server targeting. The router preserves each pair unchanged under the emitting provider's registered provider_id."
     }
   },
   "properties": {
@@ -52,21 +34,16 @@
       }
     },
     "cache_ttl": {
-      "type": "integer",
-      "description": "Optional override for the router's default 5-minute response cache TTL, in seconds. When present, the router MUST use this value instead of its default. Set to 0 to disable caching.",
-      "minimum": 0,
-      "maximum": 86400
+      "$ref": "/schemas/core/context-match-cache-ttl.json",
+      "description": "Optional override for the router's default 5-minute response cache TTL, in seconds. When present, the router MUST use this value instead of its default. Set to 0 to disable caching."
     },
     "signals": {
       "type": "object",
       "description": "Provider-origin response-level signals. Targeting pairs use the provider's local key vocabulary; the router preserves and attributes them rather than passing them through as flattened publisher targeting.",
       "properties": {
         "segments": {
-          "type": "array",
-          "description": "Contextual segment identifiers.",
-          "items": {
-            "type": "string"
-          }
+          "$ref": "/schemas/core/trusted-match-segments.json",
+          "description": "Contextual segment identifiers."
         },
         "targeting_kvs": {
           "$ref": "#/definitions/targeting_kvs"

@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/signal-targeting-mode.json",
+  "title": "Signal Targeting Mode",
+  "description": "Whether a signal is used to include or exclude.",
+  "type": "string",
+  "enum": [
+    "include",
+    "exclude"
+  ]
+}

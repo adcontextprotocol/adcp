@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/required-data-subject-right.json",
+  "title": "Required Data Subject Right",
+  "description": "Data subject right that at least one rights channel must offer: access, erasure, or objection.",
+  "type": "string",
+  "enum": [
+    "access",
+    "erasure",
+    "objection"
+  ]
+}

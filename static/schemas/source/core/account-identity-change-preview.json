@@ -31,9 +31,7 @@
           ]
         },
         "reason": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 1000
+          "$ref": "/schemas/core/identity-change-impact-reason.json"
         }
       },
       "required": [
@@ -94,7 +92,8 @@
       "properties": {
         "outcome": {
           "type": "string",
-          "const": "would_apply"
+          "const": "would_apply",
+          "default": "would_apply"
         },
         "requested_operator_identity": {
           "$ref": "/schemas/core/operator-identity.json"
@@ -116,7 +115,8 @@
       "properties": {
         "outcome": {
           "type": "string",
-          "const": "would_require_approval"
+          "const": "would_require_approval",
+          "default": "would_require_approval"
         },
         "requested_operator_identity": {
           "$ref": "/schemas/core/operator-identity.json"
@@ -138,7 +138,8 @@
       "properties": {
         "outcome": {
           "type": "string",
-          "const": "blocked"
+          "const": "blocked",
+          "default": "blocked"
         },
         "requested_operator_identity": {
           "$ref": "/schemas/core/operator-identity.json"

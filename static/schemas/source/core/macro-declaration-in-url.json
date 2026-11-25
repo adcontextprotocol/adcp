@@ -1,0 +1,10 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/macro-declaration-in-url.json",
+  "title": "Macro Declaration in URL",
+  "description": "A macro declaration for a token occurrence in the asset's `url` field.",
+  "allOf": [
+    { "$ref": "/schemas/core/macro-declaration.json" },
+    { "$ref": "/schemas/core/url-macro-location.json" }
+  ]
+}

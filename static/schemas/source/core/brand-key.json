@@ -6,22 +6,15 @@
   "type": "object",
   "properties": {
     "domain": {
-      "type": "string",
-      "description": "Domain that hosts /.well-known/brand.json or is registered for the brand.",
-      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+      "$ref": "/schemas/core/domain-name.json",
+      "description": "Domain that hosts /.well-known/brand.json or is registered for the brand."
     },
     "brand_id": {
       "$ref": "/schemas/core/brand-id.json",
       "description": "Brand within a brand.json that lists several brands. Omit for a single-brand domain."
     },
     "countries": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "pattern": "^[A-Z]{2}$"
-      },
-      "minItems": 1,
-      "uniqueItems": true,
+      "$ref": "/schemas/core/account-countries.json",
       "description": "ISO 3166-1 alpha-2 countries the advertiser account serves. This is an account attribute: it does not identify the brand or the account, and it is not delivery targeting. Omit when the account is not limited to particular countries. Array order is not meaningful."
     }
   },
