@@ -31,15 +31,29 @@
 // busy the machine is; a hook still running 5 s after it announced the expiry
 // is SIGKILLed by the harness guard; anything else that never ends fails at
 // vitest's 10 s testTimeout and afterEach kills it.
+//
+// Readiness is signalled, never watched: a stray reports its pid to its
+// parent on a pipe, and the budget gate checks its markers from the deadline
+// on. macOS delivers fs.watch events on a directory through FSEvents, which
+// batches them for up to seconds on a loaded machine, so a watched marker
+// held the budget's expiry long after the fixture was up. The fixture tree
+// (runner copy, hooks, helpers, an initialized git repository) is built once
+// per file and copied for each case: one `git init` per file, not per case.
 import { execFileSync, spawn } from 'node:child_process';
 import {
-  copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync,
+  copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import gitObjectFixture from './helpers/git-object-fixture.cjs';
+
+// Before any import, so a launcher a module destructures is counted too.
+const spawns = await vi.hoisted(async () => {
+  const { createRequire } = await import('node:module');
+  return createRequire(import.meta.url)('./helpers/spawn-counter.cjs').install() as { count: number; commands: string[] };
+});
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const NODE = process.execPath;
@@ -61,19 +75,17 @@ const mark = (name, text = '') => fs.writeFileSync(file(name), String(text));
 // Publishes this process's pid as <name>.pid and keeps running until killed.
 const hold = (name) => { mark(name + '.pid', process.pid); setInterval(() => {}, 1000); };
 // Starts scripts/stray.cjs in its OWN process group (detached), sharing this
-// process's stdout and stderr; resolves once the stray has published its pid.
-// A stray that exits first fails the leaf.
+// process's stdout and stderr; resolves once the stray has published its pid,
+// which it reports on a pipe of its own (fd 3) and then closes. A stray that
+// exits first fails the leaf.
 const startStray = (name) => new Promise((resolve) => {
   let started = false;
-  const child = spawn(process.execPath, [path.join(__dirname, 'stray.cjs'), name], { detached: true, stdio: ['ignore', 'inherit', 'inherit'] });
-  const check = () => {
-    if (started || !has(name + '.pid')) return;
+  const child = spawn(process.execPath, [path.join(__dirname, 'stray.cjs'), name], { detached: true, stdio: ['ignore', 'inherit', 'inherit', 'pipe'] });
+  child.stdio[3].once('data', () => {
     started = true;
-    watcher.close();
+    child.stdio[3].destroy();
     resolve();
-  };
-  const watcher = fs.watch(MARKERS, check);
-  check();
+  });
   child.once('exit', () => { if (!started) { console.error(name + ' exited before it started'); process.exit(1); } });
 });
 // The values for the leaf at \`file\` (its names), from scripts/leaves.json;
@@ -86,6 +98,8 @@ module.exports = { has, mark, hold, startStray, leafConfig };
 const STRAY = [
   "process.on('SIGTERM', () => {});",
   "require('./fixture-lib.cjs').mark(process.argv[2] + '.pid', process.pid);",
+  "require('node:fs').writeSync(3, String(process.pid));",
+  "require('node:fs').closeSync(3);",
   "process.stdout.write('stray: holding the step output\\n');",
   'setInterval(() => {}, 1000);',
   '',
@@ -124,10 +138,12 @@ const IMAGE_CHECK = '#!/bin/bash\ntouch "$(dirname "$0")/../markers/image-check-
 // step inherits it). It wraps the one timer runPlan arms, the budget's, so
 // that its callback runs once the delay has passed AND every marker named in
 // FIXTURE_BUDGET_READY exists: the budget expires at the deadline or once the
-// fixture is up, whichever is later. It marks budget-gate-engaged when it
-// wraps the timer and budget-gate-released when it lets the expiry through.
+// fixture is up, whichever is later. From the deadline on it checks the
+// markers every 5 ms (they are normally all there by then). It marks
+// budget-gate-engaged when it wraps the timer and budget-gate-released when
+// it lets the expiry through.
 const BUDGET_GATE = `
-import { existsSync, watch, writeFileSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 const markers = process.env.FIXTURE_MARKERS_DIR;
 const ready = (process.env.FIXTURE_BUDGET_READY ?? '').split(',').filter(Boolean);
@@ -140,17 +156,15 @@ if (/profile-precommit\\.mjs$/.test(process.argv[1] ?? '') && markers && ready.l
     if (engaged || typeof callback !== 'function' || !/\\bat runPlan\\b/.test(caller)) return realSetTimeout(callback, delay, ...args);
     engaged = true;
     writeFileSync(join(markers, 'budget-gate-engaged'), '');
-    let due = false;
-    let released = false;
+    let poll;
     const release = () => {
-      if (released || !due || !ready.every((name) => existsSync(join(markers, name)))) return;
-      released = true;
-      watcher.close();
+      if (!ready.every((name) => existsSync(join(markers, name)))) return false;
+      clearInterval(poll);
       writeFileSync(join(markers, 'budget-gate-released'), '');
       callback(...args);
+      return true;
     };
-    const watcher = watch(markers, { persistent: false }, release);
-    return realSetTimeout(() => { due = true; release(); }, delay);
+    return realSetTimeout(() => { if (!release()) poll = setInterval(release, 5); }, delay);
   };
 }
 `;
@@ -161,6 +175,7 @@ const QUICK_FILES = { 'scripts/typecheck-pass.cjs': leaf.marks('pass-ran') };
 
 const roots: string[] = [];
 const hookGroups: number[] = [];
+let template = '';
 
 interface FixtureOptions {
   scripts: Record<string, string>;
@@ -174,20 +189,11 @@ interface FixtureOptions {
 function fixtureRoot({ scripts, files = {} }: FixtureOptions): string {
   const root = mkdtempSync(join(tmpdir(), 'hook-budget-'));
   roots.push(root);
-  for (const dir of ['markers', 'scripts/profile-precommit', '.husky', 'xdg']) mkdirSync(join(root, dir), { recursive: true });
-  copyFileSync(join(REPO_ROOT, RUNNER), join(root, RUNNER));
-  for (const name of readdirSync(join(REPO_ROOT, 'scripts', 'profile-precommit'))) {
-    copyFileSync(join(REPO_ROOT, 'scripts', 'profile-precommit', name), join(root, 'scripts', 'profile-precommit', name));
-  }
-  for (const hook of ['pre-commit', 'pre-push']) copyFileSync(join(REPO_ROOT, '.husky', hook), join(root, '.husky', hook));
+  cpSync(template, root, { recursive: true });
   writeFileSync(
     join(root, 'package.json'),
     JSON.stringify({ name: 'hook-budget-fixture', version: '0.0.0', private: true, scripts }, null, 2),
   );
-  writeFileSync(join(root, 'scripts', 'fixture-lib.cjs'), FIXTURE_LIB);
-  writeFileSync(join(root, 'scripts', 'stray.cjs'), STRAY);
-  writeFileSync(join(root, 'scripts', 'check-image-quality.sh'), IMAGE_CHECK);
-  writeFileSync(join(root, 'budget-gate.mjs'), BUDGET_GATE);
   const leaves: Record<string, Record<string, string>> = {};
   for (const [rel, { source, config }] of Object.entries(files)) {
     expect(dirname(rel), 'leaf files live in scripts/, beside fixture-lib.cjs and leaves.json').toBe('scripts');
@@ -195,6 +201,22 @@ function fixtureRoot({ scripts, files = {} }: FixtureOptions): string {
     leaves[basename(rel)] = config;
   }
   writeFileSync(join(root, 'scripts', 'leaves.json'), JSON.stringify(leaves));
+  return root;
+}
+
+/** What every fixture root shares, built once per file: see fixtureRoot. */
+function buildTemplate(): string {
+  const root = mkdtempSync(join(tmpdir(), 'hook-budget-template-'));
+  for (const dir of ['markers', 'scripts/profile-precommit', '.husky', 'xdg']) mkdirSync(join(root, dir), { recursive: true });
+  copyFileSync(join(REPO_ROOT, RUNNER), join(root, RUNNER));
+  for (const name of readdirSync(join(REPO_ROOT, 'scripts', 'profile-precommit'))) {
+    copyFileSync(join(REPO_ROOT, 'scripts', 'profile-precommit', name), join(root, 'scripts', 'profile-precommit', name));
+  }
+  for (const hook of ['pre-commit', 'pre-push']) copyFileSync(join(REPO_ROOT, '.husky', hook), join(root, '.husky', hook));
+  writeFileSync(join(root, 'scripts', 'fixture-lib.cjs'), FIXTURE_LIB);
+  writeFileSync(join(root, 'scripts', 'stray.cjs'), STRAY);
+  writeFileSync(join(root, 'scripts', 'check-image-quality.sh'), IMAGE_CHECK);
+  writeFileSync(join(root, 'budget-gate.mjs'), BUDGET_GATE);
   execFileSync('git', ['init', '-q'], { cwd: root });
   return root;
 }
@@ -394,8 +416,28 @@ function expectNamedWithElapsed(output: string, needle: string) {
 // Fixture repos run git; inside a linked-worktree hook the inherited GIT_DIR
 // would point their `git init` at the caller's repository.
 let restoreGitEnv = () => {};
-beforeAll(() => { restoreGitEnv = gitObjectFixture.isolateGitEnv({ identity: false }); });
-afterAll(() => restoreGitEnv());
+beforeAll(() => {
+  restoreGitEnv = gitObjectFixture.isolateGitEnv({ identity: false });
+  template = buildTemplate();
+});
+afterAll(() => {
+  rmSync(template, { recursive: true, force: true });
+  restoreGitEnv();
+});
+
+describe('fixture work', () => {
+  it('initializes one git repository per file, whatever the number of cases', () => {
+    expect(fixtureRoot({ scripts: QUICK_PLAN, files: QUICK_FILES }), 'a fixture root').toBeTypeOf('string');
+    expect(fixtureRoot({ scripts: QUICK_PLAN, files: QUICK_FILES }), 'another fixture root').toBeTypeOf('string');
+    expect(spawns.commands.filter((command) => command === 'git'), 'git runs once, for the template').toEqual(['git']);
+  });
+
+  it('waits for fixture readiness on a signal, never on a file watcher (FSEvents delivers late under load)', () => {
+    for (const [name, source] of Object.entries({ FIXTURE_LIB, STRAY, BUDGET_GATE })) {
+      expect(source, `${name} creates no fs.watch watcher`).not.toMatch(/\bwatch\s*\(/);
+    }
+  });
+});
 
 afterEach(() => {
   for (const pgid of hookGroups.splice(0)) {

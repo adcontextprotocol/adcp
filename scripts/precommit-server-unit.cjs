@@ -139,14 +139,16 @@ function keptReportArgs(name, env = process.env) {
   // vitest stops a forked worker before Node's exit-time profile write can
   // finish on a loaded machine, so each worker loads
   // profile-precommit/vitest-worker-profiler.mjs, which writes its profiles
-  // to these directories before vitest stops it.
+  // to these directories before vitest stops it. It travels in
+  // ADCP_VITEST_WORKER_IMPORT, which every server project reads
+  // (workerImportOptions in server/vitest.projects.ts): vitest applies a
+  // command-line --execArgv to a flat config only, not to its projects.
   const profilerUrl = vitestWorkerProfilerUrl({ cpu: env.ADCP_VITEST_CPU_PROF_DIR, heap: env.ADCP_VITEST_HEAP_PROF_DIR });
-  const profile = profilerUrl ? [`--execArgv=--import=${profilerUrl}`] : [];
+  if (profilerUrl) env.ADCP_VITEST_WORKER_IMPORT = profilerUrl;
   return [
     '--reporter=default', '--reporter=json', `--outputFile.json=${path.join(dir, name)}`,
     `--reporter=${TIMING_REPORTER}`,
     ...(/^[1-9]\d*$/.test(imports ?? '') ? [`--experimental.importDurations.limit=${imports}`] : []),
-    ...profile,
   ];
 }
 

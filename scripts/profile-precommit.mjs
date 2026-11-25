@@ -180,12 +180,24 @@ function parseArgs(argv) {
 // SIGTERM and SIGKILL 500 ms later, too soon for Node's exit-time profile
 // write on a loaded machine, so each worker loads the profiler module, which
 // writes its profiles before vitest stops it. As the server-unit step does
-// (scripts/precommit-server-unit.cjs).
-function vitestProfileArgs(dir, opts) {
-  const url = vitestWorkerProfilerUrl({
+// (scripts/precommit-server-unit.cjs). vitest applies a command-line
+// --execArgv to a flat config's workers but not to a config's inline
+// projects, so the module also travels in ADCP_VITEST_WORKER_IMPORT, which
+// every project of this repo's configs reads (workerImportOptions in
+// server/vitest.projects.ts). The URL holds no shell-special character
+// (vitest-worker-profiler-url.cjs).
+function vitestWorkerProfilerFor(dir, opts) {
+  return vitestWorkerProfilerUrl({
     cpu: opts['cpu-prof'] ? path.join(dir, 'cpu') : undefined,
     heap: opts['heap-prof'] ? path.join(dir, 'heap') : undefined,
   });
+}
+function vitestProfileEnv(dir, opts) {
+  const url = vitestWorkerProfilerFor(dir, opts);
+  return url ? `ADCP_VITEST_WORKER_IMPORT=${url} ` : '';
+}
+function vitestProfileArgs(dir, opts) {
+  const url = vitestWorkerProfilerFor(dir, opts);
   return url ? ` --execArgv=--import=${url}` : '';
 }
 
@@ -195,7 +207,7 @@ function instrument(cmd, dir, opts) {
     case 'vitest':
       // The JSON report holds every project's results (the server suite's
       // too, since tp-jyw.51), as precommit-server-unit.cjs kept them.
-      return `${cmd.command} --reporter=default --reporter=${VITEST_TIMING_REPORTER} --reporter=json --outputFile.json=${path.join(dir, 'vitest', 'all.json')}${opts['import-durations'] ? ' --experimental.importDurations.limit=500' : ''}${vitestProfileArgs(dir, opts)}`;
+      return `${vitestProfileEnv(dir, opts)}${cmd.command} --reporter=default --reporter=${VITEST_TIMING_REPORTER} --reporter=json --outputFile.json=${path.join(dir, 'vitest', 'all.json')}${opts['import-durations'] ? ' --experimental.importDurations.limit=500' : ''}${vitestProfileArgs(dir, opts)}`;
     case 'node-test':
       return cmd.command.replace(/(\s--test)(\s|$)/, `$1 --require=${NODE_TEST_BLOCKING_STDOUT} --test-reporter=spec --test-reporter-destination=stdout --test-reporter=${NODE_TEST_REPORTER} --test-reporter-destination=${path.join(dir, 'node-test.json')}$2`);
     case 'tsc':

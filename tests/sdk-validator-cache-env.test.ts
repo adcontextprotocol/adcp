@@ -7,17 +7,24 @@
 //     the config adds no override;
 //   - CI gets no default: CI set to anything other than '', 'false' or '0'
 //     turns it off (only CI is read). The matrix keeps its own rule.
-// Each case loads the real config in a child process with a cleaned env and
-// asserts the test.env it resolves; nothing here asserts on time or on what
-// the cache holds (the SDK owns its read and write paths).
+// Each case loads the real config under a cleaned env, in this worker
+// (tests/helpers/vitest-config-env.ts), and asserts the test.env it resolves;
+// nothing here asserts on time or on what the cache holds (the SDK owns its
+// read and write paths). The work guard: loading a config starts no process.
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import gitObjectFixture from './helpers/git-object-fixture.cjs';
-import vitestConfigEnv from './helpers/vitest-config-env.cjs';
+import * as vitestConfigEnv from './helpers/vitest-config-env.ts';
+
+// Before any import, so a launcher a module destructures is counted too.
+const spawns = await vi.hoisted(async () => {
+  const { createRequire } = await import('node:module');
+  return createRequire(import.meta.url)('./helpers/spawn-counter.cjs').install() as { count: number; commands: string[] };
+});
 
 const { checkoutGitEnv } = gitObjectFixture;
 
@@ -48,31 +55,32 @@ function cleanEnv(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
   return { ...env, ...extra };
 }
 
-/** Loads the real config in a fresh node process and returns its resolved test.env ({} when unset). */
-function resolvedTestEnv(config: string, env: NodeJS.ProcessEnv): Record<string, string> {
-  const result = vitestConfigEnv.resolvedTestEnv(config, env, scratchDir());
-  expect(result.status, result.stderr).toBe(0);
-  return result.env;
+/** Loads the real config under env and returns its resolved test.env ({} when unset); starts no process. */
+async function resolvedTestEnv(config: string, env: NodeJS.ProcessEnv): Promise<Record<string, string>> {
+  const before = spawns.count;
+  const resolved = await vitestConfigEnv.resolvedTestEnv(config, env, scratchDir());
+  expect(spawns.commands.slice(before), `loading ${config} starts no process`).toEqual([]);
+  return resolved;
 }
 
 describe.each(CONFIGS)('%s: ADCP_VALIDATOR_CACHE_DIR', (config) => {
-  it('defaults to <root>/node_modules/.cache/adcp-sdk-validators when the variable is unset', () => {
-    expect(resolvedTestEnv(config, cleanEnv())).toMatchObject({ ADCP_VALIDATOR_CACHE_DIR: DEFAULT_CACHE });
+  it('defaults to <root>/node_modules/.cache/adcp-sdk-validators when the variable is unset', async () => {
+    expect(await resolvedTestEnv(config, cleanEnv())).toMatchObject({ ADCP_VALIDATOR_CACHE_DIR: DEFAULT_CACHE });
   });
 
   it.each([
     ["''", { ADCP_VALIDATOR_CACHE_DIR: '' }],
     ['a custom absolute path', { ADCP_VALIDATOR_CACHE_DIR: join(tmpdir(), 'custom-adcp-sdk-validators') }],
-  ])('adds no override when the shell sets it to %s', (_label, extra) => {
-    expect(resolvedTestEnv(config, cleanEnv(extra))).not.toHaveProperty('ADCP_VALIDATOR_CACHE_DIR');
+  ])('adds no override when the shell sets it to %s', async (_label, extra) => {
+    expect(await resolvedTestEnv(config, cleanEnv(extra))).not.toHaveProperty('ADCP_VALIDATOR_CACHE_DIR');
   });
 
-  it.each(['true', '1'])('adds no default when CI=%s', (ci) => {
-    expect(resolvedTestEnv(config, cleanEnv({ CI: ci }))).not.toHaveProperty('ADCP_VALIDATOR_CACHE_DIR');
+  it.each(['true', '1'])('adds no default when CI=%s', async (ci) => {
+    expect(await resolvedTestEnv(config, cleanEnv({ CI: ci }))).not.toHaveProperty('ADCP_VALIDATOR_CACHE_DIR');
   });
 
-  it.each(['false', '0', ''])("defaults to the shared path when CI='%s'", (ci) => {
-    expect(resolvedTestEnv(config, cleanEnv({ CI: ci }))).toMatchObject({ ADCP_VALIDATOR_CACHE_DIR: DEFAULT_CACHE });
+  it.each(['false', '0', ''])("defaults to the shared path when CI='%s'", async (ci) => {
+    expect(await resolvedTestEnv(config, cleanEnv({ CI: ci }))).toMatchObject({ ADCP_VALIDATOR_CACHE_DIR: DEFAULT_CACHE });
   });
 });
 
@@ -109,14 +117,14 @@ describe('scripts/run-storyboards-matrix.sh: ADCP_VALIDATOR_CACHE_DIR', () => {
     return lines[0];
   }
 
-  it('exports the same default path the unit configs resolve', () => {
+  it('exports the same default path the unit configs resolve', async () => {
     const result = spawnSync('/bin/sh', ['-c', `${exportLine()}\nprintf '%s' "$ADCP_VALIDATOR_CACHE_DIR"`], {
       cwd: scratchDir(), env: cleanEnv({ REPO_ROOT }), encoding: 'utf8',
     });
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toBe(DEFAULT_CACHE);
     for (const config of CONFIGS) {
-      expect(resolvedTestEnv(config, cleanEnv()), config).toMatchObject({ ADCP_VALIDATOR_CACHE_DIR: result.stdout });
+      expect(await resolvedTestEnv(config, cleanEnv()), config).toMatchObject({ ADCP_VALIDATOR_CACHE_DIR: result.stdout });
     }
   });
 });

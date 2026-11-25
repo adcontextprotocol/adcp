@@ -8,17 +8,29 @@
 // error observable (a leaf that runs too early or too late fails). Every
 // bounded wait ends well inside the 10 s test timeout (vitest.config.ts), so a
 // scheduling fault fails with its own message, not with a test timeout.
+// Fixture roots are copies of one git repository initialized per file, and
+// the real npm expansions the oracle and its replay check compare against are
+// cached under a full key: git and npm run once per file or on a cache miss,
+// not once per case (the guards below count them).
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
-  chmodSync, closeSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync,
+  chmodSync, closeSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync,
   renameSync, rmSync, symlinkSync, writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import gitObjectFixture from './helpers/git-object-fixture.cjs';
+
+// Before any import, so a launcher a module destructures is counted too.
+const spawns = await vi.hoisted(async () => {
+  const { createRequire } = await import('node:module');
+  return createRequire(import.meta.url)('./helpers/spawn-counter.cjs').install() as {
+    count: number; commands: string[]; argvs: string[][];
+  };
+});
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PROFILER = join(REPO_ROOT, 'scripts', 'profile-precommit.mjs');
@@ -89,6 +101,16 @@ lib.mark(${JSON.stringify(`${self}-saw-${other}`)});
 };
 
 const roots: string[] = [];
+// An initialized git repository, made once per file; each root copies its .git.
+let gitTemplate = '';
+
+/** A new directory under tmpdir that is a git repository (a copy of gitTemplate). */
+function gitRoot(prefix: string): string {
+  const root = mkdtempSync(join(tmpdir(), prefix));
+  roots.push(root);
+  cpSync(join(gitTemplate, '.git'), join(root, '.git'), { recursive: true });
+  return root;
+}
 
 interface FixtureOptions {
   scripts: Record<string, string>;
@@ -97,8 +119,7 @@ interface FixtureOptions {
 
 /** A throwaway git repo root with package.json scripts and leaf files. */
 function fixtureRoot({ scripts, files = {} }: FixtureOptions): string {
-  const root = mkdtempSync(join(tmpdir(), 'precommit-hook-runner-'));
-  roots.push(root);
+  const root = gitRoot('precommit-hook-runner-');
   for (const dir of ['markers', 'scripts', 'tests']) mkdirSync(join(root, dir));
   writeFileSync(
     join(root, 'package.json'),
@@ -110,7 +131,6 @@ function fixtureRoot({ scripts, files = {} }: FixtureOptions): string {
     mkdirSync(dirname(join(root, rel)), { recursive: true });
     writeFileSync(join(root, rel), content);
   }
-  execFileSync('git', ['init', '-q'], { cwd: root });
   return root;
 }
 
@@ -242,8 +262,15 @@ function stepFor(runDir: string, needle: string): StepReport {
 // fixture would then write core.bare=true into the caller's shared config.
 // Run the file under the shared fixture git environment instead.
 let restoreGitEnv = () => {};
-beforeAll(() => { restoreGitEnv = gitObjectFixture.isolateGitEnv({ identity: false }); });
-afterAll(() => restoreGitEnv());
+beforeAll(() => {
+  restoreGitEnv = gitObjectFixture.isolateGitEnv({ identity: false });
+  gitTemplate = mkdtempSync(join(tmpdir(), 'precommit-hook-runner-git-'));
+  execFileSync('git', ['init', '-q'], { cwd: gitTemplate });
+});
+afterAll(() => {
+  rmSync(gitTemplate, { recursive: true, force: true });
+  restoreGitEnv();
+});
 
 afterEach(() => {
   for (const root of roots.splice(0)) {
@@ -357,10 +384,13 @@ interface OracleOptions { npmCli?: string; cacheDir?: string }
  * The cache entry for npm's expansion of ORACLE_NPM_ARGS in root:
  * cacheDir/<SHA-256>.json over exactly what the expansion depends on, root's
  * package.json scripts and scripts/with-timeout.sh, the npm version at
- * npmCli, ORACLE_NPM_ARGS, the shims and the replay helper.
+ * npmCli, ORACLE_NPM_ARGS, the shims, and how it was expanded: by the replay
+ * helper (its text is in the key) or by one npm process per call (the Node
+ * version is in the key).
  */
 function oracleCacheEntry(
   root: string, shims: Record<string, string>, { npmCli = NPM_CLI, cacheDir = ORACLE_CACHE_DIR }: OracleOptions = {},
+  by: 'replay' | 'npm-processes' = 'replay',
 ): string {
   const key = createHash('sha256').update(JSON.stringify({
     scripts: JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).scripts ?? {},
@@ -368,9 +398,41 @@ function oracleCacheEntry(
     npmVersion: JSON.parse(readFileSync(resolve(dirname(npmCli), '..', 'package.json'), 'utf8')).version,
     npmArgs: ORACLE_NPM_ARGS,
     shims,
-    replay: readFileSync(NPM_REPLAY, 'utf8'),
+    ...(by === 'replay' ? { replay: readFileSync(NPM_REPLAY, 'utf8') } : { by, node: process.version }),
   })).digest('hex');
   return join(cacheDir, `${key}.json`);
+}
+
+/** Reads a cached expansion; undefined on a miss. */
+function readCachedLeaves(entry: string): string[] | undefined {
+  try {
+    const { leaves } = JSON.parse(readFileSync(entry, 'utf8'));
+    if (Array.isArray(leaves) && leaves.every((l) => typeof l === 'string')) return leaves;
+  } catch { /* miss */ }
+  return undefined;
+}
+
+/** Writes a cache entry; concurrent writers each rename a complete file into place. */
+function writeCachedLeaves(entry: string, leaves: string[]): void {
+  mkdirSync(dirname(entry), { recursive: true });
+  const tmp = `${entry}.${process.pid}.${Date.now()}.tmp`;
+  writeFileSync(tmp, JSON.stringify({ leaves }));
+  renameSync(tmp, entry);
+}
+
+/**
+ * npmProcessExpansion (one real npm process per npm call), read from its
+ * cache entry when present: the reference the replay helper is checked against.
+ */
+async function cachedNpmProcessExpansion(
+  root: string, { bin, shims }: LeafShims, options: OracleOptions = {},
+): Promise<{ leaves: string[]; cached: boolean }> {
+  const entry = oracleCacheEntry(root, shims, options, 'npm-processes');
+  const cached = readCachedLeaves(entry);
+  if (cached) return { leaves: cached, cached: true };
+  const leaves = await npmProcessExpansion(root, bin, options.npmCli);
+  writeCachedLeaves(entry, leaves);
+  return { leaves, cached: false };
 }
 
 /**
@@ -385,31 +447,32 @@ async function npmExpansion(
 ): Promise<{ leaves: string[]; cached: boolean }> {
   const { npmCli = NPM_CLI } = options;
   const entry = oracleCacheEntry(root, shims, options);
-  try {
-    const { leaves } = JSON.parse(readFileSync(entry, 'utf8'));
-    if (Array.isArray(leaves) && leaves.every((l) => typeof l === 'string')) return { leaves, cached: true };
-  } catch { /* miss */ }
+  const cached = readCachedLeaves(entry);
+  if (cached) return { leaves: cached, cached: true };
 
   const leaves = await npmReplayExpansion(root, bin, npmCli);
-  // Concurrent writers each rename a complete file into place.
-  mkdirSync(dirname(entry), { recursive: true });
-  const tmp = `${entry}.${process.pid}.${Date.now()}.tmp`;
-  writeFileSync(tmp, JSON.stringify({ leaves }));
-  renameSync(tmp, entry);
+  writeCachedLeaves(entry, leaves);
   return { leaves, cached: false };
 }
 
 // --------------------------------------------------------------------- tests
 
+describe('fixture work', () => {
+  it('initializes one git repository per file, whatever the number of fixture roots', () => {
+    fixtureRoot({ scripts: { precommit: 'node --test tests/a.test.cjs' } });
+    gitRoot('precommit-hook-runner-guard-');
+    expect(existsSync(join(gitRoot('precommit-hook-runner-guard-'), '.git', 'HEAD')), 'a fixture root is a git repository').toBe(true);
+    expect(spawns.commands.filter((command) => command === 'git'), 'git runs once, for the template').toEqual(['git']);
+  });
+});
+
 describe('pre-commit hook runner: same commands as the sequential hook', () => {
   it('runs exactly the leaf commands that npm run precommit runs, on the real package.json', async () => {
     expect(existsSync(NPM_CLI), `npm-cli.js next to ${NODE}`).toBe(true);
-    const root = mkdtempSync(join(tmpdir(), 'precommit-hook-oracle-'));
-    roots.push(root);
+    const root = gitRoot('precommit-hook-oracle-');
     mkdirSync(join(root, 'scripts'));
     copyFileSync(join(REPO_ROOT, 'package.json'), join(root, 'package.json'));
     copyFileSync(join(REPO_ROOT, 'scripts', 'with-timeout.sh'), join(root, 'scripts', 'with-timeout.sh'));
-    execFileSync('git', ['init', '-q'], { cwd: root });
 
     // Oracle: what npm runs for the `npm run precommit` .husky/pre-commit ran.
     const shimmed = writeLeafShims();
@@ -426,8 +489,7 @@ describe('pre-commit hook runner: same commands as the sequential hook', () => {
   });
 
   it('replays nested npm calls in one process with the same leaves as one npm process per call', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'precommit-hook-oracle-replay-'));
-    roots.push(root);
+    const root = gitRoot('precommit-hook-oracle-replay-');
     mkdirSync(join(root, 'scripts'));
     copyFileSync(join(REPO_ROOT, 'scripts', 'with-timeout.sh'), join(root, 'scripts', 'with-timeout.sh'));
     // The constructs the real precommit chain uses (a nested `npm run` behind
@@ -445,10 +507,9 @@ describe('pre-commit hook runner: same commands as the sequential hook', () => {
         postlint: 'npx eslint .',
       },
     }));
-    execFileSync('git', ['init', '-q'], { cwd: root });
-    const { bin } = writeLeafShims();
+    const shimmed = writeLeafShims();
 
-    const replayed = await npmReplayExpansion(root, bin);
+    const replayed = await npmReplayExpansion(root, shimmed.bin);
     expect(replayed).toEqual([
       'node --test a.test.cjs',
       'node scripts/prelint.cjs',
@@ -456,7 +517,11 @@ describe('pre-commit hook runner: same commands as the sequential hook', () => {
       'tsc --noEmit --fix',
       'vitest run --dir tests/',
     ]);
-    expect(await npmProcessExpansion(root, bin)).toEqual(replayed);
+    const before = spawns.argvs.length;
+    const reference = await cachedNpmProcessExpansion(root, shimmed);
+    expect(reference.leaves).toEqual(replayed);
+    const npmProcesses = spawns.argvs.slice(before).filter((argv) => argv[0] === NPM_CLI);
+    expect(npmProcesses.length, 'real npm runs only when the reference is not cached').toBe(reference.cached ? 0 : 1);
   });
 
   it('keys the cached oracle on the scripts, with-timeout.sh and the npm version, and expands with npm only on a miss', async () => {

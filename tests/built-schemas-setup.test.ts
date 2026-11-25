@@ -8,25 +8,33 @@
 //     that, so an upgrade that changes the order fails here instead of
 //     silently testing against a stale tree.
 // The build itself is replaced by a recorder, so nothing here builds or reads
-// the tree. Nothing here asserts on time.
-import { execFile } from 'node:child_process';
+// the tree. Nothing here asserts on time. The config and the fixture's vitest
+// runs load in this worker (tests/helpers/vitest-config-env.ts), under the
+// environment and argv their processes would have had; neither starts a
+// process.
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import { promisify } from 'node:util';
-import { afterEach, describe, expect, it } from 'vitest';
+import { Writable } from 'node:stream';
+import { fileURLToPath } from 'node:url';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { startVitest } from 'vitest/node';
+import { loadConfig, rootSuite, withProcessState } from './helpers/vitest-config-env.ts';
 import setup, { BUILT_SCHEMA_FILES } from './setup/built-schemas.js';
 
+// Before any import, so a launcher a module destructures is counted too.
+const spawns = await vi.hoisted(async () => {
+  const { createRequire } = await import('node:module');
+  return createRequire(import.meta.url)('./helpers/spawn-counter.cjs').install() as { count: number; commands: string[] };
+});
+
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const TSX_LOADER = pathToFileURL(createRequire(import.meta.url).resolve('tsx')).href;
 const VITEST_BIN = join(REPO_ROOT, 'node_modules', 'vitest', 'vitest.mjs');
 const FIXTURE = join(REPO_ROOT, 'tests', 'fixtures', 'global-setup-paths');
 const TOOL_GATES = 'tests/addie/compliance-authored-tool-gates.test.ts';
 
-const run = promisify(execFile);
 const dirs: string[] = [];
+const discard = () => new Writable({ write(_chunk, _encoding, done) { done(); } });
 
 afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
@@ -62,17 +70,11 @@ function builds(paths: string[]): number {
 
 describe('tests/setup/built-schemas.ts', () => {
   it('is the root vitest config globalSetup', async () => {
-    const script = [
-      "const { pathToFileURL } = await import('node:url');",
-      'const { default: config } = await import(pathToFileURL(process.argv[1]).href);',
-      // The root suite's options live in the config's precommit:root project.
-      "const suite = config.test.projects.find((p) => p.test?.name === 'precommit:root').test;",
-      'process.stdout.write(JSON.stringify([suite.globalSetup ?? []].flat()));',
-    ].join('\n');
-    const { stdout } = await run(process.execPath, ['--import', TSX_LOADER, '--input-type=module', '-e', script, join(REPO_ROOT, 'vitest.config.ts')], {
-      cwd: REPO_ROOT, env: cleanEnv(), encoding: 'utf8',
-    });
-    expect(JSON.parse(stdout)).toEqual(['./tests/setup/built-schemas.ts']);
+    const before = spawns.count;
+    // The root suite's options live in the config's precommit:root project.
+    const suite = rootSuite(await loadConfig('vitest.config.ts', cleanEnv(), REPO_ROOT));
+    expect([suite?.globalSetup ?? []].flat()).toEqual(['./tests/setup/built-schemas.ts']);
+    expect(spawns.commands.slice(before), 'loading the config starts no process').toEqual([]);
   });
 
   it('lists only files that exist, the tool-gates file among them', () => {
@@ -94,14 +96,21 @@ describe('tests/setup/built-schemas.ts', () => {
   it("sees exactly the run's files: vitest collects them before global setups start", async () => {
     const out = mkdtempSync(join(tmpdir(), 'global-setup-paths-'));
     dirs.push(out);
-    const recorded = async (args: string[], name: string): Promise<string[]> => {
+    const config = join(FIXTURE, 'global-setup-paths.config.ts');
+    // `vitest run --config <fixture config> [filter]` from the fixture directory.
+    const recorded = async (filters: string[], name: string): Promise<string[]> => {
       const file = join(out, `${name}.json`);
-      await run(process.execPath, [VITEST_BIN, 'run', '--config', join(FIXTURE, 'global-setup-paths.config.ts'), ...args], {
-        cwd: FIXTURE, env: cleanEnv({ GLOBAL_SETUP_PATHS_OUT: file }), encoding: 'utf8',
+      const argv = [process.execPath, VITEST_BIN, 'run', '--config', config, ...filters];
+      const exitCode = await withProcessState({ env: cleanEnv({ GLOBAL_SETUP_PATHS_OUT: file }), cwd: FIXTURE, argv }, async () => {
+        await startVitest('test', filters, { config, watch: false, run: true }, {}, { stdout: discard(), stderr: discard() });
+        return process.exitCode ?? 0;
       });
+      expect(exitCode, `vitest run ${filters.join(' ')} passes`).toBe(0);
       return (JSON.parse(readFileSync(file, 'utf8')) as string[]).map((path) => path.slice(FIXTURE.length + 1)).sort();
     };
+    const before = spawns.count;
     expect(await recorded(['a.fixture.ts'], 'one')).toEqual(['a.fixture.ts']);
     expect(await recorded([], 'all')).toEqual(['a.fixture.ts', 'b.fixture.ts']);
+    expect(spawns.commands.slice(before), 'the fixture runs start no process (threads pool)').toEqual([]);
   });
 });

@@ -9,16 +9,24 @@
 // is unset; a preset path wins and '' passes through (Node treats '' as off),
 // the validator cache's rule. NODE_DISABLE_COMPILE_CACHE is Node's own off
 // switch, and the config adds nothing when it is set.
-// Each case runs the real line or loads the real config and asserts what the
-// process sees; nothing here asserts on time.
+// Each case runs the real line in sh, or loads the real config in this worker
+// (tests/helpers/vitest-config-env.ts), and asserts what the process sees;
+// nothing here asserts on time. The work guard: loading a config starts no
+// process.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import gitObjectFixture from './helpers/git-object-fixture.cjs';
-import vitestConfigEnv from './helpers/vitest-config-env.cjs';
+import * as vitestConfigEnv from './helpers/vitest-config-env.ts';
+
+// Before any import, so a launcher a module destructures is counted too.
+const spawns = await vi.hoisted(async () => {
+  const { createRequire } = await import('node:module');
+  return createRequire(import.meta.url)('./helpers/spawn-counter.cjs').install() as { count: number; commands: string[] };
+});
 
 const { fixtureEnv } = gitObjectFixture;
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -84,21 +92,23 @@ describe.each(HOOKS)('.husky/%s: NODE_COMPILE_CACHE', (hook) => {
 
 describe('server/vitest.config.ts: NODE_COMPILE_CACHE', () => {
   const CONFIG = 'server/vitest.config.ts';
-  function resolvedTestEnv(env: NodeJS.ProcessEnv): Record<string, string> {
-    const result = vitestConfigEnv.resolvedTestEnv(CONFIG, env, fixtureRepo());
-    expect(result.status, result.stderr).toBe(0);
-    return result.env;
+  async function resolvedTestEnv(env: NodeJS.ProcessEnv): Promise<Record<string, string>> {
+    const cwd = fixtureRepo();
+    const before = spawns.count;
+    const resolved = await vitestConfigEnv.resolvedTestEnv(CONFIG, env, cwd);
+    expect(spawns.commands.slice(before), `loading ${CONFIG} starts no process`).toEqual([]);
+    return resolved;
   }
 
-  it('defaults to <root>/node_modules/.cache/node-compile-cache, the path .husky/pre-push exports', () => {
-    expect(resolvedTestEnv(cleanEnv())).toMatchObject({ NODE_COMPILE_CACHE: join(REPO_ROOT, DEFAULT_CACHE) });
+  it('defaults to <root>/node_modules/.cache/node-compile-cache, the path .husky/pre-push exports', async () => {
+    expect(await resolvedTestEnv(cleanEnv())).toMatchObject({ NODE_COMPILE_CACHE: join(REPO_ROOT, DEFAULT_CACHE) });
   });
 
   it.each([
     ["''", { NODE_COMPILE_CACHE: '' }],
     ['a custom absolute path', { NODE_COMPILE_CACHE: join(tmpdir(), 'custom-node-compile-cache') }],
     ['NODE_DISABLE_COMPILE_CACHE=1', { NODE_DISABLE_COMPILE_CACHE: '1' }],
-  ])('adds no override when the shell sets %s', (_label, extra) => {
-    expect(resolvedTestEnv(cleanEnv(extra))).not.toHaveProperty('NODE_COMPILE_CACHE');
+  ])('adds no override when the shell sets %s', async (_label, extra) => {
+    expect(await resolvedTestEnv(cleanEnv(extra))).not.toHaveProperty('NODE_COMPILE_CACHE');
   });
 });

@@ -69,6 +69,18 @@ function testFiles(dir: string, out: string[] = []): string[] {
 const only = (files: string[]) => (files.length ? files : ['__no_files__']);
 
 /**
+ * Worker options that load a module into every forks-pool worker, named by
+ * ADCP_VITEST_WORKER_IMPORT (a module URL; the profilers set it to
+ * scripts/profile-precommit/vitest-worker-profiler.mjs). vitest applies a
+ * command-line --execArgv to the root config only, never to its inline
+ * projects, so each project carries it in its own options.
+ */
+export function workerImportOptions(env: NodeJS.ProcessEnv = process.env): { execArgv?: string[] } {
+  const url = env.ADCP_VITEST_WORKER_IMPORT;
+  return url ? { execArgv: [`--import=${url}`] } : {};
+}
+
+/**
  * The options every server project has: in server/vitest.config.ts its root
  * `test` options (the projects extend them), in the root config each
  * project's own.
@@ -90,6 +102,7 @@ export function serverTestBase() {
     // both off.
     unstubEnvs: true,
     unstubGlobals: true,
+    ...workerImportOptions(),
   };
 }
 

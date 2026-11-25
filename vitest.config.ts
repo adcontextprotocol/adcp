@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module';
 import { defineConfig } from 'vitest/config';
 import type { TestProjectInlineConfiguration } from 'vitest/config';
-import { serverProjects, serverTestBase } from './server/vitest.projects.ts';
+import { serverProjects, serverTestBase, workerImportOptions } from './server/vitest.projects.ts';
 
 // The one entry point for the checks the pre-commit hook runs. Its projects
 // are named for the hook, and `vitest run --project 'precommit:*'` is the
@@ -21,6 +21,15 @@ import { serverProjects, serverTestBase } from './server/vitest.projects.ts';
 // The server and checks projects exist only when a --project argument names
 // them, so other runs of this config (the root suite, the node-tests scripts,
 // `vitest list`, editors) never read the git index or scan the server tree.
+//
+// vitest loads this file once. It loads it again for every inline project
+// that gets a Vite server of its own, which a project does when it sets
+// `test.root` (or another option that changes the Vite config) and inherits
+// this config: nine loads, nine server-tree scans and nine `git diff
+// --cached` calls per hook run. So the root is set once, at the top level,
+// and the light projects share this config's Vite server; the server
+// projects, whose root is server/, take nothing from this file
+// (`extends: false`), so their servers are built without loading it.
 
 const require = createRequire(import.meta.url);
 // Workers share the @adcp/sdk validator cache with the storyboard matrix,
@@ -54,7 +63,6 @@ const requested = (name: string) => patterns.some((pattern) => pattern.test(name
 
 // The root suite's options (the whole root config before tp-jyw.51).
 const ROOT_SUITE = {
-  root: ROOT,
   // Forks, not threads: with threads every worker's heap lives in the one
   // vitest process (5+ GB), and each child process a test spawns forks that
   // whole address space (57-70 ms of kernel time per spawn on Linux, against
@@ -70,6 +78,8 @@ const ROOT_SUITE = {
   // that include a file that reads it (BUILT_SCHEMA_FILES there).
   globalSetup: ['./tests/setup/built-schemas.ts'],
   env: validatorCacheEnv(process.env, ROOT),
+  // The profilers' worker module (ADCP_VITEST_WORKER_IMPORT), in every project.
+  ...workerImportOptions(),
 };
 // node:test files; the hook's own run in precommit:node-tests.
 const ROOT_SUITE_EXCLUDE = ['**/node_modules/**', '**/dist/**', '**/.addie-repos/**', '**/*.test.cjs'];
@@ -91,7 +101,6 @@ const projects: TestProjectInlineConfiguration[] = [
     // of its own per file and node --test's limit, as node --test ran them.
     test: {
       name: 'precommit:node-tests',
-      root: ROOT,
       include: NODE_TEST_FILES.length ? NODE_TEST_FILES : ['__no_files__'],
       // CommonJS cannot require vitest; the files use its globals.
       globals: true,
@@ -102,6 +111,7 @@ const projects: TestProjectInlineConfiguration[] = [
       // node --import tsx: two of them require server TypeScript modules.
       setupFiles: ['./tests/setup/tsx-require.cjs'],
       env: validatorCacheEnv(process.env, ROOT),
+      ...workerImportOptions(),
     },
   },
 ];
@@ -112,11 +122,11 @@ if (requested('precommit:checks')) {
     // the governance JWS vector check, the advisory image check.
     test: {
       name: 'precommit:checks',
-      root: ROOT,
       include: ['tests/hook-checks/*.test.ts'],
       pool: 'forks',
       // Unbounded, as the hook ran these commands: tsc never had a limit.
       testTimeout: 0,
+      ...workerImportOptions(),
     },
   });
 }
@@ -130,6 +140,7 @@ if (SERVER_PROJECT_NAMES.some(requested)) {
   for (const project of serverProjects({ prefix: SERVER_PREFIX, unitFilter, serial: false })) {
     const base = serverTestBase();
     projects.push({
+      extends: false,
       test: {
         ...base,
         ...project,
@@ -145,6 +156,8 @@ if (SERVER_PROJECT_NAMES.some(requested)) {
 }
 
 export default defineConfig({
+  // The light projects' root; they inherit it from here.
+  root: ROOT,
   test: {
     reporters: ['default', './scripts/vitest-hook-reporter.mjs'],
     projects,

@@ -2,25 +2,41 @@
 // config's projects (tp-jyw.51): `vitest run --project 'precommit:*'`.
 // Driven through the public surfaces only:
 //   - `node scripts/profile-precommit.mjs plan` (what the hook runs);
-//   - `vitest list --filesOnly --project ... --json=<file>` (which files each
+//   - vitest's Node API, as `vitest list --filesOnly --project ...` drives it
+//     (createVitest + getRelevantTestSpecifications: which files each
 //     precommit: project runs);
-//   - `vitest run` over a throwaway config that uses
-//     scripts/vitest-hook-reporter.mjs (fail-fast between groups).
+//   - vitest's startVitest, as `vitest run` drives it, over a throwaway config
+//     that uses scripts/vitest-hook-reporter.mjs (fail-fast between groups).
+// The vitest runs are in this worker, under the environment and argv the CLI
+// process would have had (tests/helpers/vitest-config-env.ts): the config
+// reads both when vitest loads it, and a whole vitest process per case cost
+// a second of CPU or more. The work guard: no listing or fixture run starts
+// a process other than the config's own git call.
 // The "before" file sets are computed from the tree at run time with the
 // rules the old hook steps used (root suite: vitest's default include under
 // tests/ minus *.test.cjs; server step: server/vitest.config.ts over
 // tests/unit/ and src/), so a test file added later is covered without
 // editing this file. The 22 node:test files the hook ran are pinned below.
-// Nothing asserts on wall-clock time; every child is SIGKILLed by a guard
-// well inside the root project's 10 s test timeout (vitest.config.ts), so a
-// hang fails with its own message.
+// Nothing asserts on wall-clock time; every plan child is SIGKILLed by a
+// guard well inside the root project's 10 s test timeout (vitest.config.ts),
+// so a hang fails with its own message.
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve, sep } from 'node:path';
+import { Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
+import { createVitest, startVitest } from 'vitest/node';
+import { runAdvisoryCheck } from './hook-checks/command.ts';
+import { withProcessState } from './helpers/vitest-config-env.ts';
+
+// Before any import, so a launcher a module destructures is counted too.
+const spawns = await vi.hoisted(async () => {
+  const { createRequire: requireFrom } = await import('node:module');
+  return requireFrom(import.meta.url)('./helpers/spawn-counter.cjs').install() as { count: number; commands: string[] };
+});
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const NODE = process.execPath;
@@ -127,16 +143,63 @@ interface Listing {
   output: string;
 }
 
-/** `vitest list --filesOnly <args> --json=<file>` from the repo root, grouped by project. */
-async function vitestList(args: string[], env: Record<string, string> = {}): Promise<Listing> {
-  const out = join(scratchDir('vitest-hook-projects-list-'), 'list.json');
-  const result = await runNode([VITEST_BIN, 'list', '--filesOnly', ...args, `--json=${out}`], { env: childEnv(env) });
+/** A stream that keeps what is written to it. */
+function collector(): Writable & { text: () => string } {
+  const chunks: string[] = [];
+  const stream = new Writable({ write(chunk, _encoding, done) { chunks.push(String(chunk)); done(); } });
+  return Object.assign(stream, { text: () => chunks.join('') });
+}
+
+/**
+ * Runs fn as the vitest CLI process `vitest <argv>` from cwd with env would
+ * run it: that environment and argv, vitest's logger and every console call
+ * collected as its output. Asserts that fn starts no process except at
+ * most `gitCalls` git calls: the staged-file plan's `git diff --cached`,
+ * once per load of vitest.config.ts, which vitest loads once per run.
+ */
+async function asVitestProcess<T>(
+  argv: string[],
+  { cwd = REPO_ROOT, env = childEnv(), gitCalls = 0 },
+  fn: (streams: { stdout: Writable; stderr: Writable }) => Promise<T>,
+): Promise<{ value: T; output: string; exitCode: number }> {
+  const stdout = collector();
+  const stderr = collector();
+  const before = spawns.count;
+  const consoleLines: string[] = [];
+  const outcome = await withProcessState({ env, cwd, argv: [NODE, VITEST_BIN, ...argv] }, async () => {
+    const spies = (['log', 'info', 'warn', 'error'] as const).map((method) =>
+      vi.spyOn(console, method).mockImplementation((...args: unknown[]) => { consoleLines.push(args.map(String).join(' ')); }));
+    try {
+      const value = await fn({ stdout, stderr });
+      return { value, exitCode: Number(process.exitCode ?? 0) };
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
+  });
+  const started = spawns.commands.slice(before);
+  expect(started.filter((command) => command !== 'git'), `vitest ${argv.join(' ')} in this worker starts no process`).toEqual([]);
+  expect(started.length, `vitest ${argv.join(' ')} loads vitest.config.ts once: at most ${gitCalls} git call(s)`).toBeLessThanOrEqual(gitCalls);
   // The checkout path may itself contain "git" (~/git/adcp); keep it out of
   // the git-warning checks.
-  const output = `${result.stdout}\n${result.stderr}`.split(REPO_ROOT).join('<repo>');
-  expect(result.code, `vitest list ${args.join(' ')} exits 0\n${output}`).toBe(0);
-  const parsed = JSON.parse(readFileSync(out, 'utf8')) as Array<{ file: string; projectName?: string }>;
-  const entries = parsed.map((entry) => ({ project: entry.projectName ?? '', file: toRepoPath(entry.file) }));
+  const output = [stdout.text(), stderr.text(), ...consoleLines].join('\n').split(REPO_ROOT).join('<repo>');
+  return { ...outcome, output };
+}
+
+/** `vitest list --filesOnly <args>` from the repo root, grouped by project. */
+async function vitestList(args: string[], env: Record<string, string> = {}, { gitCalls = 1 } = {}): Promise<Listing> {
+  const configIndex = args.indexOf('--config');
+  const config = configIndex >= 0 ? join(REPO_ROOT, args[configIndex + 1]) : undefined;
+  const projects = args.flatMap((arg, i) => (args[i - 1] === '--project' ? [arg] : []));
+  const filters = args.filter((arg, i) => !arg.startsWith('--') && args[i - 1] !== '--project' && args[i - 1] !== '--config');
+  const { value: specs, output } = await asVitestProcess(['list', '--filesOnly', ...args], { env: childEnv(env), gitCalls }, async ({ stdout, stderr }) => {
+    const ctx = await createVitest('test', { config, ...(projects.length ? { project: projects } : {}), watch: false, run: true }, {}, { stdout, stderr });
+    try {
+      return await ctx.getRelevantTestSpecifications(filters);
+    } finally {
+      await ctx.close();
+    }
+  });
+  const entries = specs.map((spec) => ({ project: spec.project.name, file: toRepoPath(spec.moduleId) }));
   const byProject = new Map<string, string[]>();
   for (const { project, file } of entries) byProject.set(project, [...(byProject.get(project) ?? []), file]);
   for (const files of byProject.values()) files.sort();
@@ -336,6 +399,31 @@ describe("vitest list --project 'precommit:*' (the hook's file selection)", () =
   });
 });
 
+describe("worker import (ADCP_VITEST_WORKER_IMPORT, the profilers' worker module)", () => {
+  /** Each precommit: project's resolved worker execArgv, as `vitest run --project 'precommit:*'` resolves them. */
+  async function workerExecArgv(env: Record<string, string>): Promise<Map<string, string[]>> {
+    const { value } = await asVitestProcess(['run', '--project', 'precommit:*'], { env: childEnv({ ADCP_PRECOMMIT_SERVER_UNIT_PLAN: 'full', ...env }), gitCalls: 1 }, async ({ stdout, stderr }) => {
+      const ctx = await createVitest('test', { project: ['precommit:*'], watch: false, run: true }, {}, { stdout, stderr });
+      try {
+        return new Map(ctx.projects.map((project) => [project.name, [...(project.config.execArgv ?? [])]]));
+      } finally {
+        await ctx.close();
+      }
+    });
+    return value;
+  }
+
+  it('reaches every precommit: project, server projects included, and none without it', async () => {
+    // vitest applies a command-line --execArgv to the root config only, so
+    // a profiler that passed one lost every project's fork workers.
+    const url = 'file:///profiler-fixture.mjs?dirs=e30';
+    const withImport = await workerExecArgv({ ADCP_VITEST_WORKER_IMPORT: url });
+    expect([...withImport.keys()].filter((name) => name.startsWith('precommit:server-')).length).toBeGreaterThan(0);
+    for (const [name, execArgv] of withImport) expect(execArgv, name).toContain(`--import=${url}`);
+    for (const [name, execArgv] of await workerExecArgv({})) expect(execArgv.some((arg) => arg.includes('profiler-fixture')), name).toBe(false);
+  });
+});
+
 describe('vitest list --project precommit:root (the root suite; no hook side effects)', () => {
   it('lists only precommit:root, even with the full server plan', async () => {
     const listing = await vitestList(['--project', 'precommit:root'], { ADCP_PRECOMMIT_SERVER_UNIT_PLAN: 'full' });
@@ -347,7 +435,7 @@ describe('vitest list --project precommit:root (the root suite; no hook side eff
   it('does not run the staged-file plan: a broken git is never called', async () => {
     const listing = await vitestList(['--project', 'precommit:root'], {
       GIT_DIR: brokenGitDir(),
-    });
+    }, { gitCalls: 0 });
 
     expect([...listing.byProject.keys()]).toEqual(['precommit:root']);
     expect(listing.output, 'no git call, so no git warning').not.toMatch(/git/i);
@@ -376,6 +464,9 @@ function groupsFixture(): GroupsFixture {
 const root = import.meta.dirname;
 export default {
   test: {
+    // Worker threads: the run starts no process (the reporter sees the same
+    // groups and modules in any pool).
+    pool: 'threads',
     reporters: ['default', ${JSON.stringify(REPORTER)}],
     projects: [
       { test: { name: 'A', root, globals: true, include: ['a/*.test.js'], sequence: { groupOrder: 0 } } },
@@ -400,11 +491,13 @@ test('b check', () => {
   return { root, marker };
 }
 
-function runGroups(fixture: GroupsFixture, aFails: boolean): Promise<RunResult> {
-  return runNode([VITEST_BIN, 'run', '--config', join(fixture.root, 'vitest.config.mjs')], {
-    cwd: fixture.root,
-    env: childEnv({ FIXTURE_A_FAILS: aFails ? '1' : '0' }),
+/** `vitest run --config <fixture>/vitest.config.mjs` from the fixture root, in this worker. */
+async function runGroups(fixture: GroupsFixture, env: Record<string, string>): Promise<{ code: number; output: string }> {
+  const config = join(fixture.root, 'vitest.config.mjs');
+  const { exitCode, output } = await asVitestProcess(['run', '--config', config], { cwd: fixture.root, env: childEnv(env) }, async ({ stdout, stderr }) => {
+    await startVitest('test', [], { config, watch: false, run: true }, {}, { stdout, stderr });
   });
+  return { code: exitCode, output };
 }
 
 describe('fail-fast between groups (scripts/vitest-hook-reporter.mjs)', () => {
@@ -412,10 +505,9 @@ describe('fail-fast between groups (scripts/vitest-hook-reporter.mjs)', () => {
     expect(existsSync(REPORTER), `${toRepoPath(REPORTER)} exists`).toBe(true);
     const fixture = groupsFixture();
 
-    const result = await runGroups(fixture, true);
-    const output = `${result.stdout}\n${result.stderr}`;
+    const { code, output } = await runGroups(fixture, { FIXTURE_A_FAILS: '1' });
 
-    expect(result.code, `vitest run fails\n${output}`).not.toBe(0);
+    expect(code, `vitest run fails\n${output}`).not.toBe(0);
     expect(output, 'group 0 collects all: a1 failure reported').toContain('a1 failed on purpose');
     expect(output, 'group 0 collects all: a2 failure reported').toContain('a2 failed on purpose');
     expect(existsSync(fixture.marker), `group 1 test body never runs\n${output}`).toBe(false);
@@ -424,13 +516,9 @@ describe('fail-fast between groups (scripts/vitest-hook-reporter.mjs)', () => {
   it('ADCP_PRECOMMIT_KEEP_GOING=1 runs the later group after a failure', async () => {
     const fixture = groupsFixture();
 
-    const result = await runNode([VITEST_BIN, 'run', '--config', join(fixture.root, 'vitest.config.mjs')], {
-      cwd: fixture.root,
-      env: childEnv({ FIXTURE_A_FAILS: '1', ADCP_PRECOMMIT_KEEP_GOING: '1' }),
-    });
-    const output = `${result.stdout}\n${result.stderr}`;
+    const { code, output } = await runGroups(fixture, { FIXTURE_A_FAILS: '1', ADCP_PRECOMMIT_KEEP_GOING: '1' });
 
-    expect(result.code, `vitest run fails\n${output}`).not.toBe(0);
+    expect(code, `vitest run fails\n${output}`).not.toBe(0);
     expect(existsSync(fixture.marker), `group 1 test body ran\n${output}`).toBe(true);
   });
 
@@ -438,10 +526,9 @@ describe('fail-fast between groups (scripts/vitest-hook-reporter.mjs)', () => {
     expect(existsSync(REPORTER), `${toRepoPath(REPORTER)} exists`).toBe(true);
     const fixture = groupsFixture();
 
-    const result = await runGroups(fixture, false);
-    const output = `${result.stdout}\n${result.stderr}`;
+    const { code, output } = await runGroups(fixture, { FIXTURE_A_FAILS: '0' });
 
-    expect(result.code, `vitest run passes\n${output}`).toBe(0);
+    expect(code, `vitest run passes\n${output}`).toBe(0);
     expect(existsSync(fixture.marker), `group 1 test body ran\n${output}`).toBe(true);
   });
 });
@@ -449,23 +536,26 @@ describe('fail-fast between groups (scripts/vitest-hook-reporter.mjs)', () => {
 // ------------------------------------------------------- advisory checks
 
 describe('advisory checks (tests/hook-checks/command.ts runAdvisoryCheck)', () => {
+  // In-process, as a hook check's test calls it: a check's test passes unless
+  // it throws, and a warning annotation does not fail it. The command is one
+  // sh process, as the hook check runs it.
   it('a failing advisory command prints its output and a warning, and its test passes', async () => {
-    const root = scratchDir('vitest-hook-advisory-');
-    const command = join(REPO_ROOT, 'tests', 'hook-checks', 'command.ts');
-    writeFileSync(join(root, 'vitest.config.mjs'), 'export default { test: { root: import.meta.dirname, include: [\'*.test.ts\'] } };\n');
-    writeFileSync(join(root, 'advisory.test.ts'), `
-import { test } from 'vitest';
-import { runAdvisoryCheck } from ${JSON.stringify(command)};
-test('fixture advisory check', async ({ annotate }) => {
-  await runAdvisoryCheck('echo "images/huge.png exceeds 700KB" >&2; exit 3', annotate);
-});
-`);
+    const annotations: Array<{ message: string; type?: string }> = [];
+    const printed: string[] = [];
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation((chunk: string | Uint8Array) => { printed.push(String(chunk)); return true; });
+    let result;
+    try {
+      result = await runAdvisoryCheck('echo "images/huge.png exceeds 700KB" >&2; exit 3', async (message, type) => {
+        annotations.push({ message, type });
+      });
+    } finally {
+      write.mockRestore();
+    }
+    const output = printed.join('');
 
-    const result = await runNode([VITEST_BIN, 'run', '--config', join(root, 'vitest.config.mjs')], { cwd: root });
-    const output = `${result.stdout}\n${result.stderr}`;
-
-    expect(result.code, `an advisory failure does not fail the run\n${output}`).toBe(0);
+    expect(result.status, 'the command failed, and runAdvisoryCheck returned instead of throwing').toBe(3);
     expect(output).toContain('images/huge.png exceeds 700KB');
     expect(output).toMatch(/advisory: .* exited 3; it does not block the commit/);
+    expect(annotations.map(({ type }) => type), 'the failure is recorded as a warning annotation').toEqual(['warning']);
   });
 });
