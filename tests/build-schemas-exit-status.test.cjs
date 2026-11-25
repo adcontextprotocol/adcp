@@ -13,69 +13,32 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
-const { spawn } = require('node:child_process');
+const {
+  writeFixtureTree: writeTree, removeFixtureTrees, runBuild, readBundled,
+} = require('./helpers/build-schemas-fixture.cjs');
 
-const BUILD_SCRIPT = path.join(__dirname, '..', 'scripts', 'build-schemas.cjs');
 const ROOTS = ['core/tasks-get-alpha-request.json', 'core/tasks-get-beta-request.json'];
 
-const tempDirs = [];
-test.after(() => {
-  for (const dir of tempDirs) fs.rmSync(dir, { recursive: true, force: true });
-});
-
-function writeJson(file, value) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(value, null, 2));
-}
+test.after(removeFixtureTrees);
 
 /**
- * Writes a repository tree with the smallest source the build accepts: a
- * registry, the extension registry placeholder, one error code, no task types,
- * a permissive manifest schema, and the bundled roots. `marked(title)` gives the two schemas each root marks
- * with `x-adcp-hoist`.
+ * Writes a fixture tree with the bundled roots. `marked(title)` gives the
+ * two schemas each root marks with `x-adcp-hoist`.
  */
 function writeFixtureTree(marked) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'adcp-build-exit-'));
-  tempDirs.push(root);
-  const source = path.join(root, 'static/schemas/source');
-  writeJson(path.join(root, 'package.json'), { version: '0.0.0' });
-  writeJson(path.join(source, 'index.json'), {});
-  writeJson(path.join(source, 'manifest.schema.json'), {});
-  writeJson(path.join(source, 'extensions/index.json'), {});
-  writeJson(path.join(source, 'enums/task-type.json'), { enum: [] });
-  writeJson(path.join(source, 'enums/error-code.json'), {
-    enum: ['FIXTURE_ERROR'],
-    enumMetadata: { FIXTURE_ERROR: { recovery: 'terminal', suggestion: 'Fix the fixture.' } },
-    enumDescriptions: { FIXTURE_ERROR: 'A fixture error. Recovery: terminal.' },
-  });
+  const schemas = {};
   for (const relativePath of ROOTS) {
     const title = `Fixture${path.basename(relativePath, '.json').replace(/\W/g, '')}`;
     const [first, second] = marked(title);
-    writeJson(path.join(source, relativePath), {
+    schemas[relativePath] = {
       $schema: 'http://json-schema.org/draft-07/schema#',
       $id: `/schemas/${relativePath}`,
       type: 'object',
       properties: { first, second },
-    });
+    };
   }
-  return root;
-}
-
-/** Runs the build against `root`; resolves with its exit status and output. */
-function runBuild(root) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [BUILD_SCRIPT, '--root', root], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    let output = '';
-    child.stdout.on('data', chunk => { output += chunk; });
-    child.stderr.on('data', chunk => { output += chunk; });
-    child.on('error', reject);
-    child.on('close', status => resolve({ status, output }));
-  });
+  return writeTree(schemas);
 }
 
 const marker = (title, type) => ({ 'x-adcp-hoist': true, title, type });
@@ -86,8 +49,7 @@ test('a build where every root bundles exits 0', async () => {
   const { status, output } = await runBuild(root);
   assert.equal(status, 0, output);
   for (const relativePath of ROOTS) {
-    const bundled = JSON.parse(
-      fs.readFileSync(path.join(root, 'dist/schemas/latest/bundled', relativePath), 'utf8'));
+    const bundled = readBundled(root, relativePath);
     assert.deepEqual(bundled.properties.first, bundled.properties.second);
   }
 });

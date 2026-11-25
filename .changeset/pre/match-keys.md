@@ -2,7 +2,7 @@
 "adcontextprotocol": minor
 ---
 
-feat(media-buy): declare supported match keys and connect them to cross-publisher frequency capping (experimental, #8375).
+Declare supported match keys and connect them to cross-publisher frequency capping (experimental, #8375).
 
 Adds `core/match-key.json` (`uid_type`, `vendor` BrandRef, `scopes[]`, `uses[]`, seller-wide `property_types[]`) and `enums/match-key-use.json` (`audience_include`, `audience_exclude`, `frequency_cap`, `identity_match`, `conversion_attribution`). Match keys appear seller-wide as `media_buy.supported_match_keys` on `get_adcp_capabilities`, per product as `Product.identity.match_keys`, and on TMP provider registration as `match_keys` alongside `uid_types`.
 

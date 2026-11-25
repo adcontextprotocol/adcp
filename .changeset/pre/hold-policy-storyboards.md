@@ -1,5 +1,5 @@
 ---
-"adcontextprotocol": patch
+"adcontextprotocol": minor
 ---
 
 Compliance (experimental, `media_buy.hold_policy`, `media_buy.hold_extension`, `media_buy.hold_ranking`): six storyboards cover the hold acceptance cases from #8182. Each seeds products whose `hold_policy` it sets, so any seller that honors seeded policies can run it.

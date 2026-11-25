@@ -1021,6 +1021,9 @@ function buildProduct(
     ...(installments && { installments }),
     ...(collectionTargetingAllowed && { collection_targeting_allowed: collectionTargetingAllowed }),
     ...(offer && { audience_evidence: structuredClone(offer.audienceEvidence) as unknown as Product['audience_evidence'] }),
+    // The same inventory facts controller-seeded fixtures carry, so the
+    // countries and metros discovery filters can evaluate built-in products.
+    ext: { training: { coverage: structuredClone(offer?.coverage ?? pub.coverage) } },
   };
 
   // Every catalog product can join one counter shared across a MediaBuy so

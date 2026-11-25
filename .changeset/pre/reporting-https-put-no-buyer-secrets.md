@@ -2,7 +2,7 @@
 "adcontextprotocol": minor
 ---
 
-spec(reporting): `https_put` file transfer and no buyer secrets for reporting delivery (experimental, #8149).
+`https_put` file transfer and no buyer secrets for reporting delivery (experimental, #8149).
 
 Reliable Reporting managed delivery (`media_buy.reporting_delivery`, experimental):
 

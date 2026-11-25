@@ -58,6 +58,32 @@ export function hasDurableHandlerOutcome(toolName: string): boolean {
   return DURABLE_HANDLER_OUTCOME_TOOL_NAMES.has(toolName);
 }
 
+/**
+ * Durable-handler mutations that may run again with identical input in the
+ * same turn once a call has returned normally.
+ *
+ * A known outcome alone does not make a repeat safe: checkpoint_teaching_progress
+ * inserts a new row per call, so replaying an older checkpoint would make its
+ * evidence the latest. These handlers re-check every gate before writing, so
+ * the retry Sage makes after fixing a prerequisite (a missing checkpoint, an
+ * unmet prerequisite module) is decided afresh, and a repeat after success
+ * takes the handler's own already-recorded path:
+ * - complete_certification_module returns "already recorded as complete"
+ *   without writing or awarding again.
+ * - start_certification_module resumes the in-progress row, keeping its status
+ *   and started_at; like every resume, it advances the attempts counter.
+ */
+export const SAME_TURN_RETRYABLE_TOOLS = [
+  'complete_certification_module',
+  'start_certification_module',
+] as const satisfies readonly (typeof DURABLE_HANDLER_OUTCOME_TOOLS)[number][];
+
+const SAME_TURN_RETRYABLE_TOOL_NAMES = new Set<string>(SAME_TURN_RETRYABLE_TOOLS);
+
+export function isSameTurnRetryable(toolName: string): boolean {
+  return SAME_TURN_RETRYABLE_TOOL_NAMES.has(toolName);
+}
+
 export function isSideEffectTool(toolName: string): boolean {
   // Old tool definitions are not universally annotated with replaySafety.
   // This conservative fallback protects dispatch/replay only; it never

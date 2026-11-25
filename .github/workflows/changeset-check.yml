@@ -9,7 +9,7 @@ jobs:
     name: Check PR title
     runs-on: ubuntu-latest
     # Keep the release-machinery exceptions aligned with the changeset check below.
-    if: ${{ !startsWith(github.head_ref, 'changeset-release/') && !startsWith(github.head_ref, 'forward-merge/') && !startsWith(github.head_ref, 'auto/docs-v') }}
+    if: ${{ github.event.pull_request.head.repo.full_name != github.repository || (!startsWith(github.head_ref, 'changeset-release/') && !startsWith(github.head_ref, 'forward-merge/') && !startsWith(github.head_ref, 'auto/docs-v')) }}
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -38,7 +38,9 @@ jobs:
     #   every forward-merge PR fails this check (see #4306, #4310).
     # - Release docs snapshot PRs (`auto/docs-v*`) — they freeze docs for an
     #   already-published version and do not represent a new package release.
-    if: ${{ !startsWith(github.head_ref, 'changeset-release/') && !startsWith(github.head_ref, 'forward-merge/') && !startsWith(github.head_ref, 'auto/docs-v') }}
+    # Only heads in this repository earn these skips. A fork can name its branch
+    # anything, so a fork PR always runs the check.
+    if: ${{ github.event.pull_request.head.repo.full_name != github.repository || (!startsWith(github.head_ref, 'changeset-release/') && !startsWith(github.head_ref, 'forward-merge/') && !startsWith(github.head_ref, 'auto/docs-v')) }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -50,6 +52,10 @@ jobs:
           node-version: '24'
 
       - name: Check changeset protocol scope
+        env:
+          # The release-audit/ and changeset-release/ exemptions trust the branch
+          # name, so a fork head gets none.
+          CHANGESET_SCOPE_HEAD_REF: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.head_ref || '' }}
         run: node scripts/check-changeset-protocol-scope.cjs origin/${{ github.base_ref }}
 
       - name: Check for changeset
