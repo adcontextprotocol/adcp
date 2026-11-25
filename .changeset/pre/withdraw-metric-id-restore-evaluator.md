@@ -8,4 +8,4 @@ Withdraw `metric_id` from performance standards and restore the `evaluator` valu
 
 **`evaluator` in `x-entity-types`.** Restored with its definition and listed in `x-deprecated-enum-values`. The 3.2.8 versioning page says "Existing values are never removed or renamed." The removal of the experimental `evaluator_id` source form (#8045) stands, so no 3.3 field carries the value.
 
-These are beta-to-beta changes, not changes to a stable release: 3.2.8 has no `metric_id` on performance standards. The betas are immutable, so a seller or SDK built from a beta bundle stops sending and emitting the field. `scripts/lint-additive-minor-baseline.json` drops the two rows these entries covered and is now empty.
+These are beta-to-beta changes, not changes to a stable release: 3.2.8 has no `metric_id` on performance standards. The betas are immutable, so a seller or SDK built from a beta bundle stops sending and emitting the field.

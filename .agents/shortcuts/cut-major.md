@@ -74,6 +74,9 @@ Any changeset describing **website, admin, billing, newsletter, digest, Addie,
 server-infra, migration-only, or operational work** should not exist at all.
 Strip the `"adcontextprotocol": ...` line only as a temporary local diagnosis;
 the durable fix is a PR to `main` that deletes the non-protocol changeset.
+Open it from a `release-audit/<version>` branch: the changeset scope check
+rejects changes to `.changeset/pre/*.md` from any other branch (see
+`cut-beta.md` § Changeset audit).
 
 Keep only protocol/spec/release-surface changesets: schemas, task definitions,
 compliance vectors, normative API/reference docs, release scripts, and generated
