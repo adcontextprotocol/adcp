@@ -156,7 +156,11 @@ describe('product discovery MCP schema parity', () => {
     // Core gender adds its shared predicate and overlay support; merged
     // discovery measures 165,140 bytes / 161.27 KiB, bounded at the next KiB
     // without relaxing standalone-schema parity.
-    expect(totalBytes).toBeLessThanOrEqual(162 * 1024);
+    // Inlining each definition that only one site references removes its
+    // $defs key and its pointer; shared definitions stay in $defs, and the
+    // dereferenced schemas are unchanged. 144,017 bytes / 140.64 KiB
+    // measured, bounded at 141 KiB.
+    expect(totalBytes).toBeLessThanOrEqual(141 * 1024);
 
     const list = tools.find(tool => tool.name === 'list_products')!.inputSchema as JsonSchema;
     const criteria = resolveLocalRef(list, list.properties.criteria);
