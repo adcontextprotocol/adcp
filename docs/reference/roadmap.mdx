@@ -14,34 +14,28 @@ The AdCP roadmap is a public [GitHub Project board](https://github.com/orgs/adco
 
 ## Active release cycles
 
-### 3.2 shipped
+### 3.3 shipped
 
-AdCP 3.2 is generally available as release `3.2.1` (published 2026-09-30,
-wire pin `"3.2"`). See [What's new in AdCP 3.2](/docs/reference/whats-new-in-3-2)
-and the [3.2.1 release notes](/docs/reference/release-notes#version-3-2-1).
-Stable TypeScript and Python SDKs follow the protocol release; Go and Java
-support for 3.2 is planned as a follow-up.
+AdCP 3.3 is generally available as release `3.3.0` (published 2026-12-03,
+wire pin `"3.3"`). See [What's new in AdCP 3.3](/docs/reference/whats-new-in-3-3)
+and the [3.3.0 release notes](/docs/reference/release-notes#version-3-3-0).
+The stable TypeScript SDK ships alongside the protocol release and the Python
+SDK follows; Go and Java do not support 3.3. 3.3 is the last planned 3.x
+minor, and the 3.3.x line continues with patches.
 
-### 3.3 working-group cycle
+AdCP 3.2 (release `3.2.1`, wire pin `"3.2"`) stays supported with security and
+critical fixes. See [What's new in AdCP 3.2](/docs/reference/whats-new-in-3-2).
 
-3.3 will deepen production operation around the lifecycle without forcing
-breaking changes that belong in 4.0.
+### 4.0 working-group cycle
 
-| Workstream | Questions to resolve |
-|---|---|
-| [Acts-for authority and multi-agent delegation](https://github.com/adcontextprotocol/adcp/issues/7063) | Portable delegation, revocation, pure-buyer signing, and specialist-agent boundaries. |
-| [Post-acceptance commercial lifecycle](https://github.com/adcontextprotocol/adcp/issues/7064) | Payment terms, FX, fees, settlement, disputes, credits, and makegoods. |
-| [Cross-channel maturity and offline depth](https://github.com/adcontextprotocol/adcp/issues/7065) | Channel-by-lifecycle evidence and the highest-value print, broadcast, OOH, and audio gaps. |
-| [Production security profile](https://github.com/adcontextprotocol/adcp/issues/7066) | A stronger testable 3.x deployment floor and migration path to mandatory 4.0 controls. |
-| [Capability and routing ergonomics](https://github.com/adcontextprotocol/adcp/issues/7067) | Role-oriented views and precise claims for partial lifecycle implementations. |
-| [Production evidence program](https://github.com/adcontextprotocol/adcp/issues/7068) | Consent-based, machine-observed evidence of exact versions, tasks, environments, and lifecycle stages. |
-
-Each issue starts in exploration and carries `needs-wg-review`. Working groups
-will select bounded 3.3 slices from adopter evidence; incompatible identity,
-account, or security changes move to the 4.0 accumulation window.
-
-What has merged so far is in [What's new in AdCP 3.3](/docs/reference/whats-new-in-3-3),
-and the proposals still in review are listed in the [3.3 beta program](/docs/reference/3-3-beta#in-review-for-3-3).
+4.0 is the next feature release and the next major. It brings back the features
+withdrawn from 3.3 because they extend the commercial terms, removes what 3.x
+deprecated, and turns the advisory 4.0 checks into requirements; see
+[Preparing for 4.0](/docs/reference/migration/v4-compatibility). Proposals
+already on the 4.0 milestone include two roles for a sales agent, storefront
+and inventory ([#8993](https://github.com/adcontextprotocol/adcp/issues/8993)).
+Open work is tracked on the
+[4.0 milestone](https://github.com/adcontextprotocol/adcp/milestones?state=open).
 
 ## Where contributions are needed now
 
@@ -50,7 +44,7 @@ suggestions—in these areas:
 
 | Area | Useful contribution |
 |---|---|
-| Verification | Run the 3.2 profile against an independently operated agent and contribute reproducible runner failures or fixes. |
+| Verification | Run the 3.3 compliance bundle against an independently operated agent and contribute reproducible runner failures or fixes. |
 | Authorization | Bring real buyer, agency, delegated-operator, and specialist-agent topologies with revocation requirements. |
 | Commercial operations | Bring finance and ad-operations workflows for invoicing, FX, disputes, credits, and makegoods. |
 | Offline channels | Bring print, broadcast, OOH, and place-based-audio examples through delivery evidence and reconciliation. |
