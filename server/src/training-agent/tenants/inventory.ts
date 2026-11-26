@@ -14,7 +14,9 @@
  * Their `comply_test_controller` serves `sandbox_clock` (get and advance the
  * caller's sandbox clock; the router intercepts it, as the SDK's controller
  * config has no slot for it) and `reset_state` (unpin the clock and discard
- * the caller's markets on every inventory tenant).
+ * the caller's markets on every inventory tenant). It also seeds accounts,
+ * products and pricing options, and serves `simulate_delivery` and
+ * `simulate_budget_spend` as delivery recorded in the engine.
  *
  * They speak the media-buy protocol as it is; no new tasks. They are not in
  * the host's brand.json or adagents.json tenant listings.
@@ -52,7 +54,10 @@ export function isInventoryTenant(tenantId: string): boolean {
 }
 
 /** Controller scenarios an inventory tenant lists. */
-export const INVENTORY_COMPLY_SCENARIOS: readonly string[] = ['reset_state', SANDBOX_CLOCK_SCENARIO, 'seed_account', 'seed_product', 'seed_pricing_option'];
+export const INVENTORY_COMPLY_SCENARIOS: readonly string[] = [
+  'reset_state', SANDBOX_CLOCK_SCENARIO, 'seed_account', 'seed_product', 'seed_pricing_option',
+  'simulate_delivery', 'simulate_budget_spend',
+];
 
 /** `sandbox_clock` for a caller, called on one inventory tenant. Moving the
  * clock runs the market's days, so it is one of the caller's market requests. */
@@ -124,6 +129,14 @@ export function buildInventoryTenantConfig(
             pricing_option: async (params, ctx) => {
               await platform.seedPricingOption(callerOf(ctx), params.product_id, params.pricing_option_id, params.fixture ?? {});
             },
+          },
+          // Simulated delivery and spend land in the caller's market as
+          // engine delivery, which reset_state discards with the market.
+          simulate: {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            delivery: (params, ctx) => platform.simulateDelivery(callerOf(ctx), params) as any,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            budget_spend: (params, ctx) => platform.simulateBudgetSpend(callerOf(ctx), params) as any,
           },
           resetState: async ctx => {
             await resetInventoryCaller(callerOf(ctx));

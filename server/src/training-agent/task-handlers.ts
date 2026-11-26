@@ -7458,7 +7458,7 @@ interface FormatOptionDeclaration {
 
 /** One declared constraint a creative breaks. `field` is the path within the
  * creative (`assets.title.content`, `assets.cards[2].cta`). */
-interface FormatOptionViolation {
+export interface FormatOptionViolation {
   code: 'VALIDATION_ERROR' | 'CREATIVE_VALUE_NOT_ALLOWED';
   constraint: string;
   field: string;
@@ -7537,19 +7537,22 @@ function imageSizeViolation(
  * `*_max_chars`, no `icon_size`) does not narrow its slot, and optional slots
  * (`icon`, `cta`, `body_text`) may be absent. Returns the first violation.
  */
-function nativeInFeedParamViolation(
+export function nativeInFeedParamViolation(
   assets: Record<string, unknown>,
   params: Record<string, unknown>,
 ): FormatOptionViolation | null {
+  // A slot holds one text asset or an array of them; check each.
+  const textSlotPath = (slotId: string, index: number) => `assets.${slotId}${Array.isArray(assets[slotId]) ? `[${index}]` : ''}.content`;
   for (const [slotId, constraint] of NATIVE_IN_FEED_TEXT_LIMITS) {
     const limit = params[constraint];
     if (typeof limit !== 'number') continue;
-    const content = textAssetContent(assets[slotId]);
-    if (content !== undefined && content.length > limit) {
+    for (const [index, asset] of slotValues(assets, slotId).entries()) {
+      const content = textAssetContent(asset);
+      if (content === undefined || content.length <= limit) continue;
       return {
         code: 'VALIDATION_ERROR',
         constraint,
-        field: `assets.${slotId}.content`,
+        field: textSlotPath(slotId, index),
         message: `native_in_feed ${slotId} is ${content.length} characters; the format option declares ${constraint} ${limit}.`,
         expected: limit,
         predicted: content.length,
@@ -7563,12 +7566,13 @@ function nativeInFeedParamViolation(
 
   if (Array.isArray(params.cta_values) && params.cta_values.length > 0) {
     const allowed = params.cta_values.filter((value): value is string => typeof value === 'string');
-    const cta = textAssetContent(assets.cta);
-    if (cta !== undefined && !allowed.includes(cta)) {
+    for (const [index, asset] of slotValues(assets, 'cta').entries()) {
+      const cta = textAssetContent(asset);
+      if (cta === undefined || allowed.includes(cta)) continue;
       return {
         code: 'CREATIVE_VALUE_NOT_ALLOWED',
         constraint: 'cta_values',
-        field: 'assets.cta.content',
+        field: textSlotPath('cta', index),
         message: `native_in_feed cta value "${cta}" is not in the format option's declared cta_values.`,
         expected: allowed,
         predicted: cta,
@@ -7770,7 +7774,7 @@ function nativeInFeedValidationError(
  * without a `cta` is not refused, and a declaration without `cta_values`
  * leaves `cta` free text. Returns the first offending card.
  */
-function imageCarouselParamViolation(
+export function imageCarouselParamViolation(
   assets: Record<string, unknown>,
   params: Record<string, unknown>,
 ): FormatOptionViolation | null {

@@ -41,7 +41,7 @@ Neither tenant requires operator authentication, so a storefront can call them w
 
 Both tenants keep a creative library for each account. Sync creatives to it with [`sync_creatives`](/docs/creative/task-reference/sync_creatives), or upload them inline on a package, and assign them to the packages you have bought.
 
-- **Formats.** [`list_creative_formats`](/docs/creative/task-reference/list_creative_formats) returns only the formats the tenant serves: display, pre-roll video and the takeover image on the ad server; the podcast spot, newsletter sponsorship and creator brief on the content platform. Name a creative's format canonically, with `format_kind` and the `params` of one of the product's `format_options` (or its `format_option_ref`); the size of the creative's image or video picks the format when `params` is omitted. A named `format_id` copied from `format_options` also works. A request whose format still matches more than one option is refused, naming them. A creative can only be assigned to a package whose product serves its format. Otherwise the request fails with [`FORMAT_NOT_SUPPORTED`](/docs/building/verification/compliance-catalog#error-code-format-not-supported).
+- **Formats.** [`list_creative_formats`](/docs/creative/task-reference/list_creative_formats) returns only the formats the tenant serves: display, pre-roll video and the takeover image on the ad server; the podcast spot, newsletter sponsorship and creator brief on the content platform. Name a creative's format canonically, with `format_kind` and the `params` of one of the product's `format_options` (or its `format_option_ref`); the size of the creative's image or video picks the format when `params` is omitted. A named `format_id` copied from `format_options` also works. A request whose format still matches more than one option is refused, naming them. A product you [seed](#test-controller-seeds) also serves the `format_options` its fixture declares; name one with its `format_option_ref`. A creative in a seeded option is held to the values that option declares: a `cta` outside its `cta_values` is refused with [`CREATIVE_VALUE_NOT_ALLOWED`](/docs/building/verification/compliance-catalog#error-code-creative-value-not-allowed). A creative can only be assigned to a package whose product serves its format. Otherwise the request fails with [`FORMAT_NOT_SUPPORTED`](/docs/building/verification/compliance-catalog#error-code-format-not-supported).
 - **Assignments.** `assignment_operations` supports `assign`, `unassign` and `replace`. A request's operations apply together or not at all. The deprecated `assignments` field still works, and reports each failed assignment in the creative's `assignment_errors`. Merges, assignment-level trackers and landing pages, installment scoping and placement routing are rejected with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature).
 - **Review and delivery.** Every creative is approved as soon as it arrives. A buy reports `pending_creatives` while none of its live packages has a creative, then `pending_start` or `active` as usual. Delivery does not wait for a creative, though: an unassigned package delivers exactly as the simulation forecast. The creatives exist to test trafficking, not to gate serving.
 - **Scope.** Creatives are private to the account that synced them, like the buys they are assigned to. Each account holds up to 200 creatives of up to 32 KiB each; reference hosted media by URL. `reset_state` clears them with the rest of your market.
@@ -68,7 +68,7 @@ Every time-dependent behaviour of these tenants reads your *sandbox clock*. Unti
 - `reset_state` on either inventory tenant unpins the clock and discards your buys on both. A `reset_state` elsewhere that unpins the clock, such as `/sales/mcp`'s, also leaves your inventory buys behind: a market that has run days the clock has not reached starts fresh.
 - You have one clock per credential. It is the same clock that `reporting_subscription_probe` `advance_time` moves on `/sales/mcp`, so moving it on either tenant moves it for both.
 
-Both tenants list `sandbox_clock`, `reset_state` and the seeds below in `list_scenarios` and in `compliance_testing.scenarios`.
+Both tenants list `sandbox_clock`, `reset_state` and the seeds and simulations below in `list_scenarios` and in `compliance_testing.scenarios`.
 
 ### Test controller seeds
 
@@ -79,6 +79,15 @@ A storyboard's fixtures are seeded through the same controller, so the media-buy
 - `seed_pricing_option` prices a seeded product. A `floor_price` is the lowest bid an auction booking places, and a `fixed_price` is a guaranteed booking's rate. A seeded product with no seeded pricing option is priced like the season's own products.
 
 Seeded products are private to your credential, like your buys. A credential that never seeds sees only the season's products. `reset_state` discards your seeds with the rest of your market.
+
+### Simulated delivery
+
+The delivery storyboards inject delivery through the controller. It lands in the simulation as delivery on your sandbox day, so it counts like served delivery:
+
+- `simulate_delivery` records the `impressions`, `clicks`, `conversions` and `reported_spend` you send on the buy's live packages, shared in proportion to their budgets. It is reported at once, without the reporting delay. Without `reported_spend`, each package spends what its impressions cost at its rate. `is_final`, `finalized_at` and `measurement_window` mark the buy's delivery as provisional or final in [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery), from then on.
+- `simulate_budget_spend` brings each live package of a buy, or of every buy on an account, to `spend_percentage` of its budget, with the impressions that spend buys. Spend never goes down.
+
+Both count toward each package's budget and goal, so the days that follow serve only what is left.
 
 ## What happens each simulated day
 
