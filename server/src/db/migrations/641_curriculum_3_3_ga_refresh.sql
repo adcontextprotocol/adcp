@@ -354,7 +354,7 @@ BEGIN
   END IF;
 
   UPDATE certification_modules
-  SET lesson_plan = jsonb_set(plan, '{demo_scenarios}', (
+  SET lesson_plan = jsonb_set(plan, '{demo_scenarios}', COALESCE((
     SELECT jsonb_agg(
       CASE WHEN scenario->'tools' = '["package"]'::jsonb
         THEN jsonb_build_object(
@@ -365,7 +365,7 @@ BEGIN
         ELSE scenario
       END ORDER BY ordinality)
     FROM jsonb_array_elements(plan->'demo_scenarios') WITH ORDINALITY AS s(scenario, ordinality)
-  ))
+  ), '[]'::jsonb))
   WHERE id = 'C1';
 END;
 $$;

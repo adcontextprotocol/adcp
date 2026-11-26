@@ -74,14 +74,14 @@ BEGIN
     RAISE EXCEPTION 'Module B1 has no exercise_definitions array';
   END IF;
 
-  defs := (
+  defs := COALESCE((
     SELECT jsonb_agg(
       CASE WHEN ex->>'id' = 'b1_ex1' AND ex->>'title' = 'Build your storefront'
         THEN jsonb_set(ex, '{title}', to_jsonb('Design your catalog'::text))
         ELSE ex
       END ORDER BY ordinality)
     FROM jsonb_array_elements(defs) WITH ORDINALITY AS e(ex, ordinality)
-  );
+  ), '[]'::jsonb);
 
   UPDATE certification_modules
   SET lesson_plan = plan,
