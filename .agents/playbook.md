@@ -459,24 +459,27 @@ Only use `patch`/`minor`/`major` when the change affects the published AdCP prot
 
 ### Release lines
 
-AdCP runs two active release lines until `v3.2.1` is tagged, and three after:
+AdCP runs these release lines until `v3.3.0` is tagged:
 
-Until `v3.2.1` is tagged:
-
-- **`3.1.x`** → stable maintenance patches (`3.1.4`, `3.1.5`, …)
-- **`main`** → the 3.2 line, in Changesets RC pre mode
+- **`3.2.x`** → stable maintenance patches (`3.2.13`, …)
+- **`3.1.x`** and **`3.0.x`** → maintenance patches
+- **`main`** → the 3.3 line, in Changesets RC pre mode
   (`.changeset/pre.json`) until the reviewed GA pre-exit, whose Version
-  Packages cut produces `3.2.1` (`3.2.0` is withdrawn)
+  Packages cut produces `3.3.0`
 
-After 3.2 GA (`.agents/shortcuts/cut-minor-ga.md` Phase 10):
+After 3.3 GA (`.agents/shortcuts/cut-minor-ga.md` Phase 10):
 
-- **`3.2.x`** → stable maintenance patches (`3.2.2`, `3.2.3`, …), created from
-  the `v3.2.1` Version Packages merge
-- **`main`** → 3.3, back in Changesets **beta** pre mode the same day
-- **`3.1.x`** → security and critical fixes for a maintainer-decided window
+- **`3.3.x`** → stable patches (`3.3.1`, `3.3.2`, …), created from the
+  `v3.3.0` Version Packages merge. Full support for at least 12 months after
+  4.0 GA. 3.3 is the last planned 3.x minor.
+- **`main`** → 4.0, back in Changesets **beta** pre mode the same day, so the
+  first 4.0 changeset can never cut an accidental stable release
+- **`3.2.x`** → security and critical fixes only
+- **`3.1.x`** and **`3.0.x`** → security fixes only
 
-The cherry-pick and forward-merge rules below name `3.1.x`; after GA they apply
-to `3.2.x` in the same way (`forward-merge-3.2.yml`).
+The cherry-pick and forward-merge rules below name `3.1.x`; they apply to every
+maintenance line in the same way (`forward-merge-3.2.yml`, and after GA
+`forward-merge-3.3.yml`).
 
 Branch naming follows `<major>.<minor>.x` to match the existing `2.6.x` precedent. No `release/` prefix.
 
@@ -576,20 +579,22 @@ If unsure, default to no changeset and discuss whether the change belongs on
 
 #### Pre mode (prereleases)
 
-During the beta phase, `.changeset/pre.json` put `main` in **beta pre mode**,
-so each Version Packages cut produced `3.2.0-beta.N`. The current file uses
-`"tag": "rc"` and produces `3.2.0-rc.N`; the stable cut (shipped as `3.2.1`
-over the withdrawn `3.2.0`) requires the reviewed pre-mode exit below. The original beta entry procedure was:
+During a line's beta phase, `.changeset/pre.json` puts `main` in **beta pre
+mode**, so each Version Packages cut produces `X.Y.0-beta.N`. After the RC
+promotion below it uses `"tag": "rc"` and produces `X.Y.0-rc.N`; `main` is in
+3.3 RC pre mode now. The stable cut requires the reviewed pre-mode exit below
+(3.2 shipped as `3.2.1` over the withdrawn `3.2.0`; 3.3 ships as `3.3.0`). The
+beta entry procedure, which `main` repeats for 4.0 on 3.3 GA day, is:
 
 ```bash
 npx changeset pre enter beta
 git add .changeset/pre.json
-git commit -m "chore(release): enter pre mode for 3.2 beta"
+git commit -m "chore(release): enter pre mode for 4.0 beta"
 ```
 
-The pre-mode file and pending 3.2 changesets belong only on `main`; the
-forward-merge workflow preserves main's copies. Do not cherry-pick them to
-`3.1.x`.
+The pre-mode file and the line's pending changesets belong only on `main`; the
+forward-merge workflow preserves main's copies. Do not cherry-pick them to a
+maintenance line.
 
 Each prerelease cut moves the changesets it consumes into `.changeset/pre/`.
 The stable cut consumes that archive again into the GA changelog, so treat it
@@ -617,19 +622,23 @@ across a tag change, so do not hand-edit package versions or switch the
 prerelease tag directly. Keep the promotion state in its own PR, and do not run
 it until the latest beta is explicitly accepted.
 
-To exit pre mode for the eventual 3.2 stable cut:
+To exit pre mode for the 3.3 stable cut:
 
 ```bash
-npx changeset pre exit   # deletes .changeset/pre.json
-git add -A && git commit -m "chore(release): exit pre mode for 3.2 stable cut"
+npx changeset pre exit   # sets "mode": "exit" in .changeset/pre.json
+git add .changeset/pre.json && git commit -m "chore(release): exit 3.3 prerelease mode"
 # open PR, land it
 ```
 
-Do not exit pre mode until the 3.2 freeze and GA checklist are explicitly
-approved. The next Version Packages cut after the exit PR produces stable
-`3.2.1`: the reviewed `.changeset/withdrawn-release.json` marker skips the
-permanently withdrawn `3.2.0` (see `RELEASING.md`). Follow
-`.agents/shortcuts/cut-minor-ga.md`.
+Do not exit pre mode until the 3.3 freeze and GA checklist are explicitly
+approved. The pre-exit PR carries only the `.changeset/pre.json` change and no
+changeset. The next Version Packages cut after it produces stable `3.3.0`,
+consumes the archived and pending changesets into one `## 3.3.0` block, and
+deletes `.changeset/pre.json`. 3.3 has no withdrawn number, so the
+withdrawn-release marker and its steps do not apply (3.2 needed them to skip
+`3.2.0`; see `RELEASING.md`). Follow `.agents/shortcuts/cut-minor-ga.md`,
+substituting 3.3 for 3.2 and 3.2 for 3.1, then put `main` back in beta pre mode
+for 4.0 the same day.
 
 #### App-token convention
 
