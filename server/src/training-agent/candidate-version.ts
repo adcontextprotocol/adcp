@@ -12,23 +12,31 @@ export function trainingAgentCandidateVersion(
 
 export const TRAINING_AGENT_CANDIDATE_ADCP_VERSION = trainingAgentCandidateVersion();
 
+export interface TrainingAgentHostedPreview {
+  /** Wire value an exact pin selects, e.g. `3.3-rc.3`. */
+  readonly wireVersion: string;
+  /** Committed, immutable `dist/schemas/<bundle>` tree its responses validate against. */
+  readonly bundle: string;
+}
+
 /**
  * The published prerelease the hosted training agent serves as an opt-in
- * preview (#8181): wire value and the committed, immutable schema bundle
- * (`dist/schemas/<bundle>`) its responses validate against.
+ * preview (#8181), or `undefined` when there is none.
  *
- * It must name the prerelease the installed @adcp/sdk negotiates, or SDK
- * buyers settle on 3.2 instead: 17.0.0-beta.35 and later negotiate exactly
- * `3.3-rc.3`. Its published schemas must also match what the agent emits.
- * One preview is served at a time, so advance it with the SDK's bundled prerelease;
- * tenants/served-release-shape.test.ts grades the agent's preview responses
- * against this bundle, and training-agent-preview-version.test.ts checks
- * that the installed SDK selects it.
+ * None after 3.3 GA: the 3.3 surfaces the preview carried are the stable 3.3
+ * line, @adcp/sdk 17.0.0 negotiates `3.3`, and no SDK bundles a 4.0
+ * prerelease. The last preview, `3.3-rc.3`, stays served to an exact pin as a
+ * retained checkpoint (TRAINING_AGENT_RETAINED_PREVIEW_ADCP_VERSION in
+ * types.ts) on the stable registries.
+ *
+ * To preview a later prerelease, set it here. It must name the prerelease the
+ * installed @adcp/sdk negotiates, or SDK buyers settle on the stable line
+ * instead, and its published schemas must match what the agent emits. One
+ * preview is served at a time, so advance it with the SDK's bundled
+ * prerelease. `as` keeps the declared type so callers do not narrow to the
+ * current value.
  */
-export const TRAINING_AGENT_HOSTED_PREVIEW = Object.freeze({
-  wireVersion: '3.3-rc.3',
-  bundle: '3.3.0-rc.3',
-} as const);
+export const TRAINING_AGENT_HOSTED_PREVIEW = undefined as TrainingAgentHostedPreview | undefined;
 
 /** Ops kill switch: set to `1` or `true` to stop advertising and serving the
  * preview. Read at startup, so it takes effect on the next restart without a
@@ -54,7 +62,7 @@ export function trainingAgentPreviewVersion(
 ): string | undefined {
   const candidate = trainingAgentCandidateVersion(env);
   if (candidate) return candidate;
-  return trainingAgentPreviewDisabled(env) ? undefined : TRAINING_AGENT_HOSTED_PREVIEW.wireVersion;
+  return trainingAgentPreviewDisabled(env) ? undefined : TRAINING_AGENT_HOSTED_PREVIEW?.wireVersion;
 }
 
 export const TRAINING_AGENT_PREVIEW_ADCP_VERSION = trainingAgentPreviewVersion();

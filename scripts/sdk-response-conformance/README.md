@@ -17,7 +17,7 @@ bash scripts/sdk-response-conformance/run.sh .context/sdk-response-conformance
 Follow the repository's Docker requirement for local execution. CI installs these runtimes on an ephemeral runner. Each driver must use the protocol artifact embedded by that exact SDK package:
 
 ```sh
-node scripts/probe-sdk-response-conformance.cjs prepare 3.2.1 > .context/plan-typescript.json
+node scripts/probe-sdk-response-conformance.cjs prepare 3.3.0 > .context/plan-typescript.json
 node scripts/probe-sdk-response-conformance.cjs prepare 3.2.0-rc.1 > .context/plan-python-go.json
 node scripts/sdk-response-conformance/typescript.cjs .context/plan-typescript.json > .context/typescript.json
 python3 scripts/sdk-response-conformance/python.py .context/plan-python-go.json > .context/python.json

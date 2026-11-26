@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION,
+  TRAINING_AGENT_RETAINED_PREVIEW_ADCP_VERSION,
   TRAINING_AGENT_RETAINED_RC_ADCP_VERSION,
 } from './types.js';
 import {
@@ -33,6 +34,7 @@ export const RETAINED_SCHEMA_BUNDLE = canonicalSchemaBundleVersion(
 export const RETAINED_SCHEMA_BUNDLES: Readonly<Record<string, string>> = Object.freeze({
   [SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION]: RETAINED_SCHEMA_BUNDLE,
   [TRAINING_AGENT_RETAINED_RC_ADCP_VERSION]: canonicalSchemaBundleVersion(TRAINING_AGENT_RETAINED_RC_ADCP_VERSION),
+  [TRAINING_AGENT_RETAINED_PREVIEW_ADCP_VERSION]: canonicalSchemaBundleVersion(TRAINING_AGENT_RETAINED_PREVIEW_ADCP_VERSION),
 });
 
 /**
@@ -60,7 +62,7 @@ const CANDIDATE_SCHEMA_TREE = 'latest';
  * none. Unset when the preview is disabled or a local candidate replaces it.
  */
 export const PREVIEW_SCHEMA_BUNDLE: string | undefined = TRAINING_AGENT_SERVES_HOSTED_PREVIEW
-  ? TRAINING_AGENT_HOSTED_PREVIEW.bundle
+  ? TRAINING_AGENT_HOSTED_PREVIEW?.bundle
   : undefined;
 
 let registration: Promise<void> | undefined;
@@ -87,8 +89,9 @@ export function resolveRetainedSchemaRoot(
 }
 
 /**
- * Register the training agent's retained prerelease checkpoints (beta.6 and
- * the last 3.2 RC) with SDK builds that do not package them,
+ * Register the training agent's retained prerelease checkpoints (beta.6, the
+ * last 3.2 RC and the last hosted preview, 3.3-rc.3) with SDK builds that do
+ * not package them,
  * and, in a trusted candidate process, the built source tree under the
  * candidate's release key (see CANDIDATE_SCHEMA_BUNDLE). The hosted preview's
  * bundle is registered separately, on first use (ensurePreviewSchemaBundle).

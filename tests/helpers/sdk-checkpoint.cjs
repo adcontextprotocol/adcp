@@ -5,15 +5,15 @@ const path = require('node:path');
 const semver = require('semver');
 
 /**
- * The stable `@adcp/sdk` on npm `latest`. Learner- and production-facing 3.2
+ * The stable `@adcp/sdk` on npm `latest`. Learner- and production-facing
  * guidance names it while the repository runs an SDK prerelease for a
- * protocol beta: the training agent still serves 3.2 by default, and 3.2
- * users must not be told to install a beta.
+ * protocol beta: the training agent still serves the stable line by default,
+ * and its users must not be told to install a beta.
  *
  * When `package.json` returns to a stable SDK, set this to that version;
  * `sdkCheckpoints()` refuses a stale value.
  */
-const STABLE_SDK_VERSION = '16.5.0';
+const STABLE_SDK_VERSION = '17.0.0';
 
 function installedSdkVersion() {
   const packageJson = JSON.parse(
