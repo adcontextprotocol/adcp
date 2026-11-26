@@ -541,6 +541,9 @@ const CANONICAL_FORMAT_PROJECTION_BY_LEGACY_ID: Record<string, CanonicalFormatPr
   },
 };
 
+/** The format labels `formatOptionsForTrainingFormats` accepts. */
+export const TRAINING_FORMAT_LABELS: ReadonlySet<string> = new Set(Object.keys(CANONICAL_FORMAT_PROJECTION_BY_LEGACY_ID));
+
 /**
  * Canonical kinds the spec marks `v1_translatable: false`: no v1 named format
  * expresses them, so their options carry `canonical_formats_only` and no
