@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/product-purchase-optimization-goals.json",
+  "title": "Optimization Goals",
+  "description": "Canonical optimization goals for one product purchase.",
+  "type": "array",
+  "items": {
+    "$ref": "/schemas/core/canonical-optimization-goal.json"
+  },
+  "minItems": 1
+}

@@ -160,11 +160,8 @@
   },
   "properties": {
     "governance_context": {
-      "type": "string",
-      "description": "Opaque intent authorization when this creative execution incurs vendor cost.",
-      "minLength": 1,
-      "maxLength": 4096,
-      "pattern": "^[\\x20-\\x7E]+$"
+      "$ref": "/schemas/core/governance-context.json",
+      "description": "Opaque intent authorization when this creative execution incurs vendor cost."
     },
     "message": {
       "type": "string",
@@ -221,15 +218,13 @@
       "description": "**DEPRECATED in 3.2.** Legacy named-format selectors. Use `target_capability_ids` with values advertised in `get_adcp_capabilities.creative.supported_formats[].capability_id`."
     },
     "target_capability_id": {
-      "type": "string",
-      "pattern": "^[a-zA-Z0-9_-]+$",
+      "$ref": "/schemas/core/creative-capability-id.json",
       "description": "Canonical 3.2 single-output selector. Matches exactly one `get_adcp_capabilities.creative.supported_formats[].capability_id` advertised by this creative agent. The matched entry supplies the canonical `format` declaration used to validate inputs and the returned manifest. Mutually exclusive with `target_capability_ids` and the deprecated target_format_id fields."
     },
     "target_capability_ids": {
       "type": "array",
       "items": {
-        "type": "string",
-        "pattern": "^[a-zA-Z0-9_-]+$"
+        "$ref": "/schemas/core/creative-capability-id.json"
       },
       "minItems": 1,
       "maxItems": 50,
@@ -242,6 +237,7 @@
       "description": "Selects an account-scoped transformer (discovered via list_transformers) to perform the build. One transformer per call. When present, the build uses this transformer and target_capability_id/target_capability_ids select which of its outputs to produce — they MUST be a subset of the transformer's output_capability_ids. Deprecated target_format_id fields use the legacy output_format_ids compatibility path. Render configuration goes in `config`."
     },
     "config": {
+      "title": "Build Creative Render Config",
       "type": "object",
       "description": "Typed render configuration for the selected transformer, keyed by each param's `field` (from the transformer's params[] in list_transformers). Example: { \"voice\": \"isaac\", \"speaking_rate\": 1.1, \"mastering_preset\": \"podcast\" }. The agent MUST validate `config` against the transformer's live params for this account and reject unrecognized keys and out-of-range / non-enumerated values with a field-attributed error (e.g. `config.voice`) rather than silently ignoring them — config drives a paid render. Genuinely vendor-specific or experimental knobs not declared as params belong in `ext`, not here. (The schema leaves this object open because legal keys are dynamic per transformer; strict validation is a normative agent obligation.) When `refine_from_build_variant_id` is set, `config` is applied as a DELTA over the parent leaf's config.",
       "additionalProperties": true
@@ -258,14 +254,8 @@
       "description": "`execute` (default) produces and bills the creative(s). `estimate` is a DRY RUN: the agent produces nothing and bills nothing, and returns a BuildCreativeEstimate with a projected cost band (cost_low/cost_high) computed against THIS request's actual inputs (script length, brief, catalog size, max_creatives × max_variants) — the band the buyer cannot derive itself, since per_unit gives the rate but not the unit count. Requires the agent to advertise `creative.supports_spend_controls`; otherwise rejected with `UNSUPPORTED_FEATURE`."
     },
     "max_spend": {
-      "type": "object",
-      "description": "Hard per-call spend ceiling. The agent produces leaves until the NEXT leaf would push the run's aggregate vendor_cost over `amount`, then STOPS and returns the partial BuildCreativeVariantSuccess produced so far with `budget_status: \"capped\"` (every returned leaf is real, trafficable, and billed — nothing produced is discarded; the leaf shortfall is `leaves_returned` < `leaves_total`). If even the first leaf would exceed the cap, the call fails with BUDGET_CAP_REACHED. `currency` MUST match the rate card's currency (the agent does not FX-convert) or the request is rejected with INVALID_REQUEST (error.field `max_spend.currency`). Requires `creative.supports_spend_controls`. Caps a SINGLE call — to bound a refinement loop, track aggregate vendor_cost across calls and stop issuing them (buyer responsibility in this revision). max_spend bounds only build-time vendor_cost: CPM-priced builds (estimate basis `cpm_deferred`) have build-time vendor_cost 0 and accrue at serve time, so max_spend never engages for them — bound a CPM fan-out with max_creatives instead.",
-      "properties": {
-        "amount": { "type": "number", "minimum": 0, "description": "Maximum aggregate vendor_cost to incur on this call, in `currency`." },
-        "currency": { "type": "string", "pattern": "^[A-Z]{3}$", "description": "ISO 4217 currency; MUST match the rate card." }
-      },
-      "required": ["amount", "currency"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/money.json",
+      "description": "Hard per-call spend ceiling. The agent produces leaves until the NEXT leaf would push the run's aggregate vendor_cost over `amount`, then STOPS and returns the partial BuildCreativeVariantSuccess produced so far with `budget_status: \"capped\"` (every returned leaf is real, trafficable, and billed — nothing produced is discarded; the leaf shortfall is `leaves_returned` < `leaves_total`). If even the first leaf would exceed the cap, the call fails with BUDGET_CAP_REACHED. `currency` MUST match the rate card's currency (the agent does not FX-convert) or the request is rejected with INVALID_REQUEST (error.field `max_spend.currency`). Requires `creative.supports_spend_controls`. Caps a SINGLE call — to bound a refinement loop, track aggregate vendor_cost across calls and stop issuing them (buyer responsibility in this revision). max_spend bounds only build-time vendor_cost: CPM-priced builds (estimate basis `cpm_deferred`) have build-time vendor_cost 0 and accrue at serve time, so max_spend never engages for them — bound a CPM fan-out with max_creatives instead."
     },
     "max_creatives": {
       "type": "integer",
@@ -304,8 +294,7 @@
       "description": "Declares the dimension along which variants differ. When `values` is provided, the agent produces exactly one variant per value (e.g. an A/B of two voices). When only `dimension` is provided, the agent chooses up to max_variants variants along that dimension (e.g. best-of-N, themes).",
       "properties": {
         "dimension": {
-          "type": "string",
-          "enum": ["voice", "theme", "best_of_n", "transformer_config", "custom"],
+          "$ref": "/schemas/enums/transformer-variant-dimension.json",
           "description": "What varies across variants. `transformer_config` varies a named config param (name it in `field`); `best_of_n` lets the agent explore and rank; `custom` is agent-defined (describe in `label`)."
         },
         "field": {
@@ -327,8 +316,7 @@
       "additionalProperties": true
     },
     "keep_mode": {
-      "type": "string",
-      "enum": ["keep_all", "keep_one", "keep_some"],
+      "$ref": "/schemas/enums/variant-keep-mode.json",
       "default": "keep_all",
       "description": "Advisory hint for how the buyer intends to use the variants. `keep_one` (best-of-N) and `keep_some` signal the agent to set `recommended`/`rank` on returned variants. Advisory only — it does not change what is returned or billed; every produced variant is returned and charged. Keeping is a client act of trafficking the chosen build_variant_id(s)."
     },
@@ -367,28 +355,7 @@
       "type": "array",
       "description": "Input sets for preview generation when include_preview is true. Supported with a single target_capability_id; multi-capability requests generate one default preview per output. Deprecated target-format selectors retain equivalent compatibility behavior.",
       "items": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "description": "Human-readable name for this input set (e.g., 'Sunny morning on mobile', 'Evening podcast ad')"
-          },
-          "macros": {
-            "type": "object",
-            "description": "Macro values to use for this preview variant",
-            "additionalProperties": {
-              "type": "string"
-            }
-          },
-          "context_description": {
-            "type": "string",
-            "description": "Natural language description of the context for AI-generated content"
-          }
-        },
-        "required": [
-          "name"
-        ],
-        "additionalProperties": true
+        "$ref": "/schemas/core/preview-input.json"
       },
       "minItems": 1
     },
@@ -402,18 +369,12 @@
       "description": "Output format for preview renders when include_preview is true. 'url' returns preview_url (iframe-embeddable URL), 'html' returns preview_html (raw HTML). Ignored when include_preview is false or omitted."
     },
     "macro_values": {
-      "type": "object",
-      "description": "Raw concrete values offered for build-time binding, keyed by AdCP universal semantic (for example CLICK_URL or CACHEBUSTER). With declarations, a value binds only a verified-universal `resolve_value` occurrence performed_by `creative_agent`, using that declaration's exact context and encoding; callers MUST NOT pre-encode it. The selected `creative.supported_formats[]` route's macro_resolution_capabilities is the binding build/preview capability set; seller-wide and product sets apply only on the sales execution path. Values never short-circuit `translate_to_native`: translation emits its target declaration and the complete target capability chain remains required. For creative_representation_set, selection happens before binding and the complete representation set remains byte-identical. Without declarations, the 3.x legacy path remains: creative agents may translate recognized AdCP tokens using the existing `translateUniversalMacros` contract, preserve omitted placeholders for the sales agent, and ignore unknown keys. Existing unmapped/frozen-consent diagnostics remain required.",
-      "additionalProperties": {
-        "type": "string"
-      }
+      "$ref": "/schemas/core/macro-values.json",
+      "description": "Raw concrete values offered for build-time binding, keyed by AdCP universal semantic (for example CLICK_URL or CACHEBUSTER). With declarations, a value binds only a verified-universal `resolve_value` occurrence performed_by `creative_agent`, using that declaration's exact context and encoding; callers MUST NOT pre-encode it. The selected `creative.supported_formats[]` route's macro_resolution_capabilities is the binding build/preview capability set; seller-wide and product sets apply only on the sales execution path. Values never short-circuit `translate_to_native`: translation emits its target declaration and the complete target capability chain remains required. For creative_representation_set, selection happens before binding and the complete representation set remains byte-identical. Without declarations, the 3.x legacy path remains: creative agents may translate recognized AdCP tokens using the existing `translateUniversalMacros` contract, preserve omitted placeholders for the sales agent, and ignore unknown keys. Existing unmapped/frozen-consent diagnostics remain required."
     },
     "idempotency_key": {
-      "type": "string",
-      "description": "Client-generated unique key for this request. Prevents duplicate creative generation on retries. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Client-generated unique key for this request. Prevents duplicate creative generation on retries. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request."
     },
     "push_notification_config": {
       "$ref": "/schemas/core/push-notification-config.json",

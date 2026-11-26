@@ -54,7 +54,7 @@ test('flat-rate DOOH parameters express seller-packaged slot contiguity', async 
 
 test('delivery SOV descriptions align scales and duration weighting', () => {
   const metrics = readJson('core/delivery-metrics.json').properties;
-  const achieved = metrics.dooh_metrics.properties.sov_achieved.description;
+  const achieved = readJson('core/dooh-delivery-metrics.json').properties.sov_achieved.description;
   const contracted = metrics.ooh_metrics.properties.share_of_voice_contracted.description;
 
   assert.match(achieved, /multiply sov_achieved by 100/);

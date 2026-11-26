@@ -1,0 +1,116 @@
+# Delta manifest (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  One definition per object: values, ranges, and geography, the fields that still drifted. Every change not listed here
+  is a $ref to, or a declared refinement of, a definition with the same contract.
+changes:
+  - location: core/currency-code.json#
+    keyword: maxLength
+    old: 3
+    direction: none
+    side: both
+    note: >-
+      core/insertion-order.json#/properties/terms/properties/total_budget -> core/money.json. The inline currency
+      (minLength 3, maxLength 3) becomes core/currency-code.json (pattern ^[A-Z]{3}$). Masked by the pattern: a string
+      that matches ^[A-Z]{3}$ has length 3, so dropping maxLength 3 changes no payload's verdict.
+  - location: core/currency-code.json#
+    keyword: minLength
+    old: 3
+    direction: none
+    side: both
+    note: >-
+      Same site as the maxLength line. Masked by the pattern ^[A-Z]{3}$, which only matches three characters.
+  - location: core/currency-code.json#
+    keyword: pattern
+    new: ^[A-Z]{3}$
+    direction: tighten
+    side: both
+    note: >-
+      Same site: the insertion order total_budget currency takes core/currency-code.json. Basis (DR-0036, an external
+      standard the text names): 3.2.12 describes the field as "ISO 4217 currency code"
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/insertion-order.json#L37),
+      and ISO 4217 alphabetic codes are three uppercase letters.
+  - location: core/geo-delivery-metrics.json#/allOf/1/allOf/0/then
+    keyword: properties
+    new:
+      geo_code:
+        pattern: ^[A-Z]{2}$
+        type:
+          - string
+    direction: tighten
+    side: response
+    note: >-
+      A country row's geo_code references core/country-code.json, as core/forecast-dimension-geo.json's country branch
+      does. Basis (DR-0036, an external standard the text names): 3.2.12 says "Country: ISO 3166-1 alpha-2 ('US')"
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/geo-delivery-metrics.json#L28).
+  - location: core/geo-delivery-metrics.json#/allOf/1/allOf/1/then
+    keyword: properties
+    new:
+      geo_code:
+        pattern: ^[A-Z]{2}-[A-Z0-9]{1,3}$
+        type:
+          - string
+    direction: tighten
+    side: response
+    note: >-
+      A region row's geo_code references core/country-subdivision-code.json, as core/forecast-dimension-geo.json's
+      region branch does. Basis: the same 3.2.12 line says "Region: ISO 3166-2 with country prefix ('US-CA')".
+  - location: core/address-city.json#
+    keyword: maxLength
+    new: 100
+    direction: tighten
+    side: none
+    note: >-
+      The postal address fields get one definition each (core/address-street.json, core/address-city.json,
+      core/address-region.json, core/address-postal-code.json), with the bounds the published business entity address
+      states, and both core/postal-address.json and the business entity address reference them. Basis (DR-0036, a schema of the
+      major that defines the concept):
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/business-entity.json#L39
+      ("maxLength": 100 on city). Register entry in scripts/lint-additive-minor-corrections.json.
+  - location: core/address-postal-code.json#
+    keyword: maxLength
+    new: 20
+    direction: tighten
+    side: none
+    note: >-
+      As city: postal_code "maxLength": 20 in the 3.2.12 business entity address (business-entity.json#L43).
+  - location: core/address-region.json#
+    keyword: maxLength
+    new: 100
+    direction: tighten
+    side: none
+    note: >-
+      As city: region "maxLength": 100 in the 3.2.12 business entity address (business-entity.json#L48).
+  - location: core/address-street.json#
+    keyword: maxLength
+    new: 200
+    direction: tighten
+    side: none
+    note: >-
+      As city: street "maxLength": 200 in the 3.2.12 business entity address (business-entity.json#L35).
+  - location: core/job-item.json#/properties/salary/allOf/1
+    keyword: anyOf
+    new:
+      - required:
+          - min
+      - required:
+          - max
+    direction: tighten
+    side: none
+    note: >-
+      The salary range is a refinement of the new core/open-ended-numeric-range.json, and requires min or max. Basis
+      (DR-0036, prose): 3.2.12 says "Salary range. Specify min and/or max with currency and period."
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/job-item.json#L53).
+  - location: core/distance.json#
+    keyword: allOf
+    new:
+      enum:
+        - km
+        - m
+        - mi
+    direction: none
+    side: none
+    note: >-
+      core/vehicle-item.json#/properties/mileage becomes a refinement of the new core/distance.json, whose unit is
+      enums/distance-unit.json (km, mi, m), and keeps its own unit enum (km, mi). The values both accept are km and mi,
+      the base's enum, so no payload changes verdict (checked with Ajv: "m" is invalid at both, "km" and "mi" valid at
+      both).

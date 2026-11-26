@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-subscription-account-exceptions.json",
+  "title": "Reporting Subscription Account Exceptions",
+  "description": "An account where a reporting subscription has an open get_reporting_status exception, with the reasons.",
+  "type": "object",
+  "properties": {
+    "account_id": {
+      "$ref": "/schemas/core/account-id.json"
+    },
+    "reasons": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/enums/reporting-subscription-exclusion-reason.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true,
+      "description": "Reasons of the open exceptions, account- or buy-level."
+    }
+  },
+  "required": [
+    "account_id",
+    "reasons"
+  ],
+  "additionalProperties": true
+}

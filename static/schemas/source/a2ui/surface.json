@@ -26,6 +26,7 @@
       "description": "ID of the root component (if not specified, first component is root)"
     },
     "dataModel": {
+      "title": "A2UI Surface Data Model",
       "type": "object",
       "description": "Application data that components can bind to",
       "additionalProperties": true

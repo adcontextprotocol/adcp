@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/webhook-delivery-auth-mode.json",
+  "title": "Webhook Delivery Auth Mode",
+  "description": "How a seller authenticates webhook deliveries: rfc9421, Bearer, or HMAC-SHA256.",
+  "type": "string",
+  "enum": [
+    "rfc9421",
+    "Bearer",
+    "HMAC-SHA256"
+  ]
+}

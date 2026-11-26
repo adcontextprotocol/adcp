@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-localized-string-list-entry.json",
+  "title": "Brand Localized String List Entry",
+  "description": "One locale mapped to a complete ordered string list. The list is selected as a unit so readers never assemble mixed-language output from independently localized elements.",
+  "type": "object",
+  "minProperties": 1,
+  "maxProperties": 1,
+  "additionalProperties": {
+    "type": "array",
+    "items": { "type": "string" },
+    "minItems": 1
+  }
+}

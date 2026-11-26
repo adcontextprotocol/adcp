@@ -259,6 +259,7 @@ The response uses `creative_manifests` instead of singular `creative_manifest`. 
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-response.json",
+  "status": "completed",
   "creative_manifests": [
     {
       "format_kind": "image",
@@ -275,11 +276,29 @@ The response uses `creative_manifests` instead of singular `creative_manifest`. 
     },
     {
       "format_kind": "image",
-      "assets": { /* same structure, adapted for 728x90 */ }
+      "assets": {
+        "banner_image": {
+          "asset_type": "image",
+          "url": "https://cdn.creative-agent.com/generated/spring_728x90.png",
+          "width": 728,
+          "height": 90
+        },
+        "headline": { "asset_type": "text", "content": "Spring Collection Now Available" },
+        "clickthrough_url": { "asset_type": "url", "url": "https://acmecorp.example.com/spring?campaign={MEDIA_BUY_ID}" }
+      }
     },
     {
       "format_kind": "image",
-      "assets": { /* same structure, adapted for 320x50 */ }
+      "assets": {
+        "banner_image": {
+          "asset_type": "image",
+          "url": "https://cdn.creative-agent.com/generated/spring_320x50.png",
+          "width": 320,
+          "height": 50
+        },
+        "headline": { "asset_type": "text", "content": "Spring Collection Now Available" },
+        "clickthrough_url": { "asset_type": "url", "url": "https://acmecorp.example.com/spring?campaign={MEDIA_BUY_ID}" }
+      }
     }
   ]
 }
@@ -402,7 +421,10 @@ When the creative agent charges and `account` is provided, the response includes
     "format_kind": "image",
     "assets": {
       "ad_tag": {
-        "content": "<div data-adcp-creative='cr_hero_banner' style='width:728px;height:90px;'>...</div>"
+        "asset_type": "html",
+        "content": "<div data-adcp-creative='cr_hero_banner' style='width:728px;height:90px;'><a href='https://acmecorp.example.com/spring?campaign={MEDIA_BUY_ID}' target='_blank'><img src='https://cdn.creative-agent.com/generated/cr_hero_banner_728x90.png' width='728' height='90' alt='Spring Collection Now Available'></a></div>",
+        "width": 728,
+        "height": 90
       }
     }
   },
@@ -423,7 +445,17 @@ The `pricing_option_id` corresponds to one of the options from [`list_creatives`
 {
   "$schema": "/schemas/media-buy/build-creative-response.json",
   "status": "completed",
-  "creative_manifest": { "..." : "..." },
+  "creative_manifest": {
+    "format_kind": "video_vast",
+    "assets": {
+      "vast_tag": {
+        "asset_type": "vast",
+        "delivery_type": "url",
+        "url": "https://adserver.example.com/vast/cr_hero_video.xml?cb={CACHEBUSTER}",
+        "vast_version": "4.2"
+      }
+    }
+  },
   "pricing_option_id": "po_video_cpm",
   "vendor_cost": 0,
   "currency": "USD"
@@ -475,14 +507,33 @@ When the request uses `target_capability_ids`, the response contains an array of
 ```json
 {
   "$schema": "/schemas/media-buy/build-creative-response.json",
+  "status": "completed",
   "creative_manifests": [
     {
       "format_kind": "image",
-      "assets": { /* ... */ }
+      "assets": {
+        "banner_image": {
+          "asset_type": "image",
+          "url": "https://cdn.example.com/generated-banner-300x250.png",
+          "width": 300,
+          "height": 250
+        },
+        "headline": { "asset_type": "text", "content": "50% Off Winter Sale" },
+        "clickthrough_url": { "asset_type": "url", "url": "https://mybrand.example.com/winter-sale?campaign={MEDIA_BUY_ID}" }
+      }
     },
     {
       "format_kind": "image",
-      "assets": { /* ... */ }
+      "assets": {
+        "banner_image": {
+          "asset_type": "image",
+          "url": "https://cdn.example.com/generated-banner-728x90.png",
+          "width": 728,
+          "height": 90
+        },
+        "headline": { "asset_type": "text", "content": "50% Off Winter Sale" },
+        "clickthrough_url": { "asset_type": "url", "url": "https://mybrand.example.com/winter-sale?campaign={MEDIA_BUY_ID}" }
+      }
     }
   ]
 }
@@ -508,7 +559,14 @@ When the request uses `max_creatives`, `max_variants` > 1, `variant_axis`, or `r
         {
           "build_variant_id": "bv_card01_a",
           "recipe_hash": "rh_card01_bestofn_7b91",
-          "creative_manifest": { "format_kind": "image", "assets": { "...": "..." } },
+          "creative_manifest": {
+            "format_kind": "image",
+            "assets": {
+              "banner_image": { "asset_type": "image", "url": "https://cdn.creative-agent.com/generated/sku_winter_parka_take1.png", "width": 300, "height": 250 },
+              "headline": { "asset_type": "text", "content": "Winter Parka: Built for the Cold" },
+              "clickthrough_url": { "asset_type": "url", "url": "https://acmecorp.example.com/products/sku_winter_parka?campaign={MEDIA_BUY_ID}" }
+            }
+          },
           "variant_axis_value": "take_1",
           "recommended": true,
           "rank": 1,
@@ -520,7 +578,58 @@ When the request uses `max_creatives`, `max_variants` > 1, `variant_axis`, or `r
         {
           "build_variant_id": "bv_card01_b",
           "recipe_hash": "rh_card01_bestofn_7b91",
-          "creative_manifest": { "format_kind": "image", "assets": { "...": "..." } },
+          "creative_manifest": {
+            "format_kind": "image",
+            "assets": {
+              "banner_image": { "asset_type": "image", "url": "https://cdn.creative-agent.com/generated/sku_winter_parka_take2.png", "width": 300, "height": 250 },
+              "headline": { "asset_type": "text", "content": "Stay Warm in the Winter Parka" },
+              "clickthrough_url": { "asset_type": "url", "url": "https://acmecorp.example.com/products/sku_winter_parka?campaign={MEDIA_BUY_ID}" }
+            }
+          },
+          "variant_axis_value": "take_2",
+          "recommended": false,
+          "rank": 2,
+          "pricing_option_id": "po_per_image",
+          "vendor_cost": 0.40,
+          "currency": "USD",
+          "consumption": { "images_generated": 1 }
+        }
+      ]
+    },
+    {
+      "build_creative_id": "bc_card_02",
+      "catalog_item_ref": { "catalog_type": "product", "item_id": "sku_wool_beanie" },
+      "variants": [
+        {
+          "build_variant_id": "bv_card02_a",
+          "recipe_hash": "rh_card02_bestofn_3e40",
+          "creative_manifest": {
+            "format_kind": "image",
+            "assets": {
+              "banner_image": { "asset_type": "image", "url": "https://cdn.creative-agent.com/generated/sku_wool_beanie_take1.png", "width": 300, "height": 250 },
+              "headline": { "asset_type": "text", "content": "Merino Wool Beanie" },
+              "clickthrough_url": { "asset_type": "url", "url": "https://acmecorp.example.com/products/sku_wool_beanie?campaign={MEDIA_BUY_ID}" }
+            }
+          },
+          "variant_axis_value": "take_1",
+          "recommended": true,
+          "rank": 1,
+          "pricing_option_id": "po_per_image",
+          "vendor_cost": 0.40,
+          "currency": "USD",
+          "consumption": { "images_generated": 1 }
+        },
+        {
+          "build_variant_id": "bv_card02_b",
+          "recipe_hash": "rh_card02_bestofn_3e40",
+          "creative_manifest": {
+            "format_kind": "image",
+            "assets": {
+              "banner_image": { "asset_type": "image", "url": "https://cdn.creative-agent.com/generated/sku_wool_beanie_take2.png", "width": 300, "height": 250 },
+              "headline": { "asset_type": "text", "content": "Soft, Warm Merino Beanie" },
+              "clickthrough_url": { "asset_type": "url", "url": "https://acmecorp.example.com/products/sku_wool_beanie?campaign={MEDIA_BUY_ID}" }
+            }
+          },
           "variant_axis_value": "take_2",
           "recommended": false,
           "rank": 2,
@@ -533,13 +642,13 @@ When the request uses `max_creatives`, `max_variants` > 1, `variant_axis`, or `r
     }
   ],
   "items_total": 150,
-  "items_returned": 5,
-  "vendor_cost": 4.00,
+  "items_returned": 2,
+  "vendor_cost": 1.60,
   "currency": "USD"
 }
 ```
 
-_The `creatives[]` array above is abbreviated to one of the 5 returned groups; the aggregate `vendor_cost` of $4.00 covers all 5 groups × 2 variants × $0.40 — it equals the sum of every produced leaf's `vendor_cost`, not just the leaves shown._
+_The aggregate `vendor_cost` of $1.60 covers 2 groups × 2 variants × $0.40 — it equals the sum of every produced leaf's `vendor_cost`, including leaves you don't keep._
 
 - **creatives[]**: One entry per built creative group. With `max_creatives`, there is one entry per sampled catalog item (`catalog_item_ref` identifies which item); without catalog fan-out there is a single entry. Treat this as the produced group set; choose among alternatives inside each group's `variants[]`.
 - **creatives[].build_creative_id**: Identifies a built creative within this response.

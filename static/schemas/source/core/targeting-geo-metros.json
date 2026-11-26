@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/targeting-geo-metros.json",
+  "title": "Targeting Geo Metros",
+  "description": "Metro areas to target. Each entry names its classification system and values.",
+  "type": "array",
+  "items": {
+    "$ref": "/schemas/core/geo-metro.json"
+  },
+  "minItems": 1
+}

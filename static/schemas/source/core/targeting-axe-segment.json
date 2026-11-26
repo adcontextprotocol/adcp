@@ -1,0 +1,7 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/targeting-axe-segment.json",
+  "title": "Targeting AXE Segment",
+  "description": "An AXE segment ID, used only by the deprecated AXE targeting fields.",
+  "type": "string"
+}

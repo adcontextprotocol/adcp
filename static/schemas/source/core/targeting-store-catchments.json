@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/targeting-store-catchments.json",
+  "title": "Store Catchments",
+  "description": "Target users within store catchment areas from a synced store catalog. Each entry references a store-type catalog and optionally narrows to specific stores or catchment zones.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "catalog_id": {
+        "type": "string",
+        "description": "Synced store-type catalog ID from sync_catalogs."
+      },
+      "store_ids": {
+        "type": "array",
+        "description": "Filter to specific stores within the catalog. Omit to target all stores.",
+        "items": {
+          "type": "string"
+        },
+        "minItems": 1
+      },
+      "catchment_ids": {
+        "type": "array",
+        "description": "Catchment zone IDs to target (e.g., 'walk', 'drive'). Omit to target all catchment zones.",
+        "items": {
+          "type": "string"
+        },
+        "minItems": 1
+      }
+    },
+    "required": [
+      "catalog_id"
+    ],
+    "additionalProperties": true
+  },
+  "minItems": 1
+}

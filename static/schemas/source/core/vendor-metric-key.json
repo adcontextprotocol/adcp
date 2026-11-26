@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/vendor-metric-key.json",
+  "title": "Vendor Metric Key",
+  "description": "The key of one vendor metric value: vendor, metric ID, and optional qualifier.",
+  "type": "object",
+  "properties": {
+    "vendor": {
+      "$ref": "/schemas/core/brand-ref.json",
+      "description": "Vendor of the `vendor_metric_values[]` row. Matches the row's `vendor`."
+    },
+    "metric_id": {
+      "$ref": "/schemas/core/vendor-metric-id.json",
+      "description": "Metric of the `vendor_metric_values[]` row. Matches the row's `metric_id`."
+    },
+    "qualifier": {
+      "$ref": "/schemas/core/canonical-metric-qualifier.json",
+      "description": "The row's `qualifier`, repeated verbatim when the row carries one. Omit when the row has none."
+    }
+  },
+  "required": [
+    "vendor",
+    "metric_id"
+  ],
+  "additionalProperties": true
+}

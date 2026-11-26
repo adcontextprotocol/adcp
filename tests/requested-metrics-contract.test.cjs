@@ -4,6 +4,7 @@ const Ajv = require("ajv");
 const addFormats = require("ajv-formats");
 const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
+const { resolveSchema } = require("./helpers/named-scalar-schemas.cjs");
 
 const SCHEMA_ROOT = path.join(__dirname, "..", "static", "schemas", "source");
 
@@ -87,7 +88,7 @@ describe("requested_metrics contract (get_media_buy_delivery)", () => {
 
   it("response missing_metrics description states requested_metrics narrowing MUST NOT be flagged", () => {
     const missingMetricsDescription =
-      responseJson.properties.media_buy_deliveries.items.properties.by_package
+      resolveSchema(responseJson.properties.media_buy_deliveries.items).properties.by_package
         .items.allOf[1].properties.missing_metrics.description;
 
     assert.match(

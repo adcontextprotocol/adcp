@@ -6,18 +6,16 @@
   "type": "object",
   "properties": {
     "label": {
-      "type": "string",
-      "maxLength": 128,
+      "$ref": "/schemas/core/forecast-point-label.json",
       "description": "Human-readable name for this forecast point. Required when forecast_range_unit is 'package' so buyer agents can identify and reference individual packages. Optional for other forecast types.",
       "examples": ["Primetime", "Morning Drive", "Large Format Transit"]
     },
     "budget": {
-      "type": "number",
-      "description": "Budget amount for this forecast point. Required for spend curves; omit for availability forecasts where the metrics represent total available inventory. For allocation-level forecasts, this is the absolute budget for that allocation (not the percentage). For proposal-level forecasts, this is the total proposal budget. When omitted, use metrics.spend to express the estimated cost of the available inventory.",
-      "minimum": 0
+      "$ref": "/schemas/core/budget-amount.json",
+      "description": "Budget amount for this forecast point. Required for spend curves; omit for availability forecasts where the metrics represent total available inventory. For allocation-level forecasts, this is the absolute budget for that allocation (not the percentage). For proposal-level forecasts, this is the total proposal budget. When omitted, use metrics.spend to express the estimated cost of the available inventory."
     },
     "product_id": {
-      "type": "string",
+      "$ref": "/schemas/core/product-id.json",
       "description": "Optional product context for this forecast row. Usually omitted on product-level and allocation-level forecasts where the product is already implied. On proposal-level forecasts, populate when a dimensional row, especially a placement row, maps to a specific product allocation so buyers can turn the row into an executable package choice. Omit for true aggregate proposal rows spanning multiple products.",
       "x-entity": "product"
     },
@@ -53,42 +51,8 @@
       "minItems": 2
     },
     "metrics": {
-      "type": "object",
-      "description": "Forecasted metric values. Keys are forecastable-metric enum values for delivery/engagement or event-type enum values for outcomes; vendor metrics use vendor_metric_values. Values are ForecastRange objects (low/mid/high). Use { \"mid\": value } for point estimates. When budget is present, these are the expected metrics at that spend level. When budget is omitted, these represent total available inventory — use spend to express the estimated cost. Additional keys beyond the documented properties are allowed for event-type values (purchase, lead, app_install, etc.).",
-      "properties": {
-        "audience_size": { "$ref": "/schemas/core/forecast-range.json" },
-        "reach": { "$ref": "/schemas/core/forecast-range.json" },
-        "frequency": { "$ref": "/schemas/core/forecast-range.json" },
-        "impressions": { "$ref": "/schemas/core/forecast-range.json" },
-        "clicks": { "$ref": "/schemas/core/forecast-range.json" },
-        "spend": { "$ref": "/schemas/core/forecast-range.json" },
-        "views": { "$ref": "/schemas/core/forecast-range.json" },
-        "completed_views": { "$ref": "/schemas/core/forecast-range.json" },
-        "grps": { "$ref": "/schemas/core/forecast-range.json" },
-        "engagements": { "$ref": "/schemas/core/forecast-range.json" },
-        "follows": { "$ref": "/schemas/core/forecast-range.json" },
-        "saves": { "$ref": "/schemas/core/forecast-range.json" },
-        "profile_visits": { "$ref": "/schemas/core/forecast-range.json" },
-        "measured_impressions": { "$ref": "/schemas/core/forecast-range.json" },
-        "downloads": { "$ref": "/schemas/core/forecast-range.json" },
-        "plays": { "$ref": "/schemas/core/forecast-range.json" },
-        "coverage_rate": {
-          "allOf": [
-            { "$ref": "/schemas/core/forecast-range.json" },
-            {
-              "properties": {
-                "low": { "maximum": 1 },
-                "mid": { "maximum": 1 },
-                "high": { "maximum": 1 }
-              }
-            }
-          ],
-          "description": "Share of the declared forecast scope represented by this point. For signal coverage forecasts, this is the point's count divided by the coverage_forecast.scope denominator. Range 0.0 to 1.0."
-        }
-      },
-      "additionalProperties": {
-        "$ref": "/schemas/core/forecast-range.json"
-      }
+      "$ref": "/schemas/core/forecast-metrics.json",
+      "description": "Forecasted metric values. Keys are forecastable-metric enum values for delivery/engagement or event-type enum values for outcomes; vendor metrics use vendor_metric_values. Values are ForecastRange objects (low/mid/high). Use { \"mid\": value } for point estimates. When budget is present, these are the expected metrics at that spend level. When budget is omitted, these represent total available inventory — use spend to express the estimated cost. Additional keys beyond the documented properties are allowed for event-type values (purchase, lead, app_install, etc.)."
     },
     "viewability": {
       "type": "object",
@@ -107,16 +71,7 @@
           "description": "Forecasted impressions expected to meet the viewability threshold defined by standard."
         },
         "viewable_rate": {
-          "allOf": [
-            { "$ref": "/schemas/core/forecast-range.json" },
-            {
-              "properties": {
-                "low": { "maximum": 1 },
-                "mid": { "maximum": 1 },
-                "high": { "maximum": 1 }
-              }
-            }
-          ],
+          "$ref": "/schemas/core/forecast-rate-range.json",
           "description": "Forecasted viewable impression rate (viewable_impressions / measurable_impressions). Range 0.0 to 1.0."
         },
         "viewed_seconds": {

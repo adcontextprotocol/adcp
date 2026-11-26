@@ -2,16 +2,13 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/negative-keyword.json",
   "title": "Negative Keyword",
-  "description": "An excluded keyword.",
-  "type": "object",
-  "properties": {
-    "keyword": {
-      "type": "string",
-      "minLength": 1,
-      "description": "The keyword to exclude"
-    },
-    "match_type": { "$ref": "/schemas/enums/match-type.json" }
-  },
-  "required": ["keyword", "match_type"],
-  "additionalProperties": true
+  "description": "An excluded keyword: a keyword and match type the package does not target.",
+  "allOf": [
+    { "$ref": "/schemas/core/keyword-match.json" },
+    {
+      "properties": {
+        "keyword": { "description": "The keyword to exclude" }
+      }
+    }
+  ]
 }

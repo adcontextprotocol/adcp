@@ -8,7 +8,7 @@
     {
       "type": "object",
       "properties": {
-        "mode": { "type": "string", "const": "fixed" }
+        "mode": { "type": "string", "const": "fixed", "default": "fixed" }
       },
       "required": ["mode"],
       "additionalProperties": false
@@ -16,7 +16,7 @@
     {
       "type": "object",
       "properties": {
-        "mode": { "type": "string", "const": "seller_optimized" },
+        "mode": { "type": "string", "const": "seller_optimized", "default": "seller_optimized" },
         "optimization_goals": {
           "type": "array",
           "items": { "$ref": "/schemas/core/canonical-optimization-goal.json" },

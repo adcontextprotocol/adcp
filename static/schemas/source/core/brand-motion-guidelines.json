@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-motion-guidelines.json",
+  "title": "Brand Motion Guidelines",
+  "description": "Motion and animation rules for video, animated display, and interactive formats",
+  "type": "object",
+  "properties": {
+    "transition_style": {
+      "type": "string",
+      "enum": [
+        "cut",
+        "dissolve",
+        "slide",
+        "wipe",
+        "zoom",
+        "fade"
+      ],
+      "description": "Primary transition style between scenes"
+    },
+    "animation_speed": {
+      "type": "string",
+      "enum": [
+        "slow",
+        "moderate",
+        "fast"
+      ],
+      "description": "Overall animation pacing"
+    },
+    "easing": {
+      "type": "string",
+      "description": "Default easing function (e.g., 'ease-in-out', 'spring', 'linear')"
+    },
+    "text_entrance": {
+      "type": "string",
+      "enum": [
+        "fade",
+        "typewriter",
+        "slide_up",
+        "slide_left",
+        "scale",
+        "none"
+      ],
+      "description": "How text enters the frame"
+    },
+    "pacing": {
+      "type": "string",
+      "enum": [
+        "lingering",
+        "moderate",
+        "fast_cuts"
+      ],
+      "description": "Overall editing rhythm"
+    },
+    "kinetic_typography": {
+      "type": "boolean",
+      "description": "Whether animated/kinetic typography is allowed"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Additional motion style descriptors"
+    }
+  },
+  "additionalProperties": true
+}

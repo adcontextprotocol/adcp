@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/trademark-mark.json",
+  "title": "Trademark Mark",
+  "description": "Registered trademark text as the registry publishes it.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 200
+}

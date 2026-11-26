@@ -519,7 +519,9 @@ async function runTests() {
     const enforcementAjv = new Ajv({ strict: false });
     addFormats(enforcementAjv);
     enforcementAjv.addSchema(loadSchema(path.join(SCHEMA_BASE_DIR, 'governance/accepted-governance-agents.json')));
-    const validateEnforcement = enforcementAjv.compile(enforcementSchema);
+    enforcementAjv.addSchema(loadSchema(path.join(SCHEMA_BASE_DIR, 'enums/verification-token-mode.json')));
+    // The subschema references the capability document's own definitions.
+    const validateEnforcement = enforcementAjv.compile({ ...enforcementSchema, definitions: capabilities.definitions });
     if (!validateEnforcement({ tasks: [{ task: 'create_media_buy', modes: ['signed_context', 'online_execution_check'] }] })) {
       return 'valid media-buy online enforcement claim was rejected';
     }
@@ -914,7 +916,11 @@ async function runTests() {
   // Test 5: Validate enum schemas
   await test('All vocabulary schemas have finite values or constrained parameterized names', () => {
     const enumSchemas = schemas.filter(([path]) => path.includes('/enums/'));
-    const isFiniteEnum = branch => Array.isArray(branch.enum) && branch.enum.length > 0;
+    // A branch that references another vocabulary is finite: this test checks
+    // that vocabulary as its own document.
+    const isFiniteEnum = branch => (Array.isArray(branch.enum) && branch.enum.length > 0) ||
+      'const' in branch ||
+      (typeof branch.$ref === 'string' && branch.$ref.startsWith('/schemas/enums/'));
     const isParameterizedName = branch => typeof branch.pattern === 'string' &&
       branch.pattern.startsWith('^') && branch.pattern.endsWith('$');
 
@@ -1322,7 +1328,10 @@ async function runTests() {
   await test('create/update success reserve status for the task envelope', async () => {
     const createSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'media-buy/create-media-buy-response.json'));
     const updateSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'media-buy/update-media-buy-response.json'));
-    const createSuccess = createSchema.oneOf.find(branch => branch.title === 'CreateMediaBuySuccess');
+    const createSuccess = loadSchema(path.join(SCHEMA_BASE_DIR, 'media-buy/create-media-buy-success.json'));
+    if (createSchema.oneOf[0].$ref !== '/schemas/media-buy/create-media-buy-success.json') {
+      return 'create_media_buy no longer references its success branch';
+    }
     const updateSuccess = updateSchema.oneOf.find(branch => branch.title === 'UpdateMediaBuySuccess');
 
     if (createSuccess?.properties?.status) {
@@ -2136,11 +2145,15 @@ async function runTests() {
     }
 
     const targetingSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'core/targeting.json'));
-    const excludeMetroLabelRule = targetingSchema.properties.geo_metros_exclude.items['x-adcp-validation']?.map_keys_subset_of_array;
+    // geo_metros_exclude is core/targeting-geo-metros-exclude.json.
+    const excludeMetros = loadSchema(path.join(SCHEMA_BASE_DIR, targetingSchema.properties.geo_metros_exclude.$ref.replace(/^\/schemas\//, '')));
+    const excludeMetroLabelRule = excludeMetros?.items?.['x-adcp-validation']?.map_keys_subset_of_array;
     if (excludeMetroLabelRule?.map_field !== 'value_labels' || excludeMetroLabelRule?.array_field !== 'values') {
       return 'geo_metros_exclude entries must declare value_labels key membership validation';
     }
-    const isoLabelRule = targetingSchema.properties.geo_value_labels?.['x-adcp-validation']?.map_keys_subset_of_arrays;
+    // geo_value_labels is core/targeting-geo-value-labels.json, which states the rule.
+    const geoValueLabels = loadSchema(path.join(SCHEMA_BASE_DIR, targetingSchema.properties.geo_value_labels.$ref.replace(/^\/schemas\//, '')));
+    const isoLabelRule = geoValueLabels?.['x-adcp-validation']?.map_keys_subset_of_arrays;
     if (JSON.stringify(isoLabelRule?.array_fields) !== JSON.stringify(['geo_countries', 'geo_countries_exclude', 'geo_regions', 'geo_regions_exclude'])) {
       return 'geo_value_labels must declare key membership across the ISO country and region arrays';
     }
@@ -2610,7 +2623,7 @@ async function runTests() {
             description: 'Weather context',
             signal_type: 'marketplace',
             coverage_forecast: signalCoverageForecast,
-            deployments: []
+            deployments: [{ type: 'platform', platform: 'the-trade-desk', is_live: false }]
           }
         ]
       },

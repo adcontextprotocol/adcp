@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
+const { resolveSchema } = require('./helpers/named-scalar-schemas.cjs');
 
 const SCHEMA_BASE_DIR = path.join(__dirname, '../static/schemas/source');
 
@@ -449,12 +450,23 @@ async function runTests() {
       throw new Error('Schema should have oneOf variants');
     }
 
+    // A variant declares ext itself or through a document it composes
+    // (the error variant composes core/task-error-response.json).
+    const extOf = (node) => {
+      const variant = resolveSchema(node, schema);
+      if (variant.properties && variant.properties.ext) return variant.properties.ext;
+      for (const member of variant.allOf || []) {
+        const ext = extOf(member);
+        if (ext) return ext;
+      }
+      return undefined;
+    };
     for (let i = 0; i < schema.oneOf.length; i++) {
-      const variant = schema.oneOf[i];
-      if (!variant.properties || !variant.properties.ext) {
+      const ext = extOf(schema.oneOf[i]);
+      if (!ext) {
         throw new Error(`oneOf variant ${i} missing ext field`);
       }
-      validateExtField(variant.properties.ext, '/schemas/core/ext.json');
+      validateExtField(ext, '/schemas/core/ext.json');
     }
 
     return true;
@@ -477,7 +489,7 @@ async function runTests() {
     const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
 
     // Context is in oneOf branches, not at top level
-    const successBranch = schema.oneOf[0];
+    const successBranch = resolveSchema(schema.oneOf[0], schema);
     const errorBranch = schema.oneOf[1];
 
     validateExtField(successBranch.properties.context, '/schemas/core/context.json');

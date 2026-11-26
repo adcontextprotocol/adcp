@@ -39,7 +39,10 @@ for (const [name, select, legacy] of surfaces) {
       return readSchema(uri.slice('/schemas/'.length));
     } });
     addFormats(ajv);
-    const validate = await ajv.compileAsync(select(readSchema(name)));
+    // A selected subschema keeps its document's definitions for local references.
+    const document = readSchema(name);
+    const selected = select(document);
+    const validate = await ajv.compileAsync(selected === document ? document : { ...selected, definitions: { ...(document.definitions || {}), ...(selected.definitions || {}) } });
     for (const payload of [legacy, { ...legacy, [FIELD]: false }, { ...legacy, [FIELD]: true }]) {
       assert.equal(validate(payload), true, JSON.stringify(validate.errors));
     }
@@ -88,7 +91,8 @@ test('compound create and update use the package schemas that define the gate', 
   assert.equal(declaresField(create), false);
   assert.equal(update.properties.new_packages.items.$ref, '/schemas/media-buy/package-request.json');
   assert.equal(update.properties.packages.items.$ref, '/schemas/media-buy/package-update.json');
-  const success = readSchema('media-buy/create-media-buy-response.json').oneOf[0];
+  assert.equal(readSchema('media-buy/create-media-buy-response.json').oneOf[0].$ref, '/schemas/media-buy/create-media-buy-success.json');
+  const success = readSchema('media-buy/create-media-buy-success.json');
   assert.equal(success.properties.packages.items.$ref, '/schemas/core/package.json');
   const updated = readSchema('media-buy/update-media-buy-response.json').oneOf[0];
   assert.equal(updated.properties.affected_packages.items.$ref, '/schemas/core/package.json');

@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/canonical-makegood-policy.json",
+  "title": "Canonical Makegood Policy",
+  "description": "Compact makegood terms: the remedies a seller offers when a performance standard or billing measurement is breached. Closed, like the canonical measurement terms that carry it.",
+  "type": "object",
+  "properties": {
+    "available_remedies": {
+      "type": "array",
+      "items": { "$ref": "/schemas/enums/makegood-remedy.json" },
+      "minItems": 1,
+      "uniqueItems": true
+    }
+  },
+  "required": ["available_remedies"],
+  "additionalProperties": false
+}

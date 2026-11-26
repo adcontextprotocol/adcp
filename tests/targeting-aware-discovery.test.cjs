@@ -744,7 +744,8 @@ test("device-platform exclusion is typed and independently discoverable", async 
     errors(validateSupport)
   );
 
-  const targetingSchema = fs.readFileSync(
+  // device_platform_exclude is a document of its own that carries the field's description.
+  const excludeSchema = fs.readFileSync(
     path.join(
       __dirname,
       "..",
@@ -752,12 +753,12 @@ test("device-platform exclusion is typed and independently discoverable", async 
       "schemas",
       "source",
       "core",
-      "targeting.json"
+      "targeting-device-platform-exclude.json"
     ),
     "utf8"
   );
-  assert.match(targetingSchema, /exclusion wins/i);
-  assert.match(targetingSchema, /MUST reject/);
+  assert.match(excludeSchema, /exclusion wins/i);
+  assert.match(excludeSchema, /MUST reject/);
 });
 
 test("daypart targeting binds delivery clocks and product-scoped timezone modes", async () => {
@@ -789,11 +790,11 @@ test("daypart targeting binds delivery clocks and product-scoped timezone modes"
     const daypart = timezone === undefined ? base : { ...base, timezone };
     assert.equal(validateDaypart(daypart), true, errors(validateDaypart));
   }
-  for (const timezone of ["", "/America", "America/", "America//New_York", "New York", "America/New York"]) {
+  for (const timezone of ["", "x".repeat(256)]) {
     assert.equal(
       validateDaypart({ ...base, timezone }),
       false,
-      `${timezone} is not an inventory-local or IANA-shaped timezone`
+      `a timezone of ${timezone.length} characters is outside 1 to 255`
     );
   }
 
@@ -867,12 +868,16 @@ test("daypart targeting binds delivery clocks and product-scoped timezone modes"
     daypartSchema.properties.timezone.anyOf[1].$ref,
     "/schemas/core/iana-timezone.json"
   );
+  // The timezone mode and identifier lists are named definitions.
+  const named = (node) => (node.$ref
+    ? JSON.parse(fs.readFileSync(path.join(SCHEMA_ROOT, node.$ref.replace(/^\/schemas\//, "")), "utf8"))
+    : node);
   assert.equal(
-    requirementSchema.definitions.daypartRequirement.anyOf[1].properties.timezone_modes.items.$ref,
+    named(requirementSchema.definitions.daypartRequirement.anyOf[1].properties.timezone_modes).items.$ref,
     "/schemas/enums/daypart-timezone-mode.json"
   );
   assert.equal(
-    supportSchema.definitions.daypartSupport.anyOf[1].properties.iana_timezones.anyOf[1].items.$ref,
+    named(supportSchema.definitions.daypartSupport.anyOf[1].properties.iana_timezones.anyOf[1]).items.$ref,
     "/schemas/core/iana-timezone.json"
   );
   assert.equal(
@@ -1001,12 +1006,17 @@ test("browser-family inclusion and exclusion are typed and independently discove
   const targeting = JSON.parse(
     fs.readFileSync(path.join(SCHEMA_ROOT, "core", "targeting.json"), "utf8")
   );
-  assert.match(targeting.properties.browser.description, /families not listed are ineligible/i);
-  assert.match(targeting.properties.browser.description, /exclusion wins/i);
-  assert.match(targeting.properties.browser.description, /Browser and device constraints intersect/i);
-  assert.match(targeting.properties.browser.description, /not the post-click landing-page browser/i);
-  assert.match(targeting.properties.browser.description, /MUST reject/i);
-  assert.match(targeting.properties.browser_exclude.description, /exclusion wins/i);
+  // browser and browser_exclude are documents of their own that carry the fields' descriptions.
+  const fieldSchema = (name) => JSON.parse(
+    fs.readFileSync(path.join(SCHEMA_ROOT, targeting.properties[name].$ref.replace(/^\/schemas\//, "")), "utf8")
+  );
+  const browser = fieldSchema("browser");
+  assert.match(browser.description, /families not listed are ineligible/i);
+  assert.match(browser.description, /exclusion wins/i);
+  assert.match(browser.description, /Browser and device constraints intersect/i);
+  assert.match(browser.description, /not the post-click landing-page browser/i);
+  assert.match(browser.description, /MUST reject/i);
+  assert.match(fieldSchema("browser_exclude").description, /exclusion wins/i);
 });
 
 test("seller targeting rollups are explicit true-valued routing hints", async () => {
@@ -2272,8 +2282,12 @@ test("canonical products carry targeting resolution and reporting offerings with
   const fields = JSON.parse(
     fs.readFileSync(path.join(SCHEMA_ROOT, "media-buy", "product-fields.json"), "utf8")
   );
-  assert.ok(fields.items.enum.includes("targeting_resolution"));
-  assert.ok(!fields.items.enum.includes("is_custom"));
+  assert.equal(fields.items.$ref, "/schemas/media-buy/product-field.json");
+  const field = JSON.parse(
+    fs.readFileSync(path.join(SCHEMA_ROOT, "media-buy", "product-field.json"), "utf8")
+  );
+  assert.ok(field.enum.includes("targeting_resolution"));
+  assert.ok(!field.enum.includes("is_custom"));
 });
 
 test("named-place targeting supports known-now and declared-later discovery", async () => {

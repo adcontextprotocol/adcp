@@ -107,7 +107,8 @@ test('a canonical installment is identified by the (collection_ref, installment_
   assert.equal(schema.additionalProperties, true);
   assert.deepEqual(schema.required, ['installment_id', 'collection_ref']);
   assert.equal(schema.properties.collection_id, undefined, 'no deprecated shorthand is declared');
-  assert.equal(schema.properties.installment_id['x-entity'], 'installment');
+  assert.equal(schema.properties.installment_id.$ref, '/schemas/core/installment-id.json');
+  assert.equal(readSchema('core/installment-id.json')['x-entity'], 'installment');
 });
 
 test('a derivative names its source canonically, not by a response-local installment_id', async () => {
@@ -185,8 +186,10 @@ test('absence of installments is run-of-collection, and is documented as such', 
 
 test('installments are requestable through the canonical fields projection', () => {
   const fields = readSchema('media-buy/product-fields.json');
-  assert.ok(fields.items.enum.includes('installments'), 'buyers can project installments');
-  assert.ok(fields.items.enum.includes('collections'));
+  assert.equal(fields.items.$ref, '/schemas/media-buy/product-field.json');
+  const field = readSchema('media-buy/product-field.json');
+  assert.ok(field.enum.includes('installments'), 'buyers can project installments');
+  assert.ok(field.enum.includes('collections'));
   assert.match(fields.description, /requesting installments also returns collections/);
   // The same enum is shared with legacy get_products, where that rule is false.
   assert.match(fields.description, /Legacy get_products shares this enum but not that rule/);

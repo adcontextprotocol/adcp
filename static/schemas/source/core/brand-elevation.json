@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-elevation.json",
+  "title": "Brand Elevation",
+  "description": "Named shadow/elevation levels. Brands use elevation as identity — from Stripe's blue-tinted multi-layer shadows to Apple's single diffuse shadow. Values are CSS box-shadow syntax.",
+  "type": "object",
+  "properties": {
+    "none": {
+      "type": "string",
+      "description": "No shadow (e.g., 'none')"
+    },
+    "subtle": {
+      "type": "string",
+      "description": "Subtle shadow for slight lift (e.g., '0 1px 2px rgba(0,0,0,0.05)')"
+    },
+    "card": {
+      "type": "string",
+      "description": "Card-level shadow (e.g., '0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1)')"
+    },
+    "modal": {
+      "type": "string",
+      "description": "Modal/overlay shadow (e.g., '0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)')"
+    }
+  },
+  "additionalProperties": {
+    "type": "string"
+  }
+}

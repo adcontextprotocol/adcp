@@ -4,6 +4,7 @@ const Ajv = require("ajv");
 const addFormats = require("ajv-formats");
 const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
+const { addNamedScalarSchemas, resolveScalar, resolveSchema } = require('./helpers/named-scalar-schemas.cjs');
 
 const SCHEMA_ROOT = path.join(__dirname, "..", "static", "schemas", "source");
 
@@ -113,9 +114,10 @@ describe("metric identity coherence", () => {
     for (const [leaf, [container, field]] of Object.entries(LEAF_IDENTITIES)) {
       assert.ok(availableMetrics.has(leaf), `${leaf} missing from available-metric.json`);
       assert.ok(sortMetrics.has(leaf), `${leaf} missing from sort-metric.json`);
-      const nested = deliveryMetrics.properties[container];
+      // The nested container is a document of its own, such as core/viewability-metrics.json.
+      const nested = deliveryMetrics.properties[container] && resolveSchema(deliveryMetrics.properties[container]);
       assert.ok(nested, `${container} missing from delivery-metrics.json`);
-      const target = nested.properties[field];
+      const target = resolveScalar(nested.properties[field]);
       assert.ok(target, `${container}.${field} missing from delivery-metrics.json`);
       const types = Array.isArray(target.type) ? target.type : [target.type];
       assert.ok(
@@ -136,7 +138,8 @@ describe("metric identity coherence", () => {
     for (const [identity, [container, field, type]] of Object.entries(STRUCTURED_IDENTITIES)) {
       assert.ok(availableMetrics.has(identity), `${identity} missing from available-metric.json`);
       assert.ok(!sortMetrics.has(identity), `${identity} must not be sortable`);
-      const target = deliveryMetrics.properties[container]?.properties?.[field];
+      const container_ = deliveryMetrics.properties[container];
+      const target = container_ && resolveSchema(container_).properties?.[field];
       assert.equal(target?.type, type, `${container}.${field} must be a nested ${type}`);
       assert.equal(
         deliveryMetrics.properties[identity],
@@ -238,8 +241,9 @@ describe("metric identity coherence", () => {
       "histogram with a fractional denominator must be rejected"
     );
 
-    const verifierConstraints =
-      deliveryMetrics.properties.viewability["x-adcp-validation"]?.verifier_constraints;
+    // viewability is core/viewability-metrics.json, which carries the field's annotations.
+    const viewability = resolveSchema(deliveryMetrics.properties.viewability);
+    const verifierConstraints = viewability["x-adcp-validation"]?.verifier_constraints;
     assert.deepEqual(verifierConstraints, {
       viewed_seconds_percentile_order: "p25 <= p50 <= p75 <= p90 <= p95",
       viewed_seconds_histogram_bounds:
@@ -248,7 +252,7 @@ describe("metric identity coherence", () => {
         "sum(bucket.impressions) equals measurable_impressions",
     });
     assert.equal(
-      deliveryMetrics.properties.viewability["x-adcp-validation"]?.spec,
+      viewability["x-adcp-validation"]?.spec,
       "docs/media-buy/media-buys/optimization-reporting.mdx#available-metrics"
     );
   });
@@ -273,7 +277,7 @@ describe("metric identity coherence", () => {
 
   it("only conditions delivery-metric-aggregate on representable metric_ids", () => {
     const aggregate = readSchema("/schemas/core/delivery-metric-aggregate.json");
-    const standardBranch = aggregate.oneOf.find(
+    const standardBranch = aggregate.oneOf.map((branch) => resolveSchema(branch)).find(
       (branch) =>
         branch.properties &&
         branch.properties.scope &&

@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-schedule-alignment.json",
+  "title": "Reporting Schedule Alignment",
+  "description": "Calendar used to establish exact period boundaries. source_timezone is an explicit upstream reporting clock, such as an ad server network timezone, that may differ from the AdCP account timezone. The obligation echoes resolved timestamps and source timezone.",
+  "x-adcp-model-context-inline": true,
+  "allOf": [
+    {
+      "$ref": "/schemas/enums/reporting-schedule-alignment.json"
+    }
+  ]
+}

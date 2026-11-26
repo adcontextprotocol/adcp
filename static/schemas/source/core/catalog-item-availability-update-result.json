@@ -11,25 +11,21 @@
       "description": "Zero-based index of the corresponding item_availability_updates entry."
     },
     "catalog_id": {
-      "type": "string",
+      "$ref": "/schemas/core/catalog-id.json",
       "description": "Catalog ID from the request.",
       "x-entity": "catalog"
     },
     "catalog_generation": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "description": "Catalog generation from the request.",
-      "x-entity": "catalog_generation"
+      "$ref": "/schemas/core/catalog-generation.json",
+      "description": "Catalog generation from the request."
     },
     "item_id": {
-      "type": "string",
+      "$ref": "/schemas/core/catalog-item-id.json",
       "description": "Item ID from the request.",
       "x-entity": "catalog_item"
     },
     "action": {
-      "type": "string",
-      "enum": ["suppress", "restore"],
+      "$ref": "/schemas/enums/catalog-item-availability-action.json",
       "description": "Action from the request."
     },
     "status": {
@@ -38,8 +34,7 @@
       "description": "applied means the requested overlay transition completed, including replacement or removal of an existing expires_at; unchanged means the item was already in the requested buyer-availability state with the same expiry; failed means no transition was applied."
     },
     "availability": {
-      "type": "string",
-      "enum": ["active", "suppressed"],
+      "$ref": "/schemas/enums/catalog-item-availability.json",
       "description": "Persisted buyer-authored state after an applied or unchanged result."
     },
     "overlay_revision": {

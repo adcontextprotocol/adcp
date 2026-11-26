@@ -4,6 +4,7 @@
   "title": "Property ID",
   "description": "Identifier for a publisher property. Must be lowercase alphanumeric with underscores only.",
   "type": "string",
+  "x-max-length-4.0": 255,
   "pattern": "^[a-z0-9_]+$",
   "x-entity": "property",
   "examples": [

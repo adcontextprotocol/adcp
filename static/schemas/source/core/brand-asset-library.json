@@ -1,0 +1,77 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-asset-library.json",
+  "title": "Brand Asset Library",
+  "description": "A managed asset library (icon set, illustration system, image collection). The URL is for human access; agent-facing DAM integration is under investigation.",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Display name of the asset library"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "icon_set",
+        "illustration_system",
+        "image_library",
+        "video_library",
+        "template_library"
+      ],
+      "description": "Type of asset library"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to the asset library (for human access)"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of the library contents and usage"
+    },
+    "color_guide": {
+      "type": "object",
+      "description": "Color guide for the asset library defining roles and palettes",
+      "properties": {
+        "roles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Named color roles used in the library (e.g., base, shadow_1, highlight_1, stroke)"
+        },
+        "palettes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Palette name"
+              },
+              "colors": {
+                "type": "object",
+                "additionalProperties": {
+                  "$ref": "/schemas/core/hex-color.json"
+                },
+                "description": "Map of role names to hex color values"
+              }
+            },
+            "required": [
+              "name",
+              "colors"
+            ],
+            "additionalProperties": true
+          },
+          "description": "Named color palettes mapping roles to specific colors"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "name",
+    "url"
+  ],
+  "additionalProperties": true
+}

@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/product-purchase-start-time.json",
+  "title": "Product Purchase Start Time",
+  "description": "A resolved flight start timestamp. The value asap is not accepted.",
+  "type": "string",
+  "format": "date-time",
+  "not": {
+    "const": "asap"
+  }
+}

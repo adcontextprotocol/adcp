@@ -42,11 +42,11 @@
       "description": "Minimal subset of the underlying failure that triggered cache fallback. Sellers MUST NOT include internal stack traces, credentials, or connection strings.",
       "properties": {
         "code": {
-          "type": "string",
+          "$ref": "/schemas/core/open-error-code.json",
           "description": "Error code from the underlying failure, e.g., SERVICE_UNAVAILABLE, or a transport-level identifier like 'TIMEOUT' / 'CONNECTION_REFUSED' when the underlying call did not produce an AdCP error code."
         },
         "message": {
-          "type": "string",
+          "$ref": "/schemas/core/error-message.json",
           "description": "Short human-readable description of the underlying failure (e.g., 'Connection timeout after 20s'). MUST NOT include credentials, internal hostnames, or stack traces."
         }
       },

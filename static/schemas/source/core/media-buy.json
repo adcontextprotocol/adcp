@@ -11,22 +11,15 @@
       "x-entity": "media_buy"
     },
     "name": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "\\S",
+      "$ref": "/schemas/core/media-buy-name.json",
       "description": "Human-readable name for this media buy, shared by buyer and seller for trafficking UI display and operational communication. Sellers MUST include the persisted name on read surfaces such as get_media_buys when the media buy was created through AdCP with name. Sellers MAY omit name for media buys created outside AdCP or created without name. This display label is not an identifier or financial reference."
     },
     "accepted_proposal_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "x-entity": "proposal",
+      "$ref": "/schemas/core/proposal-id.json",
       "description": "Current accepted commercial snapshot. Compact-lifecycle buyers pass this ID to refine_proposals after restart or handoff. Updated atomically when an amendment or negotiated cancellation is accepted."
     },
     "accepted_proposal_terms_digest": {
-      "type": "string",
-      "pattern": "^sha256:[A-Za-z0-9_-]{43}$",
+      "$ref": "/schemas/core/proposal-terms-digest.json",
       "description": "Digest of the current accepted proposal commercial_terms, allowing buyers and governance agents to verify the recovered snapshot."
     },
     "account": {
@@ -64,26 +57,8 @@
       "description": "Optional, informational estimate of when the seller expects to confirm this provisional buy (`confirmed_at: null`). A seller MAY set it when it knows a booking round, review window, or ad-server read-back that confirmation waits on. Absent once `confirmed_at` is set. It is not an SLA or an expiry, no behavior depends on it, and a passed timestamp is not a failure. Buyers MUST key commitment off `confirmed_at`, never off this field."
     },
     "cancellation": {
-      "type": "object",
-      "description": "Cancellation metadata. Present only when status is 'canceled'.",
-      "required": ["canceled_at", "canceled_by"],
-      "properties": {
-        "canceled_at": {
-          "type": "string",
-          "format": "date-time",
-          "description": "ISO 8601 timestamp when this media buy was canceled."
-        },
-        "canceled_by": {
-          "$ref": "/schemas/enums/canceled-by.json",
-          "description": "Which party initiated the cancellation. 'buyer' when canceled through control_media_buy or the 3.x update_media_buy facade; 'seller' when the seller cancels (e.g., policy violation, inventory withdrawal)."
-        },
-        "reason": {
-          "type": "string",
-          "description": "Reason provided when the media buy was canceled.",
-          "maxLength": 500
-        }
-      },
-      "additionalProperties": true
+      "$ref": "/schemas/core/cancellation.json",
+      "description": "Cancellation metadata. Present only when status is 'canceled'."
     },
     "cancellation_effective_at": {
       "type": "string",
@@ -105,14 +80,7 @@
       "maxItems": 64,
       "description": "Retroactive flight edits, oldest first, so a buyer can recompute which periods a reporting subscription owed (media_buy.reporting_subscriptions). The buy's flight runs from start_time to its stop time, as the reporting-subscription.json coverage rule defines it. An edit is retroactive when the start_time or stop time before or after it is earlier than the instant the seller recorded it. Each entry carries the flight in force before that edit. The flight in force at an instant X is the one in the earliest entry recorded after X, or the current flight when no entry is. Edits whose before and after values all lie after recorded_at change no elapsed period, so they are not listed. Sellers advertising media_buy.reporting_subscriptions MUST list every retroactive edit recorded within the last status_retention_days; an older entry MAY be dropped, because it governs only periods that ended before it was recorded. At most 64 entries are retained: a seller MUST refuse a retroactive edit that would exceed that with INVALID_STATE, and an edit it cannot refuse, such as one observed on a connected platform, it applies from the instant it records it (no start_time or stop time earlier than recorded_at), which needs no entry.",
       "items": {
-        "type": "object",
-        "properties": {
-          "recorded_at": { "type": "string", "format": "date-time", "description": "When the seller recorded the edit, or ingested it when it was observed on a connected platform. Flight values change at this instant for every period resolved after it." },
-          "start_time": { "type": "string", "format": "date-time", "description": "start_time in force before the edit." },
-          "stop_time": { "type": "string", "format": "date-time", "description": "Stop time in force before the edit." }
-        },
-        "required": ["recorded_at", "start_time", "stop_time"],
-        "additionalProperties": true
+        "$ref": "/schemas/core/flight-history-entry.json"
       }
     },
     "total_budget": {
@@ -121,22 +89,20 @@
       "minimum": 0
     },
     "daily_budget_cap": {
-      "type": "number",
-      "description": "Current hard aggregate spend ceiling per calendar day. Sellers MUST echo this whenever an aggregate daily cap is set. It bounds total media-buy spend without allocating or reserving spend for packages.",
-      "minimum": 0
+      "$ref": "/schemas/core/daily-budget-cap.json",
+      "description": "Current hard aggregate spend ceiling per calendar day. Sellers MUST echo this whenever an aggregate daily cap is set. It bounds total media-buy spend without allocating or reserving spend for packages."
     },
     "frequency_cap": {
       "$ref": "/schemas/core/media-buy-frequency-cap.json",
       "description": "Current hard MediaBuy-level cap. Sellers MUST echo it whenever set. Its counter aggregates exposures across all participating packages; each package targeting_overlay.frequency_cap remains independently binding."
     },
     "budget_cap_timezone": {
-      "type": "string",
+      "$ref": "/schemas/core/iana-timezone.json",
       "description": "IANA timezone defining the shared calendar-day boundary for every aggregate and package daily cap on this media buy. Sellers MUST echo it whenever any daily cap is set."
     },
     "currency": {
-      "type": "string",
-      "description": "Single ISO 4217 denomination for total_budget, every package budget/minimum, and every canonical BiddingPolicy monetary field. Every package's selected pricing option MUST declare this currency; packages requiring another currency belong in a separate media buy.",
-      "pattern": "^[A-Z]{3}$"
+      "$ref": "/schemas/core/currency-code.json",
+      "description": "Single ISO 4217 denomination for total_budget, every package budget/minimum, and every canonical BiddingPolicy monetary field. Every package's selected pricing option MUST declare this currency; packages requiring another currency belong in a separate media buy."
     },
     "budget_allocation": {
       "allOf": [

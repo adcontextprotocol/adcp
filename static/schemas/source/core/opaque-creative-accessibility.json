@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/opaque-creative-accessibility.json",
+  "title": "Opaque Creative Accessibility",
+  "description": "Self-declared accessibility properties for this opaque creative",
+  "type": "object",
+  "properties": {
+    "alt_text": {
+      "type": "string",
+      "description": "Text alternative describing the creative content"
+    },
+    "keyboard_navigable": {
+      "type": "boolean",
+      "description": "Whether the creative can be fully operated via keyboard"
+    },
+    "motion_control": {
+      "type": "boolean",
+      "description": "Whether the creative respects prefers-reduced-motion or provides pause/stop controls"
+    },
+    "screen_reader_tested": {
+      "type": "boolean",
+      "description": "Whether the creative has been tested with screen readers"
+    }
+  }
+}

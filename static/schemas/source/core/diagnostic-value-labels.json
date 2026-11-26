@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/diagnostic-value-labels.json",
+  "title": "Diagnostic Value Labels",
+  "description": "Human-readable diagnostic labels keyed by values present in the value list; extra keys are a conformance error. Labels are non-authoritative and must not be used to resolve or apply targeting.",
+  "type": "object",
+  "additionalProperties": {
+    "type": "string",
+    "minLength": 1
+  }
+}

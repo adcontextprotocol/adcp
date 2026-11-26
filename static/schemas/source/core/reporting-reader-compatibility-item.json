@@ -1,0 +1,10 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-reader-compatibility-item.json",
+  "title": "Reporting Reader Compatibility Item",
+  "description": "One reader feature or format constraint required to consume a reporting resource.",
+  "x-adcp-model-context-inline": true,
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 128
+}

@@ -1,0 +1,64 @@
+# Delta manifest (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  One definition per object: creative. The corrections the review chose; every other change is a $ref to an identical
+  definition.
+changes:
+  - location: core/creative-preview.json#
+    keyword: required
+    old:
+      - expires_at
+      - previews
+    new:
+      - previews
+    direction: loosen
+    side: response
+    note: >-
+      media-buy/build-creative-response.json#/oneOf/0/properties/preview -> new:core/creative-preview.json. Witness:
+      media-buy/build-creative-response.json /preview =
+      {"previews":[{"preview_id":"a","renders":[{"render_id":"a","output_format":"u... (loosen).
+  - location: core/creative-multiplicity.json#
+    keyword: properties
+    new:
+      minimum: 1
+      type:
+        - integer
+    direction: tighten
+    side: response
+    note: >-
+      core/transformer.json#/properties/multiplicity -> new:core/creative-multiplicity.json. Verdict delta:
+      supports_signal_fanout:property:tighten:correction; max_signal_conditions_limit:property:tighten:correction;
+      selection_strategies:property:tighten:correction. Witness: core/transformer.json
+      /multiplicity/max_signal_conditions_limit = {} (tighten).
+  - location: core/creative-multiplicity.json#
+    keyword: properties
+    new:
+      type:
+        - array
+      uniqueItems: true
+      items:
+        enum:
+          - audience_relevance
+          - contextual_fit
+          - inventory_priority
+          - performance
+          - proximity
+          - random
+    direction: tighten
+    side: response
+    note: >-
+      core/transformer.json#/properties/multiplicity -> new:core/creative-multiplicity.json. Verdict delta:
+      supports_signal_fanout:property:tighten:correction; max_signal_conditions_limit:property:tighten:correction;
+      selection_strategies:property:tighten:correction. Witness: core/transformer.json
+      /multiplicity/selection_strategies = {} (tighten).
+  - location: core/creative-multiplicity.json#
+    keyword: properties
+    new:
+      type:
+        - boolean
+    direction: tighten
+    side: response
+    note: >-
+      core/transformer.json#/properties/multiplicity -> new:core/creative-multiplicity.json. Verdict delta:
+      supports_signal_fanout:property:tighten:correction; max_signal_conditions_limit:property:tighten:correction;
+      selection_strategies:property:tighten:correction. Witness: core/transformer.json
+      /multiplicity/supports_signal_fanout = {} (tighten).

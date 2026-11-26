@@ -1,0 +1,10 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/account-change-id.json",
+  "title": "Account Change ID",
+  "description": "Stable seller-generated identifier of one logical account change.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 255,
+  "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+}

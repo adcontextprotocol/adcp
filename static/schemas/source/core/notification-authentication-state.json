@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/notification-authentication-state.json",
+  "title": "Notification Authentication State",
+  "description": "Credential-free readback of a legacy notification authentication selector: the scheme only. Rejects `credentials`, which are write-only and never read back.",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/notification-authentication.json"
+    },
+    {
+      "not": {
+        "required": [
+          "credentials"
+        ]
+      }
+    }
+  ]
+}

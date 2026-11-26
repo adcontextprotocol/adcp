@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-subscription-unauthorized-account.json",
+  "title": "Reporting Subscription Unauthorized Account",
+  "description": "An account a reporting subscription covered whose authority the caller has since lost, with the reporting withheld since.",
+  "type": "object",
+  "properties": {
+    "account_id": {
+      "$ref": "/schemas/core/account-id.json"
+    },
+    "unauthorized_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the caller's authority for the account ended: the revocation, or the reduction of its grant to allowed_tasks without get_reporting_status. Nothing is delivered for periods ending after it, including on retries."
+    },
+    "last_owed_period_end": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last period boundary at or before unauthorized_at: the end of the last period owed before authority ended."
+    },
+    "withheld_period_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Owed periods that ended at or before unauthorized_at but were not delivered by then. They are withheld, not missing, and never count as seller delay. If authority returns, they are owed again, due at the re-grant time plus the offering's delivery_sla."
+    },
+    "withheld_reporting_obligation_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/reporting-obligation-id.json",
+        "x-entity": "reporting_obligation"
+      },
+      "maxItems": 1000,
+      "uniqueItems": true,
+      "description": "Obligations of the withheld periods, when the seller lists them."
+    }
+  },
+  "required": [
+    "account_id",
+    "unauthorized_at",
+    "withheld_period_count"
+  ],
+  "additionalProperties": true
+}

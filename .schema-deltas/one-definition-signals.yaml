@@ -1,0 +1,13 @@
+# Delta manifest (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  One definition per object: signals. The corrections the review chose; every other change is a $ref to an identical
+  definition.
+changes:
+  - location: core/signal-taxonomy-node-id.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: both
+    note: >-
+      core/signal-definition.json#/properties/taxonomy -> new:core/signal-taxonomy.json. Witness:
+      core/signal-definition-enrichment.json /taxonomy/value_mappings/0/taxonomy_value_id = "" (tighten).

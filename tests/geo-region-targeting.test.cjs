@@ -215,7 +215,8 @@ test("region include and exclude identities are disjoint", async () => {
   );
 
   const targetingSchema = await loadSchema("/schemas/core/targeting.json");
-  const rule = targetingSchema.properties.geo_regions_exclude["x-adcp-validation"];
+  // geo_regions_exclude is core/targeting-geo-regions-exclude.json, which carries the field's rule.
+  const rule = (await loadSchema(targetingSchema.properties.geo_regions_exclude.$ref))["x-adcp-validation"];
   assert.equal(rule.disjoint_with, "geo_regions");
   assert.match(rule.spec, /targeting\.mdx#geo_regions_exclude$/);
   const overlap = (overlay) =>

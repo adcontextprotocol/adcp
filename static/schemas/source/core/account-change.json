@@ -6,11 +6,8 @@
   "type": "object",
   "properties": {
     "change_id": {
-      "type": "string",
-      "description": "Stable seller-generated identifier for this logical change. Retries and notification re-emissions reuse this identifier.",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+      "$ref": "/schemas/core/account-change-id.json",
+      "description": "Stable seller-generated identifier for this logical change. Retries and notification re-emissions reuse this identifier."
     },
     "recorded_at": {
       "type": "string",
@@ -23,83 +20,27 @@
       "description": "Upstream business time when the change occurred, only when the seller can establish it reliably."
     },
     "batch_id": {
-      "type": "string",
-      "description": "Optional stable identifier grouping records produced by one committed operation or one external-source ingestion batch. Each independently repairable authoritative identity still receives its own record; batch_id does not change cursor ordering or notification identity.",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+      "$ref": "/schemas/core/account-change-batch-id.json",
+      "description": "Optional stable identifier grouping records produced by one committed operation or one external-source ingestion batch. Each independently repairable authoritative identity still receives its own record; batch_id does not change cursor ordering or notification identity."
     },
     "resource": {
-      "type": "object",
-      "description": "Stable identity of the changed resource. Resource types are open for forward compatibility. account_id is always present; resource_id identifies the changed entity and parent_ids supplies any IDs needed to disambiguate nested resources.",
-      "properties": {
-        "type": {
-          "type": "string",
-          "description": "Open resource-type name such as account, media_buy, package, creative, creative_assignment, delivery_report, audience, event_source, catalog, account_financials, or invoice.",
-          "minLength": 1,
-          "maxLength": 100,
-          "pattern": "^[a-z][a-z0-9_.-]{0,99}$"
-        },
-        "account_id": {
-          "type": "string",
-          "description": "Seller-assigned account containing the resource.",
-          "minLength": 1,
-          "maxLength": 255,
-          "x-entity": "account"
-        },
-        "resource_id": {
-          "type": "string",
-          "description": "Canonical identifier for the resource within its type. For an account change this equals account_id.",
-          "minLength": 1,
-          "maxLength": 255
-        },
-        "parent_ids": {
-          "type": "object",
-          "description": "Additional canonical parent identifiers needed to repair a nested resource, for example media_buy_id and package_id for a creative assignment. Keys and values MUST NOT contain sensitive payload data.",
-          "additionalProperties": {
-            "type": "string",
-            "maxLength": 255
-          },
-          "maxProperties": 12
-        }
-      },
-      "required": ["type", "account_id", "resource_id"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/account-change-resource.json",
+      "description": "Stable identity of the changed resource. Resource types are open for forward compatibility. account_id is always present; resource_id identifies the changed entity and parent_ids supplies any IDs needed to disambiguate nested resources."
     },
     "action": {
-      "type": "string",
-      "description": "Material change action. Standard values are created, discovered, updated, status_changed, linked, unlinked, deleted, and purged. Future standard or vendor-namespaced values are allowed; receivers MUST treat unknown values as generic invalidations.",
-      "minLength": 1,
-      "maxLength": 100,
-      "pattern": "^[a-z][a-z0-9_.-]{0,99}$"
+      "$ref": "/schemas/core/account-change-action.json",
+      "description": "Material change action. Standard values are created, discovered, updated, status_changed, linked, unlinked, deleted, and purged. Future standard or vendor-namespaced values are allowed; receivers MUST treat unknown values as generic invalidations."
     },
     "origin": {
-      "type": "object",
-      "description": "Server-derived origin classification. The seller MUST NOT trust caller-supplied origin or actor claims.",
-      "properties": {
-        "kind": {
-          "type": "string",
-          "enum": ["adcp", "seller_operator", "seller_system", "connected_platform", "unknown"]
-        },
-        "connection_id": {
-          "type": "string",
-          "description": "Opaque, non-secret reference to the connected source when safe for this caller.",
-          "maxLength": 255
-        }
-      },
-      "required": ["kind"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/account-change-origin.json"
     },
     "idempotency_key": {
-      "type": "string",
+      "$ref": "/schemas/core/idempotency-key.json",
       "description": "The idempotency_key of the AdCP request that produced this change, echoed only when origin.kind is adcp and only on records served to the principal that sent that request. Lets a buyer recognize its own changes. Sellers MUST omit it for every other reader of the account and MUST NOT include it in account.change_recorded notifications. Apart from this field, readers see the same record, subject to the redaction of actor and origin.connection_id described on those fields.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
       "x-added-in": "3.3.0"
     },
     "resource_revision": {
-      "type": ["integer", "string"],
+      "$ref": "/schemas/core/revision-token.json",
       "description": "Post-change seller revision from the repair read (`revision` or `seller_revision`), when that family defines one."
     },
     "changed_paths": {
@@ -171,9 +112,8 @@
       "pattern": "^[a-z][a-z0-9_.-]{0,99}$"
     },
     "summary": {
-      "type": "string",
-      "description": "Optional brief, untrusted human-readable summary. MUST NOT contain secrets or sensitive payload data.",
-      "maxLength": 500
+      "$ref": "/schemas/core/change-summary.json",
+      "description": "Optional brief, untrusted human-readable summary. MUST NOT contain secrets or sensitive payload data."
     },
     "ext": {
       "allOf": [{"$ref": "/schemas/core/ext.json"}],

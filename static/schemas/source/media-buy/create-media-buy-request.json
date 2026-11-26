@@ -50,18 +50,12 @@
   "x-governed-commitment": { "scope": "always" },
   "properties": {
     "governance_context": {
-      "type": "string",
-      "description": "Opaque intent authorization for this media-buy commitment. Required when governance applies to the resolved account.",
-      "minLength": 1,
-      "maxLength": 4096,
-      "pattern": "^[\\x20-\\x7E]+$"
+      "$ref": "/schemas/core/governance-context.json",
+      "description": "Opaque intent authorization for this media-buy commitment. Required when governance applies to the resolved account."
     },
     "idempotency_key": {
-      "type": "string",
-      "description": "Client-generated unique key for this request. If a request with the same idempotency_key and account has already been processed, the seller returns the existing media buy rather than creating a duplicate. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Client-generated unique key for this request. If a request with the same idempotency_key and account has already been processed, the seller returns the existing media buy rather than creating a duplicate. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request."
     },
     "plan_id": {
       "type": "string",
@@ -86,29 +80,11 @@
       "description": "Optional planning-cycle context. In AdCP 3.3 and later, explicit packages may carry opportunity_id for correlation only: status, close_reason, close_detail, and later_proposals MUST be omitted, and the buy MUST NOT change opportunity status or consent. The opaque ID is buyer-assigned; sellers MAY correlate messages with the same ID only within the same seller and buyer account and MUST NOT use it for authorization or cross-account linking. Buyers send this explicit-package context only to sellers advertising the negotiated release that supports it. In proposal mode, sellers infer successful execution as closed with close_reason accepted_with_seller when status is omitted; when status is present it MUST be closed with that reason. If the proposal was issued under an opportunity_id, a supplied ID MUST match it."
     },
     "total_budget": {
-      "type": "object",
-      "description": "Hard aggregate lifetime budget for the media buy. Required when executing a proposal and for seller-optimized explicit packages. Optional in fixed explicit-package mode; when present there, amount MUST equal the sum of package budgets. For a fixed proposal, the publisher applies allocation percentages to this amount. For a seller-optimized proposal or explicit buy, packages draw dynamically from this shared total.",
-      "properties": {
-        "amount": {
-          "type": "number",
-          "description": "Total budget amount",
-          "minimum": 0
-        },
-        "currency": {
-          "type": "string",
-          "description": "ISO 4217 currency code",
-          "pattern": "^[A-Z]{3}$"
-        }
-      },
-      "required": [
-        "amount",
-        "currency"
-      ],
-      "additionalProperties": true
+      "$ref": "/schemas/core/money.json",
+      "description": "Hard aggregate lifetime budget for the media buy. Required when executing a proposal and for seller-optimized explicit packages. Optional in fixed explicit-package mode; when present there, amount MUST equal the sum of package budgets. For a fixed proposal, the publisher applies allocation percentages to this amount. For a seller-optimized proposal or explicit buy, packages draw dynamically from this shared total."
     },
     "daily_budget_cap": {
-      "type": "number",
-      "minimum": 0,
+      "$ref": "/schemas/core/daily-budget-cap.json",
       "description": "Optional hard aggregate daily spend ceiling in the media-buy currency. It limits total spend without allocating package amounts. Package caps are subordinate and need not sum to it. Requires advertised media_buy budget-capping scope; otherwise rejected with UNSUPPORTED_FEATURE."
     },
     "frequency_cap": {
@@ -116,8 +92,7 @@
       "description": "Optional max-impression cap using one counter across explicit packages. Requires advertised aggregate_frequency_capping and compatible media_buy_support on every product; otherwise sellers MUST reject with UNSUPPORTED_FEATURE before any mutation and MUST NOT silently drop, soften, or clamp the cap. Omit when executing proposal_id because accepted terms are authoritative."
     },
     "budget_cap_timezone": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/iana-timezone.json",
       "description": "Optional shared IANA day boundary override for all caps. Requires buyer_timezone_override; otherwise rejected with UNSUPPORTED_FEATURE. When omitted, budget_capping.timezone_basis selects Account.timezone or the advertised fixed_timezone."
     },
     "budget_allocation": {
@@ -149,50 +124,19 @@
       "description": "Override the account's default billing entity for this specific buy. When provided, the seller invoices this entity instead. The seller MUST validate the invoice recipient is authorized for this account. When governance_agents are configured, the seller MUST include invoice_recipient in the check_governance request."
     },
     "io_acceptance": {
-      "type": "object",
-      "description": "Acceptance of an insertion order from a committed proposal. Required when the proposal's insertion_order has requires_signature: true. References the io_id from the proposal's insertion_order.",
-      "properties": {
-        "io_id": {
-          "type": "string",
-          "description": "The io_id from the proposal's insertion_order being accepted"
-        },
-        "accepted_at": {
-          "type": "string",
-          "format": "date-time",
-          "description": "ISO 8601 timestamp when the IO was accepted"
-        },
-        "signatory": {
-          "type": "string",
-          "description": "Who accepted the IO — agent identifier or human name",
-          "minLength": 1,
-          "maxLength": 250
-        },
-        "signature_id": {
-          "type": "string",
-          "description": "Reference to the electronic signature from the signing service, when signing_url was used"
-        }
-      },
-      "required": [
-        "io_id",
-        "accepted_at",
-        "signatory"
-      ],
-      "additionalProperties": true
+      "$ref": "/schemas/core/io-acceptance.json",
+      "description": "Acceptance of an insertion order from a committed proposal. Required when the proposal's insertion_order has requires_signature: true. References the io_id from the proposal's insertion_order."
     },
     "po_number": {
       "type": "string",
       "description": "Purchase order number for tracking"
     },
     "name": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255,
-      "pattern": "\\S",
+      "$ref": "/schemas/core/media-buy-name.json",
       "description": "Human-readable name for this media buy, shared by buyer and seller for trafficking UI display and operational communication. When supplied, the seller MUST persist it and echo it unchanged on the create success response and subsequent get_media_buys reads. This display label is not an identifier or financial reference."
     },
     "agency_estimate_number": {
-      "type": "string",
-      "maxLength": 100,
+      "$ref": "/schemas/core/agency-estimate-number.json",
       "description": "Agency estimate or authorization number. Primary financial reference for broadcast buys — links the order to the agency's media plan and billing system. Travels with the order and creative traffic identifiers through the transaction lifecycle."
     },
     "start_time": {
@@ -232,41 +176,18 @@
       "description": "Optional webhook configuration for content artifact delivery. Used by governance agents to validate content adjacency. Seller pushes artifacts to this endpoint; orchestrator forwards to governance agent for validation.",
       "properties": {
         "url": {
-          "type": "string",
-          "format": "uri",
+          "$ref": "/schemas/core/webhook-url.json",
           "description": "Webhook endpoint URL for artifact delivery"
         },
         "token": {
-          "type": "string",
-          "description": "Optional client-provided token. The seller echoes it verbatim in every delivery. A receiver MUST NOT treat a valid token echo as a substitute for verifying the delivery's signature.",
-          "minLength": 16
+          "$ref": "/schemas/core/webhook-token.json",
+          "description": "Optional client-provided token. The seller echoes it verbatim in every delivery. A receiver MUST NOT treat a valid token echo as a substitute for verifying the delivery's signature."
         },
         "authentication": {
-          "type": "object",
+          "$ref": "/schemas/core/webhook-authentication.json",
           "deprecated": true,
           "x-removed-in": "4.0.0",
-          "description": "Legacy authentication for webhook delivery (A2A-compatible): Bearer or HMAC-SHA256, both deprecated and removed in AdCP 4.0 (#4288). Required on a request served below 3.3. When this block is absent, the seller signs every delivery with `adcp/webhook-signing/v1`, as for a `push_notification_config` that selects no `signing_profile` (docs/building/by-layer/L1/security.mdx#webhook-callbacks).",
-          "properties": {
-            "schemes": {
-              "type": "array",
-              "description": "Array of authentication schemes. ['Bearer'] for simple token auth, ['HMAC-SHA256'] for legacy shared-secret signing. Both are deprecated; new integrations SHOULD use the RFC 9421 webhook signing profile instead.",
-              "items": {
-                "$ref": "/schemas/enums/auth-scheme.json"
-              },
-              "minItems": 1,
-              "maxItems": 1
-            },
-            "credentials": {
-              "type": "string",
-              "description": "Credentials for the legacy scheme. For Bearer: token sent in Authorization header. For HMAC-SHA256: shared secret used to generate signature. Minimum 32 characters. Exchanged out-of-band during onboarding.",
-              "minLength": 32
-            }
-          },
-          "required": [
-            "schemes",
-            "credentials"
-          ],
-          "additionalProperties": true
+          "description": "Legacy authentication for webhook delivery (A2A-compatible): Bearer or HMAC-SHA256, both deprecated and removed in AdCP 4.0 (#4288). Required on a request served below 3.3. When this block is absent, the seller signs every delivery with `adcp/webhook-signing/v1`, as for a `push_notification_config` that selects no `signing_profile` (docs/building/by-layer/L1/security.mdx#webhook-callbacks)."
         },
         "delivery_mode": {
           "type": "string",
@@ -285,9 +206,7 @@
           "description": "For batched delivery, how often to push artifacts. Required when delivery_mode is 'batched'."
         },
         "sampling_rate": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1,
+          "$ref": "/schemas/core/fraction.json",
           "description": "Fraction of impressions to include (0-1). 1.0 = all impressions, 0.1 = 10% sample. Default: 1.0"
         }
       },

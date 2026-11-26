@@ -12,26 +12,8 @@
   "x-status": "experimental",
   "definitions": {
     "targeting_kvs": {
-      "type": "array",
-      "description": "Provider-local key-value pairs for ad-server targeting. The router preserves each pair unchanged and attributes it by provider_id; the publisher maps the tuple (provider_id, key) to a local ad-server destination.",
-      "items": {
-        "type": "object",
-        "properties": {
-          "key": {
-            "type": "string",
-            "description": "Provider-local targeting key. Publishers resolve this together with provider_id; it is not a globally unique or publisher-owned ad-server key."
-          },
-          "value": {
-            "type": "string",
-            "description": "Targeting value preserved unchanged by the router."
-          }
-        },
-        "required": [
-          "key",
-          "value"
-        ],
-        "additionalProperties": true
-      }
+      "$ref": "/schemas/core/trusted-match-targeting-kvs.json",
+      "description": "Provider-local key-value pairs for ad-server targeting. The router preserves each pair unchanged and attributes it by provider_id; the publisher maps the tuple (provider_id, key) to a local ad-server destination."
     }
   },
   "properties": {
@@ -56,11 +38,8 @@
       "description": "Merged non-keyed response-level signals. Provider-local targeting pairs do not pass through this object; the router emits them only in signals_by_provider.",
       "properties": {
         "segments": {
-          "type": "array",
-          "description": "Contextual segment identifiers combined across provider responses.",
-          "items": {
-            "type": "string"
-          }
+          "$ref": "/schemas/core/trusted-match-segments.json",
+          "description": "Contextual segment identifiers combined across provider responses."
         }
       },
       "additionalProperties": true
@@ -69,10 +48,7 @@
       "type": "object",
       "description": "Router-authored map of provider targeting pairs, keyed by the publisher-assigned provider_id from provider registration. For every provider response containing a non-empty signals.targeting_kvs list, the router copies the complete list unchanged into that provider's bucket. The router derives the map key from its registration and MUST ignore or reject provider-supplied signals_by_provider data. A provider with no targeting pairs is omitted. Publishers resolve each (provider_id, key) tuple to a local ad-server destination and drop tuples that have no local mapping.",
       "propertyNames": {
-        "type": "string",
-        "pattern": "^[A-Za-z0-9_]+$",
-        "minLength": 1,
-        "maxLength": 64
+        "$ref": "/schemas/core/trusted-match-provider-id.json"
       },
       "additionalProperties": {
         "type": "object",

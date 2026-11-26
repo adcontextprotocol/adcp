@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/pixel-size.json",
+  "title": "Pixel Size",
+  "description": "A width and height in pixels.",
+  "type": "object",
+  "required": [
+    "width",
+    "height"
+  ],
+  "properties": {
+    "width": {
+      "$ref": "/schemas/core/pixel-length.json"
+    },
+    "height": {
+      "$ref": "/schemas/core/pixel-length.json"
+    }
+  },
+  "additionalProperties": true,
+  "not": {
+    "required": [
+      "unit"
+    ]
+  }
+}

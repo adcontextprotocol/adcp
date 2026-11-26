@@ -13,55 +13,7 @@
     "results": {
       "type": "array",
       "items": {
-        "oneOf": [
-          {
-            "title": "Recorded reporting consumer status",
-            "type": "object",
-            "properties": {
-              "result": { "type": "string", "const": "recorded" },
-              "consumer_status": {
-                "allOf": [
-                  { "$ref": "/schemas/core/reporting-consumer-status.json" },
-                  { "required": ["recorded_at"] }
-                ]
-              }
-            },
-            "required": ["result", "consumer_status"],
-            "additionalProperties": true
-          },
-          {
-            "title": "Unchanged reporting consumer status",
-            "type": "object",
-            "properties": {
-              "result": { "type": "string", "const": "unchanged" },
-              "consumer_status": {
-                "allOf": [
-                  { "$ref": "/schemas/core/reporting-consumer-status.json" },
-                  { "required": ["recorded_at"] }
-                ]
-              }
-            },
-            "required": ["result", "consumer_status"],
-            "additionalProperties": true
-          },
-          {
-            "title": "Failed reporting consumer status",
-            "type": "object",
-            "properties": {
-              "result": { "type": "string", "const": "failed" },
-              "reporting_status_id": {
-                "type": "string",
-                "minLength": 16,
-                "maxLength": 255,
-                "pattern": "^[A-Za-z0-9_.:-]{16,255}$",
-                "x-entity": "reporting_consumer_status"
-              },
-              "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" }, "minItems": 1, "maxItems": 16 }
-            },
-            "required": ["result", "reporting_status_id", "errors"],
-            "additionalProperties": true
-          }
-        ]
+        "$ref": "#/definitions/status_result"
       },
       "minItems": 1,
       "maxItems": 100
@@ -73,5 +25,90 @@
   "x-adcp-validation": {
     "result_mapping": "Return exactly one result per submitted statement in request order. An exact batch idempotency replay returns the original response; unchanged is used when the identical immutable reporting_status_id was already recorded through another batch. Reusing either identity with changed content is an idempotency conflict."
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "definitions": {
+    "recorded_consumer_status": {
+      "description": "A reporting consumer status that states when the seller recorded it.",
+      "allOf": [
+        {
+          "$ref": "/schemas/core/reporting-consumer-status.json"
+        },
+        {
+          "required": [
+            "recorded_at"
+          ]
+        }
+      ]
+    },
+    "status_result": {
+      "oneOf": [
+        {
+          "title": "Recorded reporting consumer status",
+          "type": "object",
+          "properties": {
+            "result": {
+              "type": "string",
+              "const": "recorded",
+              "default": "recorded"
+            },
+            "consumer_status": {
+              "$ref": "#/definitions/recorded_consumer_status"
+            }
+          },
+          "required": [
+            "result",
+            "consumer_status"
+          ],
+          "additionalProperties": true
+        },
+        {
+          "title": "Unchanged reporting consumer status",
+          "type": "object",
+          "properties": {
+            "result": {
+              "type": "string",
+              "const": "unchanged",
+              "default": "unchanged"
+            },
+            "consumer_status": {
+              "$ref": "#/definitions/recorded_consumer_status"
+            }
+          },
+          "required": [
+            "result",
+            "consumer_status"
+          ],
+          "additionalProperties": true
+        },
+        {
+          "title": "Failed reporting consumer status",
+          "type": "object",
+          "properties": {
+            "result": {
+              "type": "string",
+              "const": "failed",
+              "default": "failed"
+            },
+            "reporting_status_id": {
+              "$ref": "/schemas/core/reporting-consumer-status-id.json"
+            },
+            "errors": {
+              "type": "array",
+              "items": {
+                "$ref": "/schemas/core/error.json"
+              },
+              "minItems": 1,
+              "maxItems": 16
+            }
+          },
+          "required": [
+            "result",
+            "reporting_status_id",
+            "errors"
+          ],
+          "additionalProperties": true
+        }
+      ]
+    }
+  }
 }

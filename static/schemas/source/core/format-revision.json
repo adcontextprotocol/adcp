@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/format-revision.json",
+  "title": "Format Revision",
+  "description": "Semantic version of a community format entry's input contract in MAJOR.MINOR.PATCH form.",
+  "type": "string",
+  "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)$"
+}

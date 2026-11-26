@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/task-error-summary.json",
+  "title": "Task Error Summary",
+  "description": "Convenience error summary for a failed task.",
+  "type": "object",
+  "properties": {
+    "code": {
+      "$ref": "/schemas/core/open-error-code.json",
+      "description": "Error code for programmatic handling"
+    },
+    "message": {
+      "$ref": "/schemas/core/error-message.json",
+      "description": "Detailed error message"
+    },
+    "details": {
+      "$ref": "/schemas/core/task-error-details.json",
+      "description": "Additional error context"
+    }
+  },
+  "required": [
+    "code",
+    "message"
+  ],
+  "additionalProperties": true
+}

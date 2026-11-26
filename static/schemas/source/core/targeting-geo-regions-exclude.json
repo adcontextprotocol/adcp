@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/targeting-geo-regions-exclude.json",
+  "title": "Geo Regions Exclude",
+  "description": "Exclude exact canonical ISO 3166-2 subdivisions. Support is independent from geo_regions inclusion support. Unknown identifiers and values also present in geo_regions are invalid. At create or update, sellers MUST reject unsupported identifiers and partial application; during get_products, a seller may instead return a sparse, buyer-reviewable targeting_resolution modification for a valid but unsupported requested outcome.",
+  "x-adcp-validation": {
+    "disjoint_with": "geo_regions",
+    "spec": "docs/media-buy/advanced-topics/targeting.mdx#geo_regions_exclude"
+  },
+  "type": "array",
+  "items": {
+    "$ref": "/schemas/core/country-subdivision-code.json"
+  },
+  "minItems": 1
+}

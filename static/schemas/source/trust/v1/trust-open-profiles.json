@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/trust/v1/trust-open-profiles.json",
+  "title": "Open Profiles",
+  "description": "Per-protocol data keyed by namespace. Consumers MUST ignore namespaces they do not implement. Nothing in profiles is key material or authority for another namespace.",
+  "type": "object",
+  "propertyNames": {
+    "pattern": "^[a-z0-9-]+$"
+  },
+  "additionalProperties": {
+    "title": "Trust Namespace Profile",
+    "type": "object"
+  }
+}

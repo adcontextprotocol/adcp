@@ -1,0 +1,7 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/authorization-violation-code.json",
+  "title": "Authorization Violation Code",
+  "description": "Machine-readable reason a sales agent failed the adagents.json authorization check, such as agent_not_authorized, adagents_not_found, adagents_invalid, or property_not_declared. The validate_property_delivery task reference defines the codes.",
+  "type": "string"
+}

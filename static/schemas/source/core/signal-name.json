@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/signal-name.json",
+  "title": "Signal Name",
+  "description": "Human-readable name of a signal.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 255
+}

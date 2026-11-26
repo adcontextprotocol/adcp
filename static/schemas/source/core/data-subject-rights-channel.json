@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/data-subject-rights-channel.json",
+  "title": "Data Subject Rights Channel",
+  "description": "A contact channel for data-subject rights requests: the rights it handles, a URL, an email address, or both, and its languages and countries.",
+  "type": "object",
+  "properties": {
+    "rights": {
+      "type": "array",
+      "description": "Rights supported by this channel.",
+      "items": {
+        "$ref": "/schemas/enums/data-subject-right.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "url": {
+      "$ref": "/schemas/core/https-url.json",
+      "description": "HTTPS URL for submitting the rights request."
+    },
+    "email": {
+      "type": "string",
+      "format": "email",
+      "description": "Email address for submitting the rights request."
+    },
+    "languages": {
+      "type": "array",
+      "description": "BCP 47 language tags supported by this channel.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "countries": {
+      "type": "array",
+      "description": "ISO 3166-1 alpha-2 countries this channel serves, when the provider routes rights by country.",
+      "items": {
+        "$ref": "/schemas/core/country-code.json"
+      }
+    }
+  },
+  "required": [
+    "rights"
+  ],
+  "anyOf": [
+    {
+      "required": [
+        "url"
+      ]
+    },
+    {
+      "required": [
+        "email"
+      ]
+    }
+  ],
+  "additionalProperties": true
+}

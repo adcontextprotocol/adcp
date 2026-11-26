@@ -205,7 +205,8 @@ describe("installment lifecycle and proof of publication", () => {
 
   it("adds publication to the available-metric enum but not to the scalar aggregate ids", () => {
     assert.ok(readSchema("/schemas/enums/available-metric.json").enum.includes("publication"));
-    const aggregate = readSchema("/schemas/core/delivery-metric-aggregate.json");
+    // The standard branch of core/delivery-metric-aggregate.json carries the exclusion.
+    const aggregate = readSchema("/schemas/core/standard-delivery-metric-aggregate.json");
     const excluded = JSON.stringify(aggregate).match(/"not":\{"enum":\[([^\]]*)\]/);
     assert.ok(excluded, "metric_id exclusion list not found");
     assert.ok(excluded[1].includes('"print_metrics"'));

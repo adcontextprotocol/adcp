@@ -15,13 +15,11 @@
   },
   "properties": {
     "product_id": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/product-id.json",
       "x-entity": "product"
     },
     "pricing_option_id": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/pricing-option-id.json",
       "x-entity": "product_pricing_option"
     },
     "pricing": {
@@ -29,35 +27,21 @@
       "description": "Resolved selected pricing terms. Optional on buy_products input, where pricing_option_id plus the versioned feed identifies the offer; required inside accepted commercial_terms. Its pricing_option_id MUST match the sibling field."
     },
     "format_option_refs": {
-      "type": "array",
-      "items": { "$ref": "/schemas/core/format-option-ref.json" },
-      "minItems": 1,
-      "description": "Canonical format options selected from the published product offer. Legacy named-format identifiers are not accepted."
+      "$ref": "/schemas/media-buy/product-purchase-format-option-refs.json"
     },
     "catalog_ids": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "minLength": 1,
-        "x-entity": "catalog"
-      },
-      "minItems": 1,
-      "uniqueItems": true,
-      "description": "Previously synchronized account catalog IDs promoted by this selection. Callers manage catalog bodies through sync_catalogs rather than inlining them here."
+      "$ref": "/schemas/media-buy/product-purchase-catalog-ids.json"
     },
     "budget": {
-      "type": "number",
-      "minimum": 0,
+      "$ref": "/schemas/core/budget-amount.json",
       "description": "Hard spend cap for this selection in the media-buy currency. In seller-optimized allocation it is an optional ceiling, not a reserved allocation, and requires advertised media_buy.features.seller_optimized_package_budgets; otherwise rejected with UNSUPPORTED_FEATURE before any over-subscription validation."
     },
     "daily_budget_cap": {
-      "type": "number",
-      "minimum": 0,
+      "$ref": "/schemas/core/daily-budget-cap.json",
       "description": "Optional hard daily spend ceiling for this purchase. It is subordinate to the media-buy aggregate daily cap and is not a reserved daily allocation. Its day boundary is the media buy's budget_cap_timezone."
     },
     "min_spend_target": {
-      "type": "number",
-      "minimum": 0,
+      "$ref": "/schemas/core/min-spend-target.json",
       "description": "Soft lifetime spend target for seller-optimized allocation. Requires advertised media_buy.features.seller_optimized_min_spend_targets; otherwise rejected with UNSUPPORTED_FEATURE before any over-subscription validation."
     },
     "impressions": {
@@ -66,14 +50,11 @@
       "minimum": 0
     },
     "start_time": {
-      "type": "string",
-      "format": "date-time",
-      "not": { "const": "asap" },
+      "$ref": "/schemas/media-buy/product-purchase-start-time.json",
       "description": "Resolved package flight start. On direct-purchase input, omission inherits the MediaBuy start; accepted proposal snapshots carry the resolved timestamp."
     },
     "end_time": {
-      "type": "string",
-      "format": "date-time",
+      "$ref": "/schemas/media-buy/product-purchase-end-time.json",
       "description": "Resolved package flight end. On direct-purchase input, omission inherits the MediaBuy end; accepted proposal snapshots carry the resolved timestamp."
     },
     "pacing": {
@@ -88,11 +69,7 @@
       "description": "Resolved effective buyer-selected targeting, including compatible wholesale signal selections, applied within the product's published targeting contract. Cleared dimensions are omitted; null is invalid in an accepted snapshot."
     },
     "optimization_goals": {
-      "type": "array",
-      "items": {
-        "$ref": "/schemas/core/canonical-optimization-goal.json"
-      },
-      "minItems": 1
+      "$ref": "/schemas/media-buy/product-purchase-optimization-goals.json"
     },
     "audience_evidence_requirements": {
       "title": "Product Purchase Audience Evidence Requirements",
@@ -100,14 +77,10 @@
       "description": "Buyer evidence-admissibility policy carried into the accepted purchase snapshot."
     },
     "audience_evidence_pins": {
-      "type": "array",
-      "items": { "$ref": "/schemas/core/audience-evidence-pin.json" },
-      "minItems": 1,
-      "description": "Exact immutable audience-evidence snapshots selected for package construction."
+      "$ref": "/schemas/media-buy/product-purchase-audience-evidence-pins.json"
     },
     "agency_estimate_number": {
-      "type": "string",
-      "maxLength": 100,
+      "$ref": "/schemas/core/agency-estimate-number.json",
       "description": "Package-level agency estimate or authorization reference."
     },
     "context": {
@@ -121,10 +94,7 @@
       "description": "Published or negotiated billing-measurement and makegood terms for this purchase. Direct buyers may omit this to inherit the product default; accepted proposal snapshots preserve the resolved terms."
     },
     "performance_standards": {
-      "type": "array",
-      "items": { "$ref": "/schemas/core/canonical-performance-standard.json" },
-      "minItems": 1,
-      "description": "Published or negotiated metric thresholds and measurement vendors. Direct buyers may omit this to inherit the product defaults; accepted proposal snapshots preserve every applicable standard."
+      "$ref": "/schemas/media-buy/product-purchase-performance-standards.json"
     }
   },
   "required": ["product_id", "pricing_option_id"],

@@ -5,6 +5,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { resolveSchema } = require('./helpers/named-scalar-schemas.cjs');
 
 const SOURCE_DIR = path.join(__dirname, '../static/schemas/source');
 
@@ -164,9 +165,12 @@ test('delivery reporting deprecates cross-buy totals and report-wide currency', 
   assert.equal(response.properties.currency.deprecated, true);
   assert.equal(webhook.properties.currency.deprecated, true);
 
-  const responseMetricValue = response.properties.media_buy_deliveries.items
+  // Both surfaces reference one delivery row definition, so their rows cannot drift.
+  assert.equal(response.properties.media_buy_deliveries.items.$ref, '/schemas/core/media-buy-delivery.json');
+  assert.equal(webhook.properties.media_buy_deliveries.items.$ref, response.properties.media_buy_deliveries.items.$ref);
+  const responseMetricValue = resolveSchema(response.properties.media_buy_deliveries.items)
     .properties.by_package.items.allOf[1].properties.metric_values.items;
-  const webhookMetricValue = webhook.properties.media_buy_deliveries.items
+  const webhookMetricValue = resolveSchema(webhook.properties.media_buy_deliveries.items)
     .properties.by_package.items.allOf[1].properties.metric_values.items;
   assert.equal(
     responseMetricValue.$ref,
@@ -176,13 +180,17 @@ test('delivery reporting deprecates cross-buy totals and report-wide currency', 
 
   for (const schema of [response, webhook]) {
     assert.equal(schema.required.includes('currency'), false);
-    const rowCurrency = schema.properties.media_buy_deliveries.items.properties.currency;
-    assert.equal(rowCurrency.type, 'string');
+    const row = resolveSchema(schema.properties.media_buy_deliveries.items);
+    const rowCurrency = row.properties.currency;
+    assert.equal(rowCurrency.$ref, '/schemas/core/currency-code.json');
+    assert.equal(
+      JSON.parse(fs.readFileSync(path.join(__dirname, '../static/schemas/source/core/currency-code.json'), 'utf8')).type,
+      'string',
+    );
     assert.match(rowCurrency.description, /does not perform currency conversion/i);
     assert.match(rowCurrency.description, /mixed-currency buy/i);
 
-    const row = schema.properties.media_buy_deliveries.items;
-    assert.equal(row.properties.totals.allOf[1].required?.includes('spend') ?? false, false);
+    assert.equal(resolveSchema(row.properties.totals).allOf[1].required?.includes('spend') ?? false, false);
     const packageProperties = row.properties.by_package.items.allOf[1].properties;
     assert.equal(packageProperties.metric_values.items.$ref, responseMetricValue.$ref);
     assert.match(packageProperties.currency.description, /MUST equal it/);

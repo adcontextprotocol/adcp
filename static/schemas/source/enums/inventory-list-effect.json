@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/inventory-list-effect.json",
+  "title": "Inventory List Effect",
+  "description": "Whether an inventory list is an allowlist or a blocklist.",
+  "type": "string",
+  "enum": [
+    "include",
+    "exclude"
+  ]
+}

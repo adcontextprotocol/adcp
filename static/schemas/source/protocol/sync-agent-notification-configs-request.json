@@ -13,37 +13,14 @@
   "x-mutates-state": true,
   "properties": {
     "idempotency_key": {
-      "type": "string",
-      "description": "Client-generated unique key for at-most-once execution. The task mutates the authenticated caller's persistent agent-level subscriber set and may trigger endpoint proof-of-control challenges, so retries MUST reuse the same key and same payload. Use a fresh UUID v4 for each logical replacement.",
-      "minLength": 16,
-      "maxLength": 255,
-      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+      "$ref": "/schemas/core/idempotency-key.json",
+      "description": "Client-generated unique key for at-most-once execution. The task mutates the authenticated caller's persistent agent-level subscriber set and may trigger endpoint proof-of-control challenges, so retries MUST reuse the same key and same payload. Use a fresh UUID v4 for each logical replacement."
     },
     "notification_configs": {
       "type": "array",
       "description": "Complete desired set of agent-level notification subscribers for the authenticated caller or registry identity. Omit is invalid; send an empty array to remove every subscriber owned by this caller. Each entry registers a URL, the agent-level event types the subscriber wants, and optional legacy auth. Duplicate `subscriber_id` values are rejected within this caller-scoped array. If any entry fails validation or activation proof, the seller rejects the replacement and leaves this caller's previous set unchanged.",
       "items": {
-        "allOf": [
-          {
-            "$ref": "/schemas/core/agent-notification-config.json"
-          },
-          {
-            "if": {
-              "required": [
-                "authentication"
-              ]
-            },
-            "then": {
-              "properties": {
-                "authentication": {
-                  "required": [
-                    "credentials"
-                  ]
-                }
-              }
-            }
-          }
-        ]
+        "$ref": "/schemas/core/agent-notification-config-registration.json"
       },
       "maxItems": 16
     },

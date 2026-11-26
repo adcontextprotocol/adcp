@@ -4,6 +4,7 @@ const Ajv = require("ajv");
 const addFormats = require("ajv-formats");
 const { describe, it, before } = require("node:test");
 const assert = require("node:assert/strict");
+const { resolveSchema } = require("./helpers/named-scalar-schemas.cjs");
 
 // DOOH impression basis (media_buy.dooh_impression_basis, RFC #7253): discovery, forecast and
 // delivery payloads of a product mixing sensor-equipped screens and screens without a sensor.
@@ -97,11 +98,11 @@ describe("DOOH impression basis schemas", () => {
   });
 
   it("marks every new property experimental under one feature id", () => {
-    const dooh = readSchema("/schemas/core/delivery-metrics.json").properties.dooh_metrics;
+    const dooh = resolveSchema(readSchema("/schemas/core/delivery-metrics.json").properties.dooh_metrics);
     const venue = dooh.properties.venue_breakdown.items.properties;
     const point = readSchema("/schemas/core/forecast-point.json").properties;
-    const product = readSchema("/schemas/core/placement.json").definitions.ProductDoohPlacementAttributes.properties;
-    const canonical = readSchema("/schemas/core/canonical-placement.json").definitions.CanonicalDoohPlacementAttributes.properties;
+    const product = resolveSchema(readSchema("/schemas/core/placement.json").definitions.ProductDoohPlacementAttributes).properties;
+    const canonical = resolveSchema(readSchema("/schemas/core/canonical-placement.json").definitions.CanonicalDoohPlacementAttributes).properties;
     const canonicalPoint = readSchema("/schemas/core/canonical-forecast-point.json").properties;
     const nodes = [
       dooh.properties.impression_basis, dooh.properties.audience_multiplier, dooh.properties.basis_metric,
@@ -120,19 +121,20 @@ describe("DOOH impression basis schemas", () => {
 
   it("leaves the stable dooh_metrics block and the experimental ooh_metrics block as they were", () => {
     const metrics = readSchema("/schemas/core/delivery-metrics.json").properties;
-    assert.equal(metrics.dooh_metrics["x-status"], undefined);
-    assert.equal(metrics.dooh_metrics.additionalProperties, true);
+    const dooh = resolveSchema(metrics.dooh_metrics);
+    assert.equal(dooh["x-status"], undefined);
+    assert.equal(dooh.additionalProperties, true);
     assert.deepEqual(metrics.ooh_metrics.properties.estimation_basis.enum, ["currency_measured", "seller_modeled"]);
   });
 
   it("keeps the multiplier out of the forecastable metrics", () => {
     const point = readSchema("/schemas/core/forecast-point.json");
-    assert.equal(point.properties.metrics.properties.audience_multiplier, undefined);
+    assert.equal(resolveSchema(point.properties.metrics).properties.audience_multiplier, undefined);
     assert.ok(!readSchema("/schemas/enums/forecastable-metric.json").enum.includes("audience_multiplier"));
   });
 
   it("requires two or more entries and never a breakdown beside a row-level tier", () => {
-    const dooh = readSchema("/schemas/core/delivery-metrics.json").properties.dooh_metrics;
+    const dooh = resolveSchema(readSchema("/schemas/core/delivery-metrics.json").properties.dooh_metrics);
     const point = readSchema("/schemas/core/forecast-point.json");
     const canonicalPoint = readSchema("/schemas/core/canonical-forecast-point.json");
     const exclusion = { impression_basis_breakdown: { not: { required: ["impression_basis"] } } };

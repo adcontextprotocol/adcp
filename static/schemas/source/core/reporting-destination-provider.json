@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-destination-provider.json",
+  "title": "Reporting Destination Provider",
+  "description": "Platform named in a request to provision a reporting destination, identified by domain. Closed: a provisioning request carries no credential, so no other key may appear.",
+  "type": "object",
+  "properties": {
+    "domain": { "$ref": "/schemas/core/provider-domain.json" }
+  },
+  "required": ["domain"],
+  "additionalProperties": false
+}

@@ -1,0 +1,7 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/deployment-platform.json",
+  "title": "Deployment Platform",
+  "description": "Identifier of a DSP or other platform that is a signal deployment target, such as 'the-trade-desk' or 'amazon-dsp'.",
+  "type": "string"
+}

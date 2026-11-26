@@ -13,14 +13,15 @@
         "type": {
           "type": "string",
           "const": "platform",
+          "default": "platform",
           "description": "Discriminator indicating this is a platform-based deployment"
         },
         "platform": {
-          "type": "string",
+          "$ref": "/schemas/core/deployment-platform.json",
           "description": "Platform identifier for DSPs"
         },
         "account": {
-          "type": "string",
+          "$ref": "/schemas/core/deployment-account.json",
           "description": "Account identifier if applicable"
         },
         "is_live": {
@@ -55,6 +56,7 @@
         "type": {
           "type": "string",
           "const": "agent",
+          "default": "agent",
           "description": "Discriminator indicating this is an agent URL-based deployment"
         },
         "agent_url": {
@@ -63,7 +65,7 @@
           "description": "URL identifying the deployment agent"
         },
         "account": {
-          "type": "string",
+          "$ref": "/schemas/core/deployment-account.json",
           "description": "Account identifier if applicable"
         },
         "is_live": {
@@ -127,9 +129,7 @@
           "x-added-in": "3.3.0"
         },
         "effective_match_rate": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 1,
+          "$ref": "/schemas/core/fraction.json",
           "description": "Deduplicated match rate; absence is not zero.",
           "x-status": "experimental",
           "x-added-in": "3.3.0"

@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/daast-versions.json",
+  "title": "Daast Versions",
+  "description": "A non-empty set of DAAST versions.",
+  "type": "array",
+  "items": {
+    "$ref": "/schemas/enums/daast-version.json"
+  },
+  "minItems": 1,
+  "uniqueItems": true
+}

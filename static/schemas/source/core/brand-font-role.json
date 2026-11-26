@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-font-role.json",
+  "title": "Brand Font Role",
+  "description": "A font role entry. Either a CSS font-family string (simple) or a structured object with family name and font files (rich).",
+  "oneOf": [
+    {
+      "type": "string",
+      "description": "CSS font-family name (e.g., 'Montserrat', 'Arial, sans-serif')"
+    },
+    {
+      "$ref": "/schemas/core/structured-font.json",
+      "description": "Structured font with family name, downloadable font files, and typographic metadata"
+    }
+  ]
+}

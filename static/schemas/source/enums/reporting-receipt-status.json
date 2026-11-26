@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/reporting-receipt-status.json",
+  "title": "Reporting Receipt Status",
+  "description": "Whether a reporting consumer accepted or rejected a publication.",
+  "type": "string",
+  "enum": [
+    "accepted",
+    "rejected"
+  ]
+}

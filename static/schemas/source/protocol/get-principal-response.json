@@ -12,136 +12,7 @@
   ],
   "properties": {
     "result": {
-      "oneOf": [
-        {
-          "title": "Current principal configuration",
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "current"
-            },
-            "relationship": {
-              "$ref": "/schemas/core/principal-relationship.json",
-              "x-status": "experimental",
-              "x-added-in": "3.3.0",
-              "description": "The seller's commercial relationship with this caller, or its application in progress. Omitted when there is neither."
-            },
-            "principal_id": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 255,
-              "description": "Seller-issued opaque identifier for this authenticated principal record. It is response-only, not a credential, not caller identity, and not advertiser-account authority."
-            },
-            "principal_kind": {
-              "$ref": "/schemas/enums/principal-kind.json",
-              "deprecated": true,
-              "x-deprecated-in": "3.3.0",
-              "description": "Deprecated in 3.3. Seller-resolved party kind of the authenticated principal: a buyer-agent workload, or an operator-side identity such as a person at the operator. Resolved solely from the seller's authorization system, never from request content, so per-party policy such as billing gates can rely on it."
-            },
-            "configuration_version": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 255,
-              "description": "Opaque version of the persisted configuration. Compare only for equality and pass it as expected_configuration_version on a later guarded sync_principal replacement."
-            },
-            "configuration": {
-              "$ref": "/schemas/core/principal-state.json"
-            },
-            "reporting_subscription_page": {
-              "type": "object",
-              "x-status": "experimental",
-              "x-added-in": "3.3.0",
-              "description": "Present when and only when the request carried reporting_subscription_page: one page of the requested list, with the same entries and order as the inline list (account_id byte order for the account lists, newest first for prior_versions). Exactly the property named by list is present.",
-              "properties": {
-                "subscription_id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9_.:-]{1,64}$", "x-entity": "reporting_subscription" },
-                "list": { "type": "string", "enum": ["accounts_with_exceptions", "accounts_unauthorized", "prior_versions"] },
-                "accounts_with_exceptions": { "type": "array", "items": { "$ref": "/schemas/core/reporting-subscription-state.json#/definitions/ReportingSubscriptionAccountExceptions" }, "maxItems": 100 },
-                "accounts_unauthorized": { "type": "array", "items": { "$ref": "/schemas/core/reporting-subscription-state.json#/definitions/ReportingSubscriptionUnauthorizedAccount" }, "maxItems": 100 },
-                "prior_versions": { "type": "array", "items": { "$ref": "/schemas/core/reporting-subscription-state.json#/definitions/ReportingSubscriptionPriorVersion" }, "maxItems": 100 },
-                "pagination": { "$ref": "/schemas/core/pagination-response.json" }
-              },
-              "required": ["subscription_id", "list", "pagination"],
-              "allOf": [
-                { "if": { "properties": { "list": { "const": "accounts_with_exceptions" } }, "required": ["list"] }, "then": { "required": ["accounts_with_exceptions"], "not": { "anyOf": [{ "required": ["accounts_unauthorized"] }, { "required": ["prior_versions"] }] } } },
-                { "if": { "properties": { "list": { "const": "accounts_unauthorized" } }, "required": ["list"] }, "then": { "required": ["accounts_unauthorized"], "not": { "anyOf": [{ "required": ["accounts_with_exceptions"] }, { "required": ["prior_versions"] }] } } },
-                { "if": { "properties": { "list": { "const": "prior_versions" } }, "required": ["list"] }, "then": { "required": ["prior_versions"], "not": { "anyOf": [{ "required": ["accounts_with_exceptions"] }, { "required": ["accounts_unauthorized"] }] } } }
-              ],
-              "additionalProperties": true
-            }
-          },
-          "required": ["kind", "principal_id", "principal_kind", "configuration_version", "configuration"],
-          "additionalProperties": true
-        },
-        {
-          "title": "Recognized principal without standing configuration",
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "recognized"
-            },
-            "relationship": {
-              "$ref": "/schemas/core/principal-relationship.json",
-              "x-status": "experimental",
-              "x-added-in": "3.3.0",
-              "description": "The seller's commercial relationship with this caller, or its application in progress. Omitted when there is neither."
-            },
-            "principal_id": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 255,
-              "description": "Seller-issued opaque identifier for the existing durable principal record. The read returns the same identifier after credential renewal or rotation when the new credential maps to this principal. It is not a credential and does not grant authority over an advertiser account."
-            },
-            "principal_kind": {
-              "$ref": "/schemas/enums/principal-kind.json",
-              "deprecated": true,
-              "x-deprecated-in": "3.3.0",
-              "description": "Deprecated in 3.3. Seller-resolved party kind of the authenticated principal. This is resolved from authenticated transport and authorization state, never request content."
-            }
-          },
-          "required": ["kind", "principal_id", "principal_kind"],
-          "additionalProperties": false
-        },
-        {
-          "title": "Unconfigured principal",
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "unconfigured"
-            },
-            "relationship": {
-              "$ref": "/schemas/core/principal-relationship.json",
-              "x-status": "experimental",
-              "x-added-in": "3.3.0",
-              "description": "The seller's commercial relationship with this caller, or its application in progress. Omitted when there is neither."
-            }
-          },
-          "required": ["kind"],
-          "additionalProperties": false
-        },
-        {
-          "title": "Failed principal read",
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "const": "failed"
-            },
-            "errors": {
-              "type": "array",
-              "items": {
-                "$ref": "/schemas/core/error.json"
-              },
-              "minItems": 1,
-              "maxItems": 16
-            }
-          },
-          "required": ["kind", "errors"],
-          "additionalProperties": false
-        }
-      ]
+      "$ref": "#/definitions/principal_result"
     },
     "context": {
       "$ref": "/schemas/core/context.json"
@@ -166,7 +37,7 @@
   "then": {
     "properties": {
       "status": {
-        "enum": ["failed", "rejected"]
+        "$ref": "/schemas/enums/task-failure-status.json"
       }
     }
   },
@@ -229,5 +100,225 @@
         }
       }
     }
-  ]
+  ],
+  "definitions": {
+    "principal_result": {
+      "oneOf": [
+        {
+          "title": "Current principal configuration",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "current",
+              "default": "current"
+            },
+            "relationship": {
+              "$ref": "/schemas/core/principal-relationship.json",
+              "x-status": "experimental",
+              "x-added-in": "3.3.0",
+              "description": "The seller's commercial relationship with this caller, or its application in progress. Omitted when there is neither."
+            },
+            "principal_id": {
+              "$ref": "/schemas/core/principal-id.json",
+              "description": "Seller-issued opaque identifier for this authenticated principal record. It is response-only, not a credential, not caller identity, and not advertiser-account authority."
+            },
+            "principal_kind": {
+              "$ref": "/schemas/enums/principal-kind.json",
+              "deprecated": true,
+              "x-deprecated-in": "3.3.0",
+              "description": "Deprecated in 3.3. Seller-resolved party kind of the authenticated principal: a buyer-agent workload, or an operator-side identity such as a person at the operator. Resolved solely from the seller's authorization system, never from request content, so per-party policy such as billing gates can rely on it."
+            },
+            "configuration_version": {
+              "$ref": "/schemas/core/principal-configuration-version.json",
+              "description": "Opaque version of the persisted configuration. Compare only for equality and pass it as expected_configuration_version on a later guarded sync_principal replacement."
+            },
+            "configuration": {
+              "$ref": "/schemas/core/principal-state.json"
+            },
+            "reporting_subscription_page": {
+              "type": "object",
+              "x-status": "experimental",
+              "x-added-in": "3.3.0",
+              "description": "Present when and only when the request carried reporting_subscription_page: one page of the requested list, with the same entries and order as the inline list (account_id byte order for the account lists, newest first for prior_versions). Exactly the property named by list is present.",
+              "properties": {
+                "subscription_id": { "$ref": "/schemas/core/reporting-subscription-id.json" },
+                "list": { "$ref": "/schemas/enums/reporting-subscription-page-list.json" },
+                "accounts_with_exceptions": { "type": "array", "items": { "$ref": "/schemas/core/reporting-subscription-account-exceptions.json" }, "maxItems": 100 },
+                "accounts_unauthorized": { "type": "array", "items": { "$ref": "/schemas/core/reporting-subscription-unauthorized-account.json" }, "maxItems": 100 },
+                "prior_versions": { "type": "array", "items": { "$ref": "/schemas/core/reporting-subscription-prior-version.json" }, "maxItems": 100 },
+                "pagination": { "$ref": "/schemas/core/pagination-response.json" }
+              },
+              "required": [
+                "subscription_id",
+                "list",
+                "pagination"
+              ],
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "list": {
+                        "const": "accounts_with_exceptions"
+                      }
+                    },
+                    "required": [
+                      "list"
+                    ]
+                  },
+                  "then": {
+                    "required": [
+                      "accounts_with_exceptions"
+                    ],
+                    "not": {
+                      "anyOf": [
+                        {
+                          "required": [
+                            "accounts_unauthorized"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "prior_versions"
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "list": {
+                        "const": "accounts_unauthorized"
+                      }
+                    },
+                    "required": [
+                      "list"
+                    ]
+                  },
+                  "then": {
+                    "required": [
+                      "accounts_unauthorized"
+                    ],
+                    "not": {
+                      "anyOf": [
+                        {
+                          "required": [
+                            "accounts_with_exceptions"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "prior_versions"
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "list": {
+                        "const": "prior_versions"
+                      }
+                    },
+                    "required": [
+                      "list"
+                    ]
+                  },
+                  "then": {
+                    "required": [
+                      "prior_versions"
+                    ],
+                    "not": {
+                      "anyOf": [
+                        {
+                          "required": [
+                            "accounts_with_exceptions"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "accounts_unauthorized"
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                }
+              ],
+              "additionalProperties": true
+            }
+          },
+          "required": [
+            "kind",
+            "principal_id",
+            "principal_kind",
+            "configuration_version",
+            "configuration"
+          ],
+          "additionalProperties": true
+        },
+        {
+          "title": "Recognized principal without standing configuration",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "recognized",
+              "default": "recognized"
+            },
+            "relationship": {
+              "$ref": "/schemas/core/principal-relationship.json",
+              "x-status": "experimental",
+              "x-added-in": "3.3.0",
+              "description": "The seller's commercial relationship with this caller, or its application in progress. Omitted when there is neither."
+            },
+            "principal_id": {
+              "$ref": "/schemas/core/principal-id.json",
+              "description": "Seller-issued opaque identifier for the existing durable principal record. The read returns the same identifier after credential renewal or rotation when the new credential maps to this principal. It is not a credential and does not grant authority over an advertiser account."
+            },
+            "principal_kind": {
+              "$ref": "/schemas/enums/principal-kind.json",
+              "deprecated": true,
+              "x-deprecated-in": "3.3.0",
+              "description": "Deprecated in 3.3. Seller-resolved party kind of the authenticated principal. This is resolved from authenticated transport and authorization state, never request content."
+            }
+          },
+          "required": [
+            "kind",
+            "principal_id",
+            "principal_kind"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "title": "Unconfigured principal",
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "unconfigured",
+              "default": "unconfigured"
+            },
+            "relationship": {
+              "$ref": "/schemas/core/principal-relationship.json",
+              "x-status": "experimental",
+              "x-added-in": "3.3.0",
+              "description": "The seller's commercial relationship with this caller, or its application in progress. Omitted when there is neither."
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "/schemas/core/principal-operation-failure.json"
+        }
+      ]
+    }
+  }
 }

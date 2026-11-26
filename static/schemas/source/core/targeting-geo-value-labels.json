@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/targeting-geo-value-labels.json",
+  "title": "Geo Value Labels",
+  "description": "Optional human-readable diagnostic labels for the ISO codes in geo_countries, geo_countries_exclude, geo_regions, and geo_regions_exclude, keyed by code (e.g., { \"DE\": \"Germany\", \"US-CA\": \"California\" }). Every key MUST appear in one of those four arrays; extra keys are a conformance error. Labels are not a targeting dimension: they are non-authoritative, MUST NOT be used to resolve or apply targeting, and are ignored when comparing targeting for equality or readback. Metro and place labels live in value_labels on their own entries.",
+  "x-adcp-validation": {
+    "map_keys_subset_of_arrays": {
+      "array_fields": [
+        "geo_countries",
+        "geo_countries_exclude",
+        "geo_regions",
+        "geo_regions_exclude"
+      ]
+    },
+    "description": "Every geo_value_labels key MUST appear in at least one of the listed sibling arrays. JSON Schema draft-07 cannot express this sibling-field key membership constraint, so conformance tooling must enforce it."
+  },
+  "type": "object",
+  "propertyNames": {
+    "$ref": "/schemas/core/country-or-subdivision-code.json"
+  },
+  "additionalProperties": {
+    "type": "string",
+    "minLength": 1
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/trust/v1/trust-domain.json",
+  "title": "Domain",
+  "description": "A lowercase DNS host name (internationalized names in punycode).",
+  "type": "string",
+  "pattern": "^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$"
+}

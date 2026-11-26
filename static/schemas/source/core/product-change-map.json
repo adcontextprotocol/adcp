@@ -9,7 +9,7 @@
     "x-entity": "product"
   },
   "additionalProperties": {
-    "enum": ["include", "omit"]
+    "$ref": "/schemas/enums/membership-action.json"
   },
   "minProperties": 1
 }

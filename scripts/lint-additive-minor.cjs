@@ -954,16 +954,45 @@ function readCorrections(value, candidateVersion) {
 
 /**
  * Each correction in effect must be applied in the candidate tree: a
- * corrected bound has its value there (through a `$ref` if the location
- * refers to a shared definition), and a required name is in the composed
- * required set there.
+ * corrected bound has its value there, and a required name is in the
+ * composed required set there, both through a `$ref` if the location refers
+ * to a shared definition. A location is the path the comparison reports, so it
+ * passes through any `$ref` on the way, and through the `allOf` of a document
+ * that only composes a shared definition: a site that now references a shared
+ * definition keeps the location of the copy it replaced.
  */
 function checkCorrectionsApplied({ bounds = new Map(), required = new Map() }, candTree) {
   const errors = [];
   const nodeAt = (location) => {
     const [key, pointer] = location.split('#');
     const document = candTree.documents.get(key);
-    return document ? readPointer(document.schema, pointer) : undefined;
+    if (!document) return undefined;
+    if (!pointer) return document.schema;
+    if (!pointer.startsWith('/')) return undefined;
+    let current = document.schema;
+    let docKey = key;
+    for (const raw of pointer.slice(1).split('/')) {
+      const segment = decodeURIComponent(raw).replace(/~1/g, '/').replace(/~0/g, '~');
+      if (isObject(current) && typeof current.$ref === 'string' && !(segment in current)) {
+        const resolved = resolveNode(current, docKey, candTree);
+        if (!resolved) return undefined;
+        current = resolved.node;
+        docKey = resolved.docKey;
+      }
+      if (isObject(current) && !(segment in current) && Array.isArray(current.allOf)) {
+        // A document that only composes a shared definition: follow the member that has the segment.
+        const member = current.allOf
+          .map((entry) => resolveNode(entry, docKey, candTree))
+          .find((resolved) => resolved && isObject(resolved.node) && segment in resolved.node);
+        if (member) {
+          current = member.node;
+          docKey = member.docKey;
+        }
+      }
+      if (current === null || typeof current !== 'object' || !(segment in current)) return undefined;
+      current = current[segment];
+    }
+    return current;
   };
   for (const [location, expected] of bounds) {
     let node = nodeAt(location);
@@ -980,12 +1009,18 @@ function checkCorrectionsApplied({ bounds = new Map(), required = new Map() }, c
     }
   }
   for (const [location, names] of required) {
-    const node = nodeAt(location);
+    let node = nodeAt(location);
+    let docKey = location.split('#')[0];
+    if (isObject(node) && typeof node.$ref === 'string') {
+      const resolved = resolveNode(node, docKey, candTree);
+      node = resolved ? resolved.node : undefined;
+      docKey = resolved ? resolved.docKey : docKey;
+    }
     if (!isObject(node)) {
       errors.push(`correction ${location} does not exist in ${candTree.label}`);
       continue;
     }
-    const composed = declaredNames(node, location.split('#')[0], candTree, 'required');
+    const composed = declaredNames(node, docKey, candTree, 'required');
     for (const name of names) {
       if (!composed.has(name)) errors.push(`correction ${location} does not require ${name} in ${candTree.label}`);
     }

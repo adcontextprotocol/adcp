@@ -9,26 +9,14 @@
       "type": "object",
       "properties": {
         "vendor": { "$ref": "/schemas/core/brand-key.json" },
-        "max_variance_percent": { "type": "number", "minimum": 0, "exclusiveMaximum": 100 },
-        "measurement_window": { "type": "string", "minLength": 1 },
-        "finalization_deadline_hours": { "type": "integer", "minimum": 0 }
+        "max_variance_percent": { "$ref": "/schemas/core/billing-variance-percent.json" },
+        "measurement_window": { "$ref": "/schemas/core/measurement-window-id.json" },
+        "finalization_deadline_hours": { "$ref": "/schemas/core/finalization-deadline-hours.json" }
       },
       "required": ["vendor"],
       "additionalProperties": false
     },
-    "makegood_policy": {
-      "type": "object",
-      "properties": {
-        "available_remedies": {
-          "type": "array",
-          "items": { "$ref": "/schemas/enums/makegood-remedy.json" },
-          "minItems": 1,
-          "uniqueItems": true
-        }
-      },
-      "required": ["available_remedies"],
-      "additionalProperties": false
-    }
+    "makegood_policy": { "$ref": "/schemas/core/canonical-makegood-policy.json" }
   },
   "additionalProperties": false
 }

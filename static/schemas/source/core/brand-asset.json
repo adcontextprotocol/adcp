@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-asset.json",
+  "title": "Brand Asset",
+  "description": "Brand asset (image, video, audio, text)",
+  "type": "object",
+  "properties": {
+    "asset_id": {
+      "type": "string",
+      "description": "Unique identifier"
+    },
+    "asset_type": {
+      "$ref": "/schemas/enums/asset-content-type.json",
+      "description": "Type of asset content"
+    },
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to CDN-hosted asset file"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Tags for discovery (e.g., 'hero', 'lifestyle', 'product', 'holiday')"
+    },
+    "name": {
+      "$ref": "/schemas/core/brand-localized-scalar.json",
+      "description": "Human-readable name, either a legacy plain string or localized values."
+    },
+    "description": {
+      "$ref": "/schemas/core/brand-localized-scalar.json",
+      "description": "Asset description or usage notes, either a legacy plain string or localized values."
+    },
+    "width": {
+      "type": "integer",
+      "description": "Image/video width in pixels"
+    },
+    "height": {
+      "type": "integer",
+      "description": "Image/video height in pixels"
+    },
+    "duration_seconds": {
+      "type": "number",
+      "description": "Video/audio duration in seconds"
+    },
+    "file_size_bytes": {
+      "type": "integer",
+      "description": "File size in bytes"
+    },
+    "format": {
+      "type": "string",
+      "description": "File format (e.g., 'jpg', 'mp4', 'mp3')"
+    },
+    "metadata": {
+      "title": "Brand Asset Metadata",
+      "type": "object",
+      "description": "Additional asset-specific metadata",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "asset_id",
+    "asset_type",
+    "url"
+  ],
+  "additionalProperties": true
+}

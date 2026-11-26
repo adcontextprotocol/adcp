@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-claim-trademark.json",
+  "title": "Brand Claim Trademark",
+  "description": "A trademark claim: the mark, its registry and registration number, the countries it covers, and the use case.",
+  "type": "object",
+  "properties": {
+    "mark": {
+      "$ref": "/schemas/core/trademark-mark.json"
+    },
+    "registry": {
+      "$ref": "/schemas/core/trademark-registry.json"
+    },
+    "number": {
+      "$ref": "/schemas/core/trademark-registration-number.json"
+    },
+    "countries": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/country-code.json"
+      }
+    },
+    "use_case": {
+      "$ref": "/schemas/core/brand-claim-use-case.json"
+    }
+  },
+  "required": [
+    "mark"
+  ],
+  "additionalProperties": true
+}

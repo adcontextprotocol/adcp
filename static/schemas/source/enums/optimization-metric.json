@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/optimization-metric.json",
+  "title": "Optimization Metric",
+  "description": "Seller-native metric a legacy optimization goal can target, including unbound attention metrics.",
+  "type": "string",
+  "enum": [
+    "clicks",
+    "views",
+    "completed_views",
+    "viewed_seconds",
+    "viewable_rate",
+    "attention_seconds",
+    "attention_score",
+    "engagements",
+    "follows",
+    "saves",
+    "profile_visits",
+    "reach"
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/parent-organization-name.json",
+  "title": "Parent Organization Name",
+  "description": "Primary display name of the parent organization that owns brands in brand.json.",
+  "type": "string",
+  "minLength": 1
+}

@@ -13,6 +13,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const yaml = require('js-yaml');
+const { resolveScalar } = require('./helpers/named-scalar-schemas.cjs');
 
 const ROOT = path.join(__dirname, '..');
 const SCHEMAS = path.join(ROOT, 'static/schemas/source');
@@ -110,16 +111,14 @@ test('target_audiences is off create/update packages', () => {
 });
 
 test('audience evidence targets have no 3.3 wire form, and their orphaned schemas are gone', () => {
-  for (const file of ['core/audience-evidence-target.json', 'enums/audience-evidence-relationship.json']) {
-    assert.equal(fs.existsSync(path.join(SCHEMAS, file)), false, `${file} is withdrawn`);
-  }
+  assert.equal(fs.existsSync(path.join(SCHEMAS, 'core/audience-evidence-target.json')), false, 'core/audience-evidence-target.json is withdrawn');
   const index = fs.readFileSync(path.join(SCHEMAS, 'index.json'), 'utf8');
   assert.equal(index.includes('audience-evidence-target.json'), false);
-  assert.equal(index.includes('audience-evidence-relationship.json'), false);
   assert.doesNotMatch(readDoc('reference/experimental-status.mdx'), /^\| `media_buy\.audience_evidence_targets` \|/m);
-  // The stable inline relationship enums on audience evidence stay.
+  // The stable relationship enums on audience evidence stay. Both reference
+  // enums/audience-evidence-relationship.json, their one definition (#8525).
   for (const file of ['core/audience-evidence.json', 'core/canonical-audience-evidence.json']) {
-    assert.deepEqual(readSchema(file).properties.relationship.enum, ['composition', 'index', 'reach_estimate'], file);
+    assert.deepEqual(resolveScalar(readSchema(file).properties.relationship).enum, ['composition', 'index', 'reach_estimate'], file);
   }
   // The 4.0 check keeps its id but no longer keys off the retired feature id.
   const registry = yaml.load(fs.readFileSync(

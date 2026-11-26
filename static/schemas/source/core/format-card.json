@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/format-card.json",
+  "title": "Format Card",
+  "description": "A visual card that displays a format in user interfaces: the format ID and the card's creative manifest.",
+  "type": "object",
+  "properties": {
+    "format_id": {
+      "$ref": "/schemas/core/format-id.json",
+      "description": "Creative format defining the card layout (typically format_card_standard)"
+    },
+    "manifest": {
+      "$ref": "/schemas/core/format-card-manifest.json",
+      "description": "Asset manifest for rendering the card, structure defined by the format"
+    }
+  },
+  "required": [
+    "format_id",
+    "manifest"
+  ],
+  "additionalProperties": true
+}

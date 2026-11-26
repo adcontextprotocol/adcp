@@ -9,6 +9,7 @@
     "asset_type": {
       "type": "string",
       "const": "url",
+      "default": "url",
       "description": "Discriminator identifying this as a URL asset. See /schemas/creative/asset-types for the registry."
     },
     "url": {
@@ -22,10 +23,7 @@
     "macro_declarations": {
       "type": "array",
       "items": {
-        "allOf": [
-          { "$ref": "/schemas/core/macro-declaration.json" },
-          { "properties": { "location": { "properties": { "field": { "const": "url" } } } } }
-        ]
+        "$ref": "/schemas/core/macro-declaration-in-url.json"
       },
       "minItems": 1,
       "description": "One declaration per token occurrence in `url`; declaration_id values MUST be unique and every location MUST identify an existing occurrence. Absence retains legacy opaque transport behavior."

@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/a2ui/action-context.json",
+  "title": "A2UI Action Context",
+  "description": "Context values of a triggered action, keyed by name, after the data model bindings are resolved.",
+  "type": "object",
+  "additionalProperties": true
+}

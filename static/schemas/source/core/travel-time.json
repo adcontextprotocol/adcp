@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/travel-time.json",
+  "title": "Travel Time",
+  "description": "A travel time limit used to compute an isochrone, with its unit.",
+  "type": "object",
+  "properties": {
+    "value": {
+      "type": "number",
+      "minimum": 1,
+      "description": "Travel time limit."
+    },
+    "unit": {
+      "$ref": "/schemas/enums/travel-time-unit.json"
+    }
+  },
+  "required": [
+    "value",
+    "unit"
+  ],
+  "additionalProperties": true
+}

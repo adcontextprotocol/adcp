@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/media-buy-failed-result.json",
+  "title": "Media Buy Failed Result",
+  "description": "A failed media buy result: status `failed` with one or more errors, and no media buy ID or warnings.",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/task-error-response.json"
+    }
+  ],
+  "properties": {
+    "status": {
+      "type": "string",
+      "const": "failed",
+      "default": "failed"
+    }
+  },
+  "required": [
+    "status",
+    "errors"
+  ],
+  "not": {
+    "anyOf": [
+      {
+        "required": [
+          "media_buy_id"
+        ]
+      },
+      {
+        "required": [
+          "warnings"
+        ]
+      }
+    ]
+  }
+}

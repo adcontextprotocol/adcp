@@ -1,0 +1,10 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-transport.json",
+  "title": "Reporting Transport",
+  "description": "Open name of a reporting delivery transport, such as s3, bigquery, or delta_sharing.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 64,
+  "pattern": "^[a-z][a-z0-9_.-]*$"
+}

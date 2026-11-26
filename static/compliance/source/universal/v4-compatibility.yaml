@@ -428,6 +428,7 @@ schema_removals_not_checked:
       legacy_hmac_fallback_removed_in_4_0.
     sites:
       - "core/agent-notification-config.json#/properties/authentication"
+      - "core/agent-notification-config-state.json#/properties/authentication"
       - "core/notification-config.json#/properties/authentication"
       - "core/push-notification-config.json#/properties/authentication"
       - "core/reporting-webhook.json#/properties/authentication"
@@ -441,7 +442,7 @@ schema_removals_not_checked:
       VERSION_UNSUPPORTED error, which the suite does not provoke yet.
       Trusted Match requests are outside seller runs.
     sites:
-      - "core/version-envelope.json#/properties/adcp_major_version"
+      - "core/version-envelope-adcp-major-version.json#"
       - "error-details/version-unsupported.json#/properties/supported_majors"
       - "trusted-match/context-match-request.json#/properties/adcp_major_version"
       - "trusted-match/identity-match-request.json#/properties/adcp_major_version"
@@ -452,7 +453,7 @@ schema_removals_not_checked:
       Seller-emitted and observable on create, update, and get_media_buys
       responses, but not graded yet.
     sites:
-      - "media-buy/create-media-buy-response.json#/oneOf/0/properties/valid_actions"
+      - "media-buy/create-media-buy-success.json#/properties/valid_actions"
       - "media-buy/get-media-buys-response.json#/properties/media_buys/items/properties/valid_actions"
       - "media-buy/update-media-buy-response.json#/oneOf/0/properties/valid_actions"
 
@@ -535,18 +536,13 @@ schema_removals_not_checked:
       is marked x-removed-in "5.0.0", not 4.0, because brand.json is read without
       version negotiation, so it is outside this 4.0 registry by design.
     sites:
-      - "brand/get-brand-identity-response.json#/oneOf/0/properties/colors/properties/primary/oneOf/0"
-      - "brand/get-brand-identity-response.json#/oneOf/0/properties/colors/properties/secondary/oneOf/0"
-      - "brand/get-brand-identity-response.json#/oneOf/0/properties/colors/properties/accent/oneOf/0"
-      - "brand/get-brand-identity-response.json#/oneOf/0/properties/colors/properties/background/oneOf/0"
-      - "brand/get-brand-identity-response.json#/oneOf/0/properties/colors/properties/text/oneOf/0"
+      - "core/color-value.json#/oneOf/0"
       - "error-details/requote-required.json#/properties/envelope_field/oneOf/0"
       - "core/creative-asset.json#/properties/assets/patternProperties/^/oneOf/0"
       - "core/creative-assets.json#/patternProperties/^/anyOf/0"
       - "core/creative-manifest.json#/properties/assets/patternProperties/^/oneOf/0"
       - "creative/list-creatives-response.json#/properties/creatives/items/properties/assets/patternProperties/^/oneOf/0"
-      - "core/creative-localization.json#/properties/target_variants/items/properties/assets/patternProperties/^[a-z0-9_]+$/anyOf/0"
-      - "core/creative-localization-readback.json#/definitions/resolvedAssets/patternProperties/^[a-z0-9_]+$/anyOf/0"
+      - "core/localized-creative-assets.json#/patternProperties/^[a-z0-9_]+$/anyOf/0"
       - "media-buy/get-media-buy-delivery-request.json#/properties/status_filter/oneOf/0"
       - "media-buy/get-media-buys-request.json#/properties/status_filter/oneOf/0"
       - "core/audience-characteristic.json#/properties/value/oneOf/0"
@@ -564,7 +560,18 @@ schema_removals_not_checked:
     sites:
       - "content-standards/get-media-buy-artifacts-response.json#/oneOf/0/properties/artifacts/items/properties/local_verdict/enumMetadata/pass"
       - "core/registry-event.json#/$defs/compliancePayload/properties/tracks/additionalProperties/enumMetadata/pass"
-      - "core/signal-definition-enrichment.json#/properties/onboarder/properties/match_keys/items/enumMetadata/name"
-      - "core/signal-definition.json#/properties/onboarder/properties/match_keys/items/enumMetadata/name"
       - "enums/binary-verdict.json#/enumMetadata/pass"
+      - "enums/signal-match-key.json#/enumMetadata/name"
       - "error-details/rate-limited.json#/properties/scope/enumMetadata/global"
+
+  - change: "The success flag where the envelope status reports the outcome"
+    issue: 8969
+    reason: >-
+      update_content_standards and provide_performance_feedback repeat the
+      outcome that the envelope status carries. Senders keep sending success
+      through 3.x because 3.x receivers may read it, so a 3.x run cannot grade
+      its use.
+    sites:
+      - "content-standards/update-content-standards-response.json#/oneOf/0/properties/success"
+      - "content-standards/update-content-standards-response.json#/oneOf/1/properties/success"
+      - "media-buy/provide-performance-feedback-response.json#/oneOf/0/properties/success"

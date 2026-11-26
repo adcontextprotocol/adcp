@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/catalog-tags.json",
+  "title": "Tags",
+  "description": "Filter catalog to items with these tags. Tags are matched using OR logic — items matching any tag are included.",
+  "type": "array",
+  "items": {
+    "type": "string"
+  },
+  "minItems": 1
+}

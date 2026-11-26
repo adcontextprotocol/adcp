@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/eligible-adjustments.json",
+  "title": "Eligible Adjustments",
+  "description": "Adjustment kinds that apply to a pricing option, declared before negotiation. Each kind appears at most once.",
+  "type": "array",
+  "items": {
+    "$ref": "/schemas/enums/adjustment-kind.json"
+  },
+  "uniqueItems": true
+}

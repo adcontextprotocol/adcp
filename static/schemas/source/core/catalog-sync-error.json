@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/catalog-sync-error.json",
+  "title": "Catalog Sync Error",
+  "description": "An operation-level sync_catalogs error. A REFERENCE_NOT_FOUND error is either the closed catalog item reference variant, for availability lookups, or the field-qualified catalog_ids filter error.",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/error.json"
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "REFERENCE_NOT_FOUND"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "then": {
+        "description": "Availability lookups use the closed error variant; the field-qualified branch preserves the established catalog_ids filter error.",
+        "anyOf": [
+          {
+            "$ref": "/schemas/core/catalog-item-reference-not-found-error.json"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "field": {
+                "const": "catalog_ids"
+              }
+            },
+            "required": [
+              "field"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

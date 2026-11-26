@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/targeting-geo-countries-exclude.json",
+  "title": "Geo Countries Exclude",
+  "description": "Exclude specific countries from delivery. ISO 3166-1 alpha-2 codes (e.g., 'US', 'GB', 'DE').",
+  "type": "array",
+  "items": {
+    "$ref": "/schemas/core/country-code.json"
+  },
+  "minItems": 1
+}

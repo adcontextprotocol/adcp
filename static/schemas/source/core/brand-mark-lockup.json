@@ -1,0 +1,103 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-mark-lockup.json",
+  "title": "Brand Mark Lockup",
+  "description": "Machine-readable layout constraints for co-brand, partner, sponsor, program, or secondary-mark lockups.",
+  "type": "object",
+  "properties": {
+    "lockup_type": {
+      "type": "string",
+      "enum": [
+        "co_brand",
+        "secondary_mark",
+        "partner",
+        "sponsor",
+        "program",
+        "talent",
+        "custom"
+      ],
+      "description": "Type of mark relationship governed by this lockup rule."
+    },
+    "ordering": {
+      "type": "string",
+      "enum": [
+        "brand_first",
+        "partner_first",
+        "equal",
+        "contextual"
+      ],
+      "description": "Required visual ordering of the brand mark relative to partner or secondary marks."
+    },
+    "contexts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Creative contexts where this lockup rule applies."
+    },
+    "brand_logo_id": {
+      "$ref": "/schemas/core/brand-logo-id.json",
+      "description": "Stable `logos[].id` for the brand logo this lockup rule is anchored on."
+    },
+    "secondary_logo_ids": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/brand-logo-id.json"
+      },
+      "uniqueItems": true,
+      "description": "Stable `logos[].id` values for secondary, program, sponsor, or partner marks governed by this lockup rule when those marks are represented in this brand.json."
+    },
+    "separator": {
+      "type": "object",
+      "description": "Separator between marks, when required.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "none",
+            "keyline",
+            "space",
+            "divider"
+          ],
+          "description": "Separator style."
+        },
+        "color": {
+          "$ref": "/schemas/core/brand-color-ref.json"
+        },
+        "width": {
+          "type": "string",
+          "description": "Separator width, such as 1px."
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": true
+    },
+    "min_gap": {
+      "type": "string",
+      "description": "Minimum gap between marks, expressed in brand terms or units."
+    },
+    "brand_min_optical_weight_ratio": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Minimum optical weight of the brand mark relative to partner marks. 1 means at least equal."
+    },
+    "partner_max_optical_weight_ratio": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Maximum optical weight of partner marks relative to the brand mark. 1 means no larger than the brand mark. Enforcement is at layout time, not parse time — this value signals to renderers and creative agents how much space to provision for each mark."
+    },
+    "severity": {
+      "$ref": "/schemas/core/brand-guideline-severity.json"
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable rationale or source-language summary for the lockup rule."
+    }
+  },
+  "required": [
+    "lockup_type"
+  ],
+  "additionalProperties": true
+}

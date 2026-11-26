@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/overlay-bounds-unit.json",
+  "title": "Overlay Bounds Unit",
+  "description": "Unit in which overlay bounds are measured.",
+  "type": "string",
+  "enum": [
+    "px",
+    "fraction",
+    "inches",
+    "cm",
+    "mm",
+    "pt"
+  ]
+}

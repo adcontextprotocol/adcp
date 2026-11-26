@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/legacy-cost-per-target.json",
+  "title": "Cost Per Target",
+  "description": "A deprecated optimization target that sets a cost per unit of the goal's metric. Normalize it to `bidding.cost_per` with strength `target`.",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "const": "cost_per",
+      "default": "cost_per"
+    },
+    "value": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Target cost per metric unit in the buy currency. Units of the metric are vendor-defined."
+    }
+  },
+  "required": [
+    "kind",
+    "value"
+  ],
+  "additionalProperties": true
+}

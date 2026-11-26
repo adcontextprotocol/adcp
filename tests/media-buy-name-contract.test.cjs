@@ -20,7 +20,10 @@ function load(relativePath) {
 
 function successProperties(relativePath, title) {
   const schema = load(relativePath);
-  return schema.oneOf.find((branch) => branch.title === title).properties;
+  const branches = schema.oneOf.map((branch) =>
+    branch.$ref ? load(branch.$ref.replace(/^\/schemas\//, "")) : branch
+  );
+  return branches.find((branch) => branch.title === title).properties;
 }
 
 const surfaces = [
@@ -84,7 +87,14 @@ const surfaces = [
 describe("media-buy name contract", () => {
   it("declares the same bounded display label on every write and read surface", () => {
     const ajv = new Ajv({ strict: false });
-    for (const { label, field } of surfaces) {
+    for (const { label, field: site } of surfaces) {
+      // Each surface references the one display-label schema and keeps its own
+      // annotations. Check what the surface accepts through that reference.
+      const { $schema, $id, title, description, ...named } = load(
+        site.$ref.replace("/schemas/", "")
+      );
+      const { $ref, ...kept } = site;
+      const field = { ...named, ...kept };
       assert.equal(field.type, "string", `${label} name must be a string`);
       assert.equal(
         field.maxLength,

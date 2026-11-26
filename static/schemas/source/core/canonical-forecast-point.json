@@ -10,9 +10,12 @@
     }
   },
   "properties": {
-    "label": { "type": "string", "maxLength": 128 },
-    "budget": { "type": "number", "minimum": 0 },
-    "product_id": { "type": "string", "x-entity": "product" },
+    "label": { "$ref": "/schemas/core/forecast-point-label.json" },
+    "budget": { "$ref": "/schemas/core/budget-amount.json" },
+    "product_id": {
+      "$ref": "/schemas/core/product-id.json",
+      "x-entity": "product"
+    },
     "dimensions": { "$ref": "/schemas/core/forecast-point-dimensions.json" },
     "availability_status": { "$ref": "/schemas/enums/availability-status.json" },
     "impression_basis": {
@@ -37,13 +40,7 @@
       "minItems": 2
     },
     "metrics": {
-      "type": "object",
-      "properties": {
-        "coverage_rate": {
-          "$ref": "/schemas/core/forecast-rate-range.json"
-        }
-      },
-      "additionalProperties": { "$ref": "/schemas/core/forecast-range.json" }
+      "$ref": "/schemas/core/forecast-metrics.json"
     },
     "viewability": {
       "type": "object",

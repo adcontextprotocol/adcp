@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/roas-strength.json",
+  "title": "ROAS Strength",
+  "description": "How a bidding strategy treats a return-on-ad-spend goal: floor avoids optimizing below it, and target optimizes around it.",
+  "type": "string",
+  "enum": [
+    "floor",
+    "target"
+  ]
+}

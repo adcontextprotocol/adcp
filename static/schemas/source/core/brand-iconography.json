@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-iconography.json",
+  "title": "Brand Iconography",
+  "description": "Icon style system and usage rules",
+  "type": "object",
+  "properties": {
+    "style": {
+      "type": "string",
+      "enum": [
+        "outline",
+        "filled",
+        "duotone",
+        "flat",
+        "glyph",
+        "hand_drawn"
+      ],
+      "description": "Icon rendering style"
+    },
+    "stroke_weight": {
+      "type": "string",
+      "description": "Icon stroke weight (e.g., '2px', '1.5px')"
+    },
+    "corner_style": {
+      "type": "string",
+      "enum": [
+        "rounded",
+        "square",
+        "mixed"
+      ],
+      "description": "Corner style for icon paths"
+    },
+    "usage": {
+      "title": "Brand Icon Usage Rules",
+      "type": "object",
+      "description": "Icon usage rules",
+      "properties": {
+        "max_per_frame": {
+          "type": "integer",
+          "description": "Maximum icons per creative frame"
+        },
+        "size_ratio": {
+          "type": "string",
+          "description": "Icon-to-layout size ratio (e.g., '1:8')"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

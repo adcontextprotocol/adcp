@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/media-buy/product-purchase-format-option-refs.json",
+  "title": "Format Option Refs",
+  "description": "Canonical format options selected from the published product offer. Legacy named-format identifiers are not accepted.",
+  "type": "array",
+  "items": {
+    "$ref": "/schemas/core/format-option-ref.json"
+  },
+  "minItems": 1
+}

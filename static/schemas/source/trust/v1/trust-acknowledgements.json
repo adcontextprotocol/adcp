@@ -17,13 +17,11 @@
     "acknowledgements": {
       "type": "array",
       "items": {
-        "$ref": "/schemas/trust/v1/trust.json#/definitions/acknowledgement"
+        "$ref": "/schemas/trust/v1/trust-acknowledgement.json"
       }
     },
     "next": {
-      "type": "string",
-      "format": "uri",
-      "pattern": "^https://",
+      "$ref": "/schemas/core/https-url.json",
       "description": "Optional same-host URL of the next shard (untrusted input; see trust.json https_url). Verifiers follow shards in order and stop at a configured limit."
     }
   },

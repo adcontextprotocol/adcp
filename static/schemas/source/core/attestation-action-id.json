@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/attestation-action-id.json",
+  "title": "Attestation Action ID",
+  "description": "Identifier of the consuming action that an attestation evaluation binds to, in the domain consumer's namespace.",
+  "type": "string",
+  "minLength": 1,
+  "maxLength": 1024
+}

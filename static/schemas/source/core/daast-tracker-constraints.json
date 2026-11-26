@@ -5,46 +5,19 @@
   "description": "Shared DAAST tracker vocabulary and execution-selector constraints. The legacy asset vocabulary retains AdCP's historical close extension, while the closed standards selector matrix excludes it. Progress alone carries offset in selectors.",
   "type": "object",
   "definitions": {
-    "daast_event": {
-      "type": "string",
-      "enum": [
-        "creativeView",
-        "start",
-        "firstQuartile",
-        "midpoint",
-        "thirdQuartile",
-        "complete",
-        "mute",
-        "unmute",
-        "pause",
-        "resume",
-        "rewind",
-        "skip",
-        "progress",
-        "close"
-      ]
-    },
     "daast_target": {
-      "type": "string",
-      "enum": ["linear", "companion"],
+      "$ref": "/schemas/enums/daast-tracker-target.json",
       "default": "linear"
     },
     "daast_offset": {
-      "type": "string",
-      "pattern": "^(\\d{2}:[0-5]\\d:[0-5]\\d(\\.\\d{3})?|(100|\\d{1,2})%)$"
-    },
-    "daast_versions": {
-      "type": "array",
-      "items": { "$ref": "/schemas/enums/daast-version.json" },
-      "minItems": 1,
-      "uniqueItems": true
+      "$ref": "/schemas/core/tracker-offset.json"
     }
   },
   "properties": {
-    "daast_event": { "$ref": "#/definitions/daast_event" },
+    "daast_event": { "$ref": "/schemas/enums/daast-tracker-event.json" },
     "target": { "$ref": "#/definitions/daast_target" },
     "offset": { "$ref": "#/definitions/daast_offset" },
-    "daast_versions": { "$ref": "#/definitions/daast_versions" }
+    "daast_versions": { "$ref": "/schemas/core/daast-versions.json" }
   },
   "allOf": [
     {

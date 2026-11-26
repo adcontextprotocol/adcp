@@ -19,6 +19,7 @@
       "description": "Plain-text explanation of what this transformer produces and how."
     },
     "metadata": {
+      "title": "Transformer Metadata",
       "type": "object",
       "description": "Transformer-specific attributes a buyer can filter or display (e.g. provider, modality, language).",
       "additionalProperties": true
@@ -30,21 +31,8 @@
         "type": "object",
         "properties": {
           "brand_agent": {
-            "type": "object",
-            "description": "Brand agent that exposed the referenced voice_synthesis entry.",
-            "properties": {
-              "url": {
-                "type": "string",
-                "format": "uri",
-                "description": "MCP endpoint URL of the brand agent."
-              },
-              "id": {
-                "type": "string",
-                "description": "Agent identifier."
-              }
-            },
-            "required": ["url", "id"],
-            "additionalProperties": true
+            "$ref": "/schemas/core/brand-agent.json",
+            "description": "Brand agent that exposed the referenced voice_synthesis entry."
           },
           "voice_id": {
             "type": "string",
@@ -78,17 +66,7 @@
       "type": "array",
       "description": "Canonical format declarations this transformer accepts as input. Omitted means it builds from a brief or raw assets rather than transforming an existing creative. Compatibility uses canonical constraint satisfaction, not identifier equality. Transformer self-description has no seller production authority, so tracker_execution_contract and tracker_execution_contract_digest are forbidden.",
       "items": {
-        "allOf": [
-          { "$ref": "/schemas/core/product-format-declaration.json" },
-          {
-            "not": {
-              "anyOf": [
-                { "required": ["tracker_execution_contract"] },
-                { "required": ["tracker_execution_contract_digest"] }
-              ]
-            }
-          }
-        ]
+        "$ref": "/schemas/core/authority-free-product-format-declaration.json"
       },
       "minItems": 1
     },
@@ -96,8 +74,7 @@
       "type": "array",
       "description": "Canonical output capabilities this transformer can produce. Every value MUST match this agent's get_adcp_capabilities `creative.supported_formats[].capability_id`. A build_creative request's target_capability_id(s) MUST be a subset of this array.",
       "items": {
-        "type": "string",
-        "pattern": "^[a-zA-Z0-9_-]+$"
+        "$ref": "/schemas/core/creative-capability-id.json"
       },
       "minItems": 1,
       "uniqueItems": true
@@ -114,21 +91,8 @@
       "minItems": 1
     },
     "multiplicity": {
-      "type": "object",
-      "description": "Optional per-transformer fan-out limits that NARROW the agent-level get_adcp_capabilities `creative.multiplicity`. Same shape as the agent-level object. When present, this transformer's authoritative; its ceilings (max_creatives_limit / max_variants_limit) MUST NOT exceed the agent ceilings, and its variant_dimensions MUST be a subset of the agent's. Omit to inherit the agent-level capability unchanged.",
-      "properties": {
-        "supports_catalog_fanout": { "type": "boolean", "default": false, "description": "Whether this transformer accepts max_creatives." },
-        "max_creatives_limit": { "type": "integer", "minimum": 1, "description": "Per-transformer ceiling on max_creatives (≤ the agent ceiling)." },
-        "supports_variants": { "type": "boolean", "default": false, "description": "Whether this transformer accepts max_variants > 1 / variant_axis." },
-        "max_variants_limit": { "type": "integer", "minimum": 1, "description": "Per-transformer ceiling on max_variants (≤ the agent ceiling)." },
-        "variant_dimensions": {
-          "type": "array",
-          "description": "Variant axis dimensions this transformer supports (⊆ the agent's).",
-          "items": { "type": "string", "enum": ["voice", "theme", "best_of_n", "transformer_config", "custom"] },
-          "uniqueItems": true
-        }
-      },
-      "additionalProperties": true
+      "$ref": "/schemas/core/creative-multiplicity.json",
+      "description": "Optional per-transformer fan-out limits that NARROW the agent-level get_adcp_capabilities `creative.multiplicity`. Same shape as the agent-level object. When present, this transformer's authoritative; its ceilings (max_creatives_limit / max_variants_limit) MUST NOT exceed the agent ceilings, and its variant_dimensions MUST be a subset of the agent's. Omit to inherit the agent-level capability unchanged."
     }
   },
   "required": ["transformer_id", "name"],

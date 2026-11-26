@@ -22,19 +22,7 @@
       "type": "array",
       "description": "Identifiers for the collection on this publisher, including publisher-scoped channel/EPG identifiers and platform-independent metadata identifiers",
       "items": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "$ref": "/schemas/enums/distribution-identifier-type.json",
-            "description": "Type of distribution identifier"
-          },
-          "value": {
-            "type": "string",
-            "description": "The identifier value"
-          }
-        },
-        "required": ["type", "value"],
-        "additionalProperties": true
+        "$ref": "/schemas/core/distribution-identifier.json"
       },
       "minItems": 1
     },

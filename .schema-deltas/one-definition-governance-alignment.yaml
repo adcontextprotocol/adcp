@@ -1,0 +1,68 @@
+# Delta manifest (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  One definition per object: governance, the remaining sites. The corrections the review chose, each on a bound the
+  published text of the major sets; every other change is a $ref to an identical definition.
+changes:
+  - location: core/governance-plan-id.json#
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: both
+    note: >-
+      Every governance plan_id -> new:core/governance-plan-id.json: sync_plans request plans[].plan_id and
+      portfolio.member_plan_ids[], sync_plans response plans[].plan_id, get_plan_audit_logs request plan_ids[] and
+      portfolio_plan_ids[], get_plan_audit_logs response plans[].plan_id and entries[].plan_id, check_governance
+      request and response plan_id, report_plan_outcome request plan_id, core/governance-finding.json source_plan_id;
+      report_plan_adjustment request plan_id already stated minLength 1. Basis: 3.2.12
+      governance/report-plan-adjustment-request.json states the bound on the same plan identifier (x-entity
+      governance_plan), "plan_id": { "type": "string", "minLength": 1, "description": "Plan containing the source
+      outcome.", "x-entity": "governance_plan" },
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/governance/report-plan-adjustment-request.json#L178-L183.
+      No register entry: every one of these documents is x-status experimental in 3.2.12, which
+      lint-additive-minor does not compare.
+  - location: core/governance-delivery-metrics.json#/properties/geo_distribution
+    keyword: propertyNames
+    new:
+      pattern: ^[A-Z]{2}$
+    direction: tighten
+    side: both
+    note: >-
+      check_governance delivery_metrics.geo_distribution keys -> propertyNames core/country-code.json. Basis: the
+      named standard in the 3.2.12 text, "Actual geographic distribution. Keys are ISO 3166-1 alpha-2 codes, values
+      are percentages.",
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/governance/check-governance-request.json#L634.
+      An ISO 3166-1 alpha-2 code is two uppercase letters, the form core/country-code.json states.
+  - location: core/governance-delivery-metrics.json#/properties/channel_distribution
+    keyword: propertyNames
+    new:
+      enum:
+        - affiliate
+        - cinema
+        - ctv
+        - display
+        - dooh
+        - email
+        - gaming
+        - influencer
+        - linear_tv
+        - olv
+        - ooh
+        - podcast
+        - print
+        - product_placement
+        - radio
+        - retail_media
+        - search
+        - social
+        - sponsored_intelligence
+        - streaming_audio
+    direction: tighten
+    side: both
+    note: >-
+      check_governance delivery_metrics.channel_distribution keys -> propertyNames enums/channels.json. Basis: the
+      3.2.12 text, "Actual channel distribution. Keys are channel enum values, values are percentages.",
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/governance/check-governance-request.json#L643,
+      and the channel enum 3.2.12 publishes with the same values,
+      https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/enums/channels.json#L3.
+      The governance-delivery-monitor storyboard sent the key video, which is not a channel; it now sends olv, and
+      its two statement digests are recomputed.

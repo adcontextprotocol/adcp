@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/flight-history-entry.json",
+  "title": "Flight History Entry",
+  "description": "A recorded change to a flight: the start and stop times in effect and when they were recorded.",
+  "type": "object",
+  "properties": {
+    "recorded_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the seller recorded the edit, or ingested it when it was observed on a connected platform. Flight values change at this instant for every period resolved after it."
+    },
+    "start_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "start_time in force before the edit."
+    },
+    "stop_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Stop time in force before the edit."
+    }
+  },
+  "required": [
+    "recorded_at",
+    "start_time",
+    "stop_time"
+  ],
+  "additionalProperties": true
+}

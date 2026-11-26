@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/daily-budget-cap.json",
+  "title": "Daily Budget Cap",
+  "description": "A non-negative hard daily spend ceiling.",
+  "type": "number",
+  "minimum": 0
+}

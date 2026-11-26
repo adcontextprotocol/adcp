@@ -15,7 +15,8 @@
       "properties": {
         "model": {
           "type": "string",
-          "const": "cpm"
+          "const": "cpm",
+          "default": "cpm"
         },
         "cpm": {
           "type": "number",
@@ -23,9 +24,8 @@
           "minimum": 0
         },
         "currency": {
-          "type": "string",
-          "description": "ISO 4217 currency code",
-          "pattern": "^[A-Z]{3}$"
+          "$ref": "/schemas/core/currency-code.json",
+          "description": "ISO 4217 currency code"
         },
         "ext": {
           "$ref": "/schemas/core/ext.json"
@@ -41,13 +41,12 @@
       "properties": {
         "model": {
           "type": "string",
-          "const": "percent_of_media"
+          "const": "percent_of_media",
+          "default": "percent_of_media"
         },
         "percent": {
-          "type": "number",
-          "description": "Percentage of media spend, e.g. 15 = 15%",
-          "minimum": 0,
-          "maximum": 100
+          "$ref": "/schemas/core/percentage.json",
+          "description": "Percentage of media spend, e.g. 15 = 15%"
         },
         "max_cpm": {
           "type": "number",
@@ -55,9 +54,8 @@
           "minimum": 0
         },
         "currency": {
-          "type": "string",
-          "description": "ISO 4217 currency code for the resulting charge",
-          "pattern": "^[A-Z]{3}$"
+          "$ref": "/schemas/core/currency-code.json",
+          "description": "ISO 4217 currency code for the resulting charge"
         },
         "ext": {
           "$ref": "/schemas/core/ext.json"
@@ -73,7 +71,8 @@
       "properties": {
         "model": {
           "type": "string",
-          "const": "flat_fee"
+          "const": "flat_fee",
+          "default": "flat_fee"
         },
         "amount": {
           "type": "number",
@@ -86,9 +85,8 @@
           "description": "Billing period for the flat fee."
         },
         "currency": {
-          "type": "string",
-          "description": "ISO 4217 currency code",
-          "pattern": "^[A-Z]{3}$"
+          "$ref": "/schemas/core/currency-code.json",
+          "description": "ISO 4217 currency code"
         },
         "ext": {
           "$ref": "/schemas/core/ext.json"
@@ -104,7 +102,8 @@
       "properties": {
         "model": {
           "type": "string",
-          "const": "per_unit"
+          "const": "per_unit",
+          "default": "per_unit"
         },
         "unit": {
           "type": "string",
@@ -116,9 +115,8 @@
           "minimum": 0
         },
         "currency": {
-          "type": "string",
-          "description": "ISO 4217 currency code",
-          "pattern": "^[A-Z]{3}$"
+          "$ref": "/schemas/core/currency-code.json",
+          "description": "ISO 4217 currency code"
         },
         "ext": {
           "$ref": "/schemas/core/ext.json"
@@ -134,14 +132,15 @@
       "properties": {
         "model": {
           "type": "string",
-          "const": "custom"
+          "const": "custom",
+          "default": "custom"
         },
         "description": {
-          "type": "string",
-          "description": "Human-readable description of the custom pricing model. Buyers display this to the operator when requesting approval.",
-          "minLength": 1
+          "$ref": "/schemas/core/custom-pricing-description.json",
+          "description": "Human-readable description of the custom pricing model. Buyers display this to the operator when requesting approval."
         },
         "metadata": {
+          "title": "CustomPricingMetadata",
           "type": "object",
           "description": "Structured parameters for the custom model. Keys follow lowercase_snake_case. Values may be primitives, arrays, or nested objects. Must be sufficient for a human to understand the pricing basis and for a downstream system to reconstruct the charge. Vendors SHOULD include a `summary_for_operator` string (one or two sentences, suitable for display in a buyer's operator-review UI) so reviewers across vendors see a consistent prompt. Required operator-review fields (approver role, dollar threshold for automatic approval, escalation contact) MAY be surfaced via additional keys the buyer's review surface recognizes.",
           "additionalProperties": true,
@@ -155,9 +154,8 @@
           }
         },
         "currency": {
-          "type": "string",
-          "description": "ISO 4217 currency code. Present when the pricing resolves to a monetary charge in a specific currency.",
-          "pattern": "^[A-Z]{3}$"
+          "$ref": "/schemas/core/currency-code.json",
+          "description": "ISO 4217 currency code. Present when the pricing resolves to a monetary charge in a specific currency."
         },
         "ext": {
           "$ref": "/schemas/core/ext.json"

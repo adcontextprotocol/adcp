@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/daast-tracker-event.json",
+  "title": "Daast Event",
+  "description": "A DAAST player event that a tracker fires on.",
+  "type": "string",
+  "enum": [
+    "creativeView",
+    "start",
+    "firstQuartile",
+    "midpoint",
+    "thirdQuartile",
+    "complete",
+    "mute",
+    "unmute",
+    "pause",
+    "resume",
+    "rewind",
+    "skip",
+    "progress",
+    "close"
+  ]
+}

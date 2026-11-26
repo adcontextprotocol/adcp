@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/catalog-item-availability.json",
+  "title": "Catalog Item Availability",
+  "description": "Buyer-authored availability overlay state of a catalog item.",
+  "type": "string",
+  "enum": [
+    "active",
+    "suppressed"
+  ]
+}

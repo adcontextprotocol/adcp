@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/format-params.json",
+  "title": "Format Params",
+  "description": "Parameters for a canonical or custom format. They validate against the schema that the selected format defines.",
+  "type": "object",
+  "additionalProperties": true
+}

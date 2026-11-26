@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-agent-query.json",
+  "title": "Brand Agent Query",
+  "description": "Natural-language discovery query that a brand agent interprets against its roster.",
+  "type": "string",
+  "maxLength": 2000
+}

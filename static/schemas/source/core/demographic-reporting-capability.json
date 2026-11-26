@@ -6,6 +6,7 @@
   "type": "object",
   "properties": {
     "age": {
+      "title": "Age Reporting Capability",
       "type": "object",
       "description": "Machine-comparable age ranges this product can report.",
       "properties": {
@@ -20,15 +21,11 @@
           "uniqueItems": true
         },
         "min_reportable_age": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 150,
+          "$ref": "/schemas/core/age-in-years.json",
           "description": "Lowest explicit min or max bound accepted by exact_predicates. Required when that mode is declared."
         },
         "max_reportable_age": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 150,
+          "$ref": "/schemas/core/age-in-years.json",
           "description": "Highest explicit min or max bound accepted by exact_predicates. Required when that mode is declared."
         },
         "supports_unbounded_min": {
@@ -43,15 +40,14 @@
           "type": "array",
           "description": "Fixed reportable age intervals for enumerated_intervals. Bounds are authoritative capability data, not a protocol-wide bucket taxonomy. Optional native labels identify the measurement-system code returned with the interval.",
           "items": {
+            "title": "Demographic Reporting Interval",
             "type": "object",
             "properties": {
               "age": {
                 "$ref": "/schemas/core/demographic-age-range.json"
               },
               "demographic": {
-                "type": "string",
-                "minLength": 1,
-                "pattern": "\\S",
+                "$ref": "/schemas/core/demographic-label.json",
                 "description": "Optional native demographic label returned for this interval."
               },
               "demographic_system": {

@@ -605,14 +605,29 @@ function listRequestSchemaFiles(dir = SCHEMA_BASE_DIR) {
   return files;
 }
 
+/**
+ * True when the schema's root allOf references the version envelope, directly
+ * or through a request document it composes (a 3.x alias that composes the
+ * core request it names).
+ */
+function composesVersionEnvelope(schema, seen = new Set()) {
+  return (schema.allOf || []).some((arm) => {
+    const ref = arm && arm.$ref;
+    if (ref === VERSION_ENVELOPE_REF) return true;
+    if (typeof ref !== 'string' || !ref.startsWith('/schemas/') || ref.includes('#') || seen.has(ref)) return false;
+    seen.add(ref);
+    const target = path.join(SCHEMA_BASE_DIR, ref.slice('/schemas/'.length));
+    return composesVersionEnvelope(JSON.parse(fs.readFileSync(target, 'utf8')), seen);
+  });
+}
+
 function versionEnvelopeCompositionErrors() {
   const errors = [];
   const seenExempt = new Set();
   for (const file of listRequestSchemaFiles()) {
     const rel = path.relative(SCHEMA_BASE_DIR, file).split(path.sep).join('/');
     const schema = JSON.parse(fs.readFileSync(file, 'utf8'));
-    const composesEnvelope = Array.isArray(schema.allOf) &&
-      schema.allOf.some((arm) => arm && arm.$ref === VERSION_ENVELOPE_REF);
+    const composesEnvelope = composesVersionEnvelope(schema);
     if (VERSION_ENVELOPE_EXEMPT_REQUESTS.has(rel)) {
       seenExempt.add(rel);
       if (composesEnvelope) errors.push(`${rel}: now composes the envelope, remove it from the exemption list`);
@@ -6163,7 +6178,7 @@ async function runTests() {
             agent_url: 'https://ads.agency.example.com',
             role: 'media-buy',
             verified_specialisms: ['sales-catalog-driven'],
-            adcp_version: '3.1.0-beta.5',
+            adcp_version: '3.1',
             grading_profile: 'spec'
           },
           actor: 'pipeline:compliance-heartbeat',

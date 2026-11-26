@@ -5,59 +5,19 @@
   "description": "Shared VAST TrackingEvents constraints used by tracker assets and production execution selectors. The target/event matrix is closed, progress alone carries offset, and selector version arrays may contain only versions in which the event exists.",
   "type": "object",
   "definitions": {
-    "vast_event": {
-      "type": "string",
-      "enum": [
-        "creativeView",
-        "loaded",
-        "start",
-        "firstQuartile",
-        "midpoint",
-        "thirdQuartile",
-        "complete",
-        "mute",
-        "unmute",
-        "pause",
-        "resume",
-        "rewind",
-        "skip",
-        "playerExpand",
-        "playerCollapse",
-        "fullscreen",
-        "exitFullscreen",
-        "progress",
-        "acceptInvitation",
-        "adExpand",
-        "adCollapse",
-        "minimize",
-        "overlayViewDuration",
-        "otherAdInteraction",
-        "interactiveStart",
-        "close",
-        "closeLinear"
-      ]
-    },
     "vast_target": {
-      "type": "string",
-      "enum": ["linear", "non_linear", "companion"],
+      "$ref": "/schemas/enums/vast-tracker-target.json",
       "default": "linear"
     },
     "vast_offset": {
-      "type": "string",
-      "pattern": "^(\\d{2}:[0-5]\\d:[0-5]\\d(\\.\\d{3})?|(100|\\d{1,2})%)$"
-    },
-    "vast_versions": {
-      "type": "array",
-      "items": { "$ref": "/schemas/enums/vast-version.json" },
-      "minItems": 1,
-      "uniqueItems": true
+      "$ref": "/schemas/core/tracker-offset.json"
     }
   },
   "properties": {
-    "vast_event": { "$ref": "#/definitions/vast_event" },
+    "vast_event": { "$ref": "/schemas/enums/vast-tracker-event.json" },
     "target": { "$ref": "#/definitions/vast_target" },
     "offset": { "$ref": "#/definitions/vast_offset" },
-    "vast_versions": { "$ref": "#/definitions/vast_versions" }
+    "vast_versions": { "$ref": "/schemas/core/vast-versions.json" }
   },
   "allOf": [
     {
@@ -163,7 +123,7 @@
       },
       "then": {
         "properties": {
-          "vast_versions": { "items": { "enum": ["2.0", "3.0"] } }
+          "vast_versions": { "items": { "$ref": "/schemas/enums/vast-fullscreen-version.json" } }
         }
       }
     },

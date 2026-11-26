@@ -11,6 +11,7 @@
   ],
   "oneOf": [
     {
+      "title": "CreateContentStandardsSuccess",
       "type": "object",
       "description": "Success response - returns the created standards identifier",
       "properties": {
@@ -30,32 +31,24 @@
       ]
     },
     {
-      "type": "object",
       "description": "Error response. A body that is also a valid success response is the success shape, even when it lists `errors`.",
+      "allOf": [
+        {
+          "$ref": "/schemas/core/task-error-response.json"
+        }
+      ],
+      "required": [
+        "errors"
+      ],
       "not": {
         "$ref": "#/oneOf/0"
       },
       "properties": {
-        "errors": {
-          "type": "array",
-          "items": {
-            "$ref": "/schemas/core/error.json"
-          }
-        },
         "conflicting_standards_id": {
           "type": "string",
           "description": "If the error is a scope conflict, the ID of the existing standards that conflict"
-        },
-        "context": {
-          "$ref": "/schemas/core/context.json"
-        },
-        "ext": {
-          "$ref": "/schemas/core/ext.json"
         }
-      },
-      "required": [
-        "errors"
-      ]
+      }
     }
   ],
   "properties": {}

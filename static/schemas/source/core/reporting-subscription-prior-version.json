@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-subscription-prior-version.json",
+  "title": "Reporting Subscription Prior Version",
+  "description": "An earlier version of a reporting subscription, with the configuration that version had.",
+  "type": "object",
+  "properties": {
+    "subscription_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "accepted_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "superseded_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "The next version's accepted_at, the cutover instant: this version owes its periods that start before it, in full."
+    },
+    "configuration": {
+      "$ref": "/schemas/core/reporting-subscription.json",
+      "description": "The configuration this version had: its scope, selector, destination, and reconciliation_mode. Sellers MUST include it, so a buyer that lost local state can recompute this version's owed periods."
+    }
+  },
+  "required": [
+    "subscription_version",
+    "accepted_at",
+    "superseded_at"
+  ],
+  "additionalProperties": true
+}

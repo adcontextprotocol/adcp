@@ -10,9 +10,7 @@
       "const": "completed"
     },
     "evaluation_id": {
-      "type": "string",
-      "minLength": 1,
-      "x-entity": "creative_evaluation"
+      "$ref": "/schemas/core/creative-evaluation-id.json"
     },
     "results": {
       "type": "array",
@@ -29,8 +27,7 @@
       "minimum": 0
     },
     "currency": {
-      "type": "string",
-      "pattern": "^[A-Z]{3}$"
+      "$ref": "/schemas/core/currency-code.json"
     },
     "consumption": {
       "$ref": "/schemas/core/creative-consumption.json"

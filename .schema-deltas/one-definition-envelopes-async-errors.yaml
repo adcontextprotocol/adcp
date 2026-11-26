@@ -1,0 +1,187 @@
+# Delta manifest (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  One definition per envelope: async bodies that declared no errors compose the shared bodies and take their errors list
+  (tighten, response side, a correction under DR-0036); the compact reason bounds are masked.
+changes:
+  - location: core/compact-task-input-required.json#
+    keyword: properties
+    new:
+      type:
+        - array
+      items:
+        required:
+          - code
+          - message
+        type:
+          - object
+        dependencies:
+          buyer_reason:
+            - recovery
+        properties:
+          buyer_reason:
+            required:
+              - code
+              - message
+            type:
+              - object
+            properties:
+              code:
+                $at: core/open-error-code.json#
+              message:
+                $at: core/buyer-reason-message.json#
+          code:
+            maxLength: 64
+            minLength: 1
+            type:
+              - string
+          details:
+            type:
+              - object
+          field:
+            type:
+              - string
+          issues:
+            type:
+              - array
+            items:
+              $at: core/error.json#/properties/issues/items
+          message:
+            type:
+              - string
+          mutation_outcome:
+            maxLength: 32
+            minLength: 1
+            type:
+              - string
+          recovery:
+            enum:
+              - correctable
+              - terminal
+              - transient
+          retry_after:
+            maximum: 3600
+            minimum: 1
+            type:
+              - number
+          sdk_id:
+            type:
+              - string
+          source:
+            enum:
+              - producer
+              - sdk
+          suggestion:
+            type:
+              - string
+    direction: tighten
+    side: response
+    note: >-
+      errors, from core/compact-task-input-required.json, on the sync_creatives, sync_catalogs, update_media_buy, and
+      get_products input-required payloads, which declared none. Correction under DR-0036 (a schema of the major that
+      defines the concept): 3.2.12 core/compact-task-input-required.json, the payload of a task paused for buyer input,
+      declares "errors": { "type": "array", "items": { "$ref": ".../core/error.json" } }
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/compact-task-input-required.json#L17-L20).
+      3.2.12 core/protocol-envelope.json says the payload structured errors[] "remains the canonical normative shape"
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/protocol-envelope.json#L41).
+      Newly rejected: an errors value that is not an array of core/error.json objects. lint:additive-minor reads a newly
+      declared property as additive, so there is no register entry.
+  - location: core/compact-task-input-required.json#/properties/reason
+    keyword: maxLength
+    new: 200
+    direction: none
+    side: response
+    note: >-
+      Masked, so no payload changes verdict because of this line: core/compact-task-input-required.json bounds reason to
+      1 to 200 characters, and each of the four input-required payloads keeps its own reason enum, whose values are all
+      uppercase codes of 11 to 20 characters, at the same node.
+  - location: core/compact-task-input-required.json#/properties/reason
+    keyword: minLength
+    new: 1
+    direction: none
+    side: response
+    note: >-
+      Masked, so no payload changes verdict because of this line: core/compact-task-input-required.json bounds reason to
+      1 to 200 characters, and each of the four input-required payloads keeps its own reason enum, whose values are all
+      uppercase codes of 11 to 20 characters, at the same node.
+  - location: core/task-submitted-response.json#
+    keyword: properties
+    new:
+      type:
+        - array
+      items:
+        required:
+          - code
+          - message
+        type:
+          - object
+        dependencies:
+          buyer_reason:
+            - recovery
+        properties:
+          buyer_reason:
+            required:
+              - code
+              - message
+            type:
+              - object
+            properties:
+              code:
+                $at: core/open-error-code.json#
+              message:
+                $at: core/buyer-reason-message.json#
+          code:
+            maxLength: 64
+            minLength: 1
+            type:
+              - string
+          details:
+            type:
+              - object
+          field:
+            type:
+              - string
+          issues:
+            type:
+              - array
+            items:
+              $at: core/error.json#/properties/issues/items
+          message:
+            type:
+              - string
+          mutation_outcome:
+            maxLength: 32
+            minLength: 1
+            type:
+              - string
+          recovery:
+            enum:
+              - correctable
+              - terminal
+              - transient
+          retry_after:
+            maximum: 3600
+            minimum: 1
+            type:
+              - number
+          sdk_id:
+            type:
+              - string
+          source:
+            enum:
+              - producer
+              - sdk
+          suggestion:
+            type:
+              - string
+    direction: tighten
+    side: response
+    note: >-
+      errors, from core/task-submitted-response.json, on the get_creative_features submitted document and branch and the
+      preview_creative submitted branch, which declared none. Correction under DR-0036: 3.2.12
+      core/compact-task-submitted.json, the submitted envelope, declares "errors": { "type": "array", "items": { "$ref":
+      ".../core/error.json" } }
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/compact-task-submitted.json#L29-L32).
+      3.2.12 core/protocol-envelope.json says the payload structured errors[] "remains the canonical normative shape"
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/core/protocol-envelope.json#L41).
+      Newly rejected: an errors value that is not an array of core/error.json objects. lint:additive-minor reads a newly
+      declared property as additive, so there is no register entry.

@@ -1,0 +1,123 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/brand-photography-style.json",
+  "title": "Brand Photography Style",
+  "description": "Photography style rules for generative creative systems. Defines how brand photography should look when selected or generated.",
+  "type": "object",
+  "properties": {
+    "realism": {
+      "type": "string",
+      "enum": [
+        "natural",
+        "stylized",
+        "hyperreal",
+        "abstract"
+      ],
+      "description": "Level of photographic realism"
+    },
+    "lighting": {
+      "type": "string",
+      "description": "Lighting style (e.g., 'soft daylight', 'studio', 'golden hour', 'high-key', 'low-key')"
+    },
+    "color_temperature": {
+      "type": "string",
+      "enum": [
+        "warm",
+        "neutral",
+        "cool"
+      ],
+      "description": "Overall color temperature of photography"
+    },
+    "contrast": {
+      "$ref": "/schemas/core/brand-intensity-level.json",
+      "description": "Contrast level in photography"
+    },
+    "depth_of_field": {
+      "type": "string",
+      "enum": [
+        "shallow",
+        "medium",
+        "deep"
+      ],
+      "description": "Depth of field preference. shallow: blurred background with subject isolation, deep: everything in focus"
+    },
+    "subject": {
+      "title": "Photography Subject Guidelines",
+      "type": "object",
+      "description": "Subject matter guidelines",
+      "properties": {
+        "people": {
+          "type": "object",
+          "description": "People photography guidelines",
+          "properties": {
+            "age_range": {
+              "type": "string",
+              "description": "Target age range (e.g., '20-35')"
+            },
+            "diversity": {
+              "type": "string",
+              "description": "Diversity representation (e.g., 'mixed', 'varied')"
+            },
+            "mood": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Mood descriptors (e.g., ['confident', 'relaxed'])"
+            }
+          },
+          "additionalProperties": true
+        },
+        "product_focus": {
+          "type": "string",
+          "enum": [
+            "in-use",
+            "isolated",
+            "lifestyle",
+            "detail"
+          ],
+          "description": "How products are shown"
+        },
+        "setting": {
+          "type": "string",
+          "description": "Environmental context for photography (e.g., 'indoor', 'outdoor', 'studio', 'urban', 'nature', 'workplace')"
+        }
+      },
+      "additionalProperties": true
+    },
+    "framing": {
+      "type": "object",
+      "description": "Camera framing rules",
+      "properties": {
+        "subject_position": {
+          "type": "string",
+          "description": "Where the subject sits in frame (e.g., 'center', 'center-left', 'rule-of-thirds')"
+        },
+        "crop_style": {
+          "type": "string",
+          "description": "Cropping convention (e.g., 'waist-up', 'full-body', 'close-up', 'wide')"
+        },
+        "perspective": {
+          "type": "string",
+          "description": "Camera perspective (e.g., 'eye-level', 'overhead', 'low-angle')"
+        }
+      },
+      "additionalProperties": true
+    },
+    "preferred_aspect_ratios": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/core/aspect-ratio.json"
+      },
+      "description": "Preferred aspect ratios for brand photography (e.g., '16:9', '4:5', '1:1')"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Additional style descriptors"
+    }
+  },
+  "additionalProperties": true
+}

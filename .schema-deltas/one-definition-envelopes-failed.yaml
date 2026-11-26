@@ -1,0 +1,27 @@
+# Delta manifest (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  One definition per envelope: failed task responses compose core/task-error-response.json. Both lines are masked
+  (direction none): each note gives the reason no payload changes verdict.
+changes:
+  - location: core/task-error-response.json#
+    keyword: type
+    new:
+      - object
+    direction: none
+    side: response
+    note: >-
+      Masked, so no payload changes verdict because of this line: type object at the six brand error branches that
+      stated no type (acquire_rights, creative_approval, get_brand_identity, get_rights, search_brands, update_rights),
+      which now compose core/task-error-response.json. Each response root composes core/protocol-envelope.json, which
+      has type object, so no non-object reaches the branch.
+  - location: core/task-error-response.json#
+    keyword: properties
+    new:
+      type:
+        - object
+    direction: none
+    side: response
+    note: >-
+      Masked, so no payload changes verdict because of this line: ext on the two get_reporting_status failed branches
+      (unavailable lookup, operational failure), which core/task-error-response.json brings. The response root declares
+      the same ext (core/ext.json), so every instance already satisfies it.

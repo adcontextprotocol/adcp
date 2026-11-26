@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/canonical-collection-ref.json",
+  "title": "Canonical Collection Reference",
+  "description": "Closed collection identity: publisher_domain and collection_id and no other members, so the same collection always has one reference value. Collection IDs are scoped to the adagents.json at publisher_domain, so both members participate in identity. core/collection-ref.json is the open form.",
+  "type": "object",
+  "properties": {
+    "publisher_domain": {
+      "$ref": "/schemas/core/domain-name.json"
+    },
+    "collection_id": {
+      "$ref": "/schemas/core/collection-id.json"
+    }
+  },
+  "required": ["publisher_domain", "collection_id"],
+  "additionalProperties": false
+}

@@ -6,8 +6,7 @@
   "type": "object",
   "properties": {
     "attribute_id": {
-      "type": "string",
-      "pattern": "^[a-z][a-z0-9_]*$",
+      "$ref": "/schemas/core/governance-attribute-id.json",
       "description": "Unique identifier for this attribute. Used in plan.restricted_attributes, signal-definition.restricted_attributes, and data marketplace catalog entries."
     },
     "name": {
@@ -22,24 +21,7 @@
       "type": "array",
       "description": "Regulations that define or restrict this attribute category.",
       "items": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "description": "Name of the regulation (e.g., 'GDPR Article 9(1)')."
-          },
-          "jurisdictions": {
-            "type": "array",
-            "items": { "type": "string" },
-            "description": "ISO 3166-1 alpha-2 codes where this regulation applies."
-          },
-          "summary": {
-            "type": "string",
-            "description": "How this regulation defines or restricts the attribute."
-          }
-        },
-        "required": ["name", "summary"],
-        "additionalProperties": true
+        "$ref": "/schemas/core/regulatory-framework-reference.json"
       }
     },
     "includes": {

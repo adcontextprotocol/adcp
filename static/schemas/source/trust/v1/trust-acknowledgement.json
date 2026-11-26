@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/trust/v1/trust-acknowledgement.json",
+  "title": "Acknowledgement",
+  "description": "This organization's acceptance of a grant another organization published: 'we accept the grant `grantor` gave to `agent_url`, as published via `via`.' Terms are read ONLY from the grantor's document and are never restated here. Not needed when the grantor has the same eTLD+1 as the host serving this document. In the AdCP profile with via 'adcp:adagents' this is intended to supersede brand.json properties[] entries whose relationship is direct, delegated, or ad_network in a future release; brand.json is unchanged in 3.3.",
+  "type": "object",
+  "properties": {
+    "grantor": {
+      "$ref": "/schemas/trust/v1/trust-domain.json",
+      "description": "The organization that published the grant."
+    },
+    "agent_url": {
+      "$ref": "/schemas/core/https-url.json",
+      "description": "The granted agent. MUST match an agents[] entry in this same document by canonical origin; an acknowledgement for an agent this organization does not run is invalid and MUST be ignored."
+    },
+    "via": {
+      "$ref": "/schemas/trust/v1/trust-grant-source.json",
+      "description": "Where the grant is published. For 'adcp:adagents', verifiers resolve https://{grantor}/.well-known/adagents.json (following authoritative_location and managed-network rules) and require an authorized_agents[] entry whose canonical url equals agent_url and that reaches the grantor under the reachable-publisher rule. One acknowledgement covers every entry for that agent URL, whatever its authorization_type. The adagents.json comparison is by canonical URL, as that file defines (see docs/reference/url-canonicalization.mdx), not by origin."
+    },
+    "profiles": {
+      "allOf": [
+        {
+          "$ref": "/schemas/trust/v1/trust-open-profiles.json"
+        },
+        {
+          "properties": {
+            "adcp": {
+              "title": "AdCP Acknowledgement Profile",
+              "type": "object",
+              "description": "AdCP profile for an acknowledgement.",
+              "properties": {
+                "delegation_type": {
+                  "$ref": "/schemas/enums/delegation-type.json",
+                  "description": "Optional operator-side assertion of the commercial relationship, for sellers.json-style cross-checking. When present it MUST equal the publisher's delegation_type; a mismatch fails the acknowledgement (state 'mismatch'). Omit to defer entirely to the publisher."
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      ]
+    },
+    "last_updated": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "grantor",
+    "agent_url",
+    "via"
+  ],
+  "additionalProperties": false
+}

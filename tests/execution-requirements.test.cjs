@@ -204,8 +204,8 @@ test("canonical products and field projection carry execution_requirements", asy
     canonical.properties.execution_requirements["x-status"],
     "experimental",
   );
-  const fields = readJson("media-buy/product-fields.json");
-  assert.ok(fields.items.enum.includes("execution_requirements"));
+  assert.equal(readJson("media-buy/product-fields.json").items.$ref, "/schemas/media-buy/product-field.json");
+  assert.ok(readJson("media-buy/product-field.json").enum.includes("execution_requirements"));
   const validate = await compileSchema("/schemas/core/canonical-product.json");
   const compact = {
     product_id: BASE_PRODUCT.product_id,

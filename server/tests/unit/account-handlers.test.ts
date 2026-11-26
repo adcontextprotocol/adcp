@@ -251,7 +251,7 @@ describe('sync_accounts', () => {
 
     const setup = acct.setup as Record<string, unknown>;
     expect(setup).toBeDefined();
-    expect(typeof setup.url).toBe('string');
+    expect(setup.url).toMatch(/^https:\/\//);
     expect(setup.message).toBeTruthy();
     expect(setup.expires_at).toBeTruthy();
   });

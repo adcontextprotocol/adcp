@@ -9,8 +9,7 @@
     "pricing_option_id": { "type": "string" },
     "amount": { "type": "number", "minimum": 0 },
     "currency": {
-      "type": "string",
-      "pattern": "^[A-Z]{3}$"
+      "$ref": "/schemas/core/currency-code.json"
     },
     "period": {
       "$ref": "/schemas/enums/rights-billing-period.json"
@@ -43,8 +42,7 @@
         "countries": {
           "type": "array",
           "items": {
-            "type": "string",
-            "pattern": "^[A-Z]{2}$"
+            "$ref": "/schemas/core/country-code.json"
           }
         }
       },

@@ -6,6 +6,7 @@ description: "Full index of AdCP protocols and specialisms an agent can claim â€
 ---
 
 import ComplianceErrorCodes from "/docs/snippets/compliance-error-codes.mdx";
+import ComplianceRequestSigningErrorCodes from "/docs/snippets/compliance-request-signing-error-codes.mdx";
 import ComplianceStoryboardInventory from "/docs/snippets/compliance-storyboard-inventory.mdx";
 
 Every AdCP agent declares its `supported_protocols` and `specialisms` in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities). Each declaration maps to a compliance bundle at `/compliance/{version}/` that the storyboard runner executes to verify the claim.
@@ -39,6 +40,12 @@ Capability-gated rows (`deterministic-testing`, `oauth-setup`, `signed-requests`
 The compliance suite verifies that standard errors use the recovery classifications and remediation guidance defined by the canonical [`error-code.json`](https://github.com/adcontextprotocol/adcp/blob/main/static/schemas/source/enums/error-code.json) source taxonomy. The vocabulary remains open: agents must also handle unknown codes using the response's `recovery` value.
 
 <ComplianceErrorCodes />
+
+## Request-signing error codes
+
+Request-signing failures are transport errors, not task errors: a verifier returns the code in the header each row names, not in `errors[]`. The list is generated from [`request-signing-error-code.json`](https://github.com/adcontextprotocol/adcp/blob/main/static/schemas/source/enums/request-signing-error-code.json), whose `enumMetadata` gives each code's recovery classification and the header that carries it. The conditions for each code are in the [transport error taxonomy](/docs/building/by-layer/L1/security#transport-error-taxonomy).
+
+<ComplianceRequestSigningErrorCodes />
 
 ## Protocols
 

@@ -1,0 +1,27 @@
+# Delta manifest (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  One definition per envelope: the failed create_content_standards and get_creative_features responses list at least
+  one error, as every other task error response does.
+changes:
+  - location: content-standards/create-content-standards-response.json#/oneOf/1/properties/errors
+    keyword: minItems
+    new: 1
+    direction: tighten
+    side: response
+    note: >-
+      The failed create_content_standards response rejects "errors": []. Correction under DR-0036 (a schema of the
+      major that defines the concept): every 3.2.12 task error branch that bounds errors sets minItems 1, for example
+      media-buy/create-media-buy-response.json CreateMediaBuyError, "errors": { "type": "array", "description": "Array
+      of errors explaining why the operation failed", ... "minItems": 1 }
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/dist/schemas/3.2.12/media-buy/create-media-buy-response.json#L211-L221),
+      and docs/building/by-layer/L3/error-handling.mdx says the payload errors[] "reports one or more issues"
+      (https://github.com/adcontextprotocol/adcp/blob/b3743fbb45931d78548614a9b5210016203f7f76/docs/building/by-layer/L3/error-handling.mdx#L85).
+      Register entry content-standards/create-content-standards-response.json /oneOf/1/properties/errors.
+  - location: creative/get-creative-features-response.json#/oneOf/1/properties/errors
+    keyword: minItems
+    new: 1
+    direction: tighten
+    side: response
+    note: >-
+      The failed get_creative_features response rejects "errors": []. Same basis as the create_content_standards line.
+      Register entry creative/get-creative-features-response.json /oneOf/1/properties/errors.

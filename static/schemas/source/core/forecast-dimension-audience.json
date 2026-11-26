@@ -8,6 +8,7 @@
     "kind": {
       "type": "string",
       "const": "audience",
+      "default": "audience",
       "description": "Dimension family discriminator."
     },
     "audience_id": {

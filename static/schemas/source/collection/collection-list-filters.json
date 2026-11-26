@@ -53,23 +53,7 @@
       "type": "array",
       "description": "Always exclude collections with these distribution identifiers",
       "items": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "$ref": "/schemas/enums/distribution-identifier-type.json",
-            "description": "Type of distribution identifier"
-          },
-          "value": {
-            "type": "string",
-            "description": "The identifier value"
-          }
-        },
-        "required": ["type", "value"],
-        "additionalProperties": true,
-        "not": {
-          "required": ["type"],
-          "properties": { "type": { "const": "platform_channel_id" } }
-        }
+        "$ref": "/schemas/core/platform-independent-distribution-identifier.json"
       },
       "minItems": 1
     },

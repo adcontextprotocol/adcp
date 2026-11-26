@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/fixed-duration.json",
+  "title": "Fixed Duration",
+  "description": "A duration in a fixed time unit. The campaign unit is not allowed.",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/duration.json"
+    },
+    {
+      "not": {
+        "properties": {
+          "unit": {
+            "const": "campaign"
+          }
+        },
+        "required": [
+          "unit"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/optimization-event-source.json",
+  "title": "Optimization Event Source",
+  "description": "An event source used for optimization: the source ID, the event type or custom event name, and an optional value field and value factor.",
+  "type": "object",
+  "properties": {
+    "event_source_id": {
+      "$ref": "/schemas/core/event-source-id.json",
+      "x-entity": "event_source"
+    },
+    "event_type": {
+      "$ref": "/schemas/enums/event-type.json"
+    },
+    "custom_event_name": {
+      "$ref": "/schemas/core/custom-event-name.json"
+    },
+    "value_field": {
+      "type": "string",
+      "minLength": 1
+    },
+    "value_factor": {
+      "type": "number",
+      "default": 1
+    }
+  },
+  "required": [
+    "event_source_id",
+    "event_type"
+  ],
+  "additionalProperties": true
+}

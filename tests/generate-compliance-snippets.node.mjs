@@ -13,6 +13,7 @@ import {
   escapeTableCell,
   loadGradedStoryboards,
   renderErrorCodes,
+  renderRequestSigningErrorCodes,
   writeOrCheck,
 } from '../scripts/generate-compliance-snippets.mjs';
 
@@ -49,6 +50,38 @@ test('error-code rendering is sorted, escaped, and deterministic', () => {
   assert.match(first, /&#123;values&#125;/);
   assert.match(first, /pipes \|/);
   assert.match(first, /ampersands &amp;/);
+});
+
+function requestSigningFixture() {
+  const header = { name: 'WWW-Authenticate', scheme: 'Signature', param: 'error' };
+  return {
+    enum: ['request_signature_z', 'request_signature_a'],
+    enumDescriptions: {
+      request_signature_z: 'Last description.',
+      request_signature_a: 'First description.',
+    },
+    enumMetadata: {
+      request_signature_z: { recovery: 'terminal', suggestion: 'escalate', http_header: header },
+      request_signature_a: { recovery: 'correctable', suggestion: 'fix | retry', http_header: header },
+    },
+  };
+}
+
+test('request-signing codes render sorted with the header that carries them', () => {
+  const out = renderRequestSigningErrorCodes(requestSigningFixture());
+  assert.equal(out, renderRequestSigningErrorCodes(requestSigningFixture()));
+  assert.match(out, /^---\ntitle: Request-Signing Error Codes\n/);
+  assert.ok(out.indexOf('`request_signature_a`') < out.indexOf('`request_signature_z`'));
+  assert.match(out, /\| `request_signature_a` \| `WWW-Authenticate: Signature error="<code>"` \| correctable \| fix &#124; retry \|/);
+});
+
+test('request-signing rendering requires header metadata and lowercase codes', () => {
+  const missing = requestSigningFixture();
+  delete missing.enumMetadata.request_signature_z.http_header;
+  assert.throws(() => renderRequestSigningErrorCodes(missing), /without enumMetadata\.http_header:\n  - request_signature_z/);
+  const upper = requestSigningFixture();
+  upper.enum.push('REQUEST_SIGNATURE_X');
+  assert.throws(() => renderRequestSigningErrorCodes(upper), /invalid enum value: "REQUEST_SIGNATURE_X"/);
 });
 
 test('MDX escaping preserves code-span contents while escaping prose', () => {

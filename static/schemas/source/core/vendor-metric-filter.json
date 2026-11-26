@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/vendor-metric-filter.json",
+  "title": "Vendor Metric Filter",
+  "description": "A filter on vendor metrics by vendor, metric ID, or both.",
+  "type": "object",
+  "properties": {
+    "vendor": {
+      "$ref": "/schemas/core/brand-key.json"
+    },
+    "metric_id": {
+      "$ref": "/schemas/core/vendor-metric-id.json"
+    }
+  },
+  "anyOf": [
+    {
+      "required": [
+        "vendor"
+      ]
+    },
+    {
+      "required": [
+        "metric_id"
+      ]
+    }
+  ],
+  "additionalProperties": true
+}

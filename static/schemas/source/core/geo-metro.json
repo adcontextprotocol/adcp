@@ -20,12 +20,8 @@
       "minItems": 1
     },
     "value_labels": {
-      "type": "object",
-      "description": "Optional human-readable diagnostic labels keyed by codes present in values (e.g., { \"501\": \"New York\" }). Extra keys are a conformance error. Labels are non-authoritative and MUST NOT be used to resolve or apply targeting.",
-      "additionalProperties": {
-        "type": "string",
-        "minLength": 1
-      }
+      "$ref": "/schemas/core/diagnostic-value-labels.json",
+      "description": "Optional human-readable diagnostic labels keyed by codes present in values (e.g., { \"501\": \"New York\" }). Extra keys are a conformance error. Labels are non-authoritative and MUST NOT be used to resolve or apply targeting."
     }
   },
   "required": ["system", "values"],

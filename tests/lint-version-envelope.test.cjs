@@ -99,14 +99,27 @@ test('release-precision version grammar stays aligned across inlined negotiation
   const readJson = (relativePath) => JSON.parse(
     fs.readFileSync(path.join(SOURCE_DIR, relativePath), 'utf8'),
   );
-  const canonicalPattern = readJson('core/version-envelope.json').properties.adcp_version.pattern;
+  // Each surface declares its own property so it can stay closed, and the
+  // property references the one grammar document, directly or through the
+  // envelope's field schema (core/version-envelope-adcp-version.json).
+  const patternOf = (node) => {
+    let current = node;
+    while (current.pattern === undefined) {
+      if (current.$ref) current = readJson(current.$ref.replace('/schemas/', ''));
+      else if (Array.isArray(current.allOf) && current.allOf.length === 1) current = current.allOf[0];
+      else break;
+    }
+    return current.pattern;
+  };
+  const canonicalPattern = patternOf(readJson('core/version-envelope.json').properties.adcp_version);
+  assert.ok(canonicalPattern, 'the version envelope states a release-precision grammar');
 
   const inlinedPatterns = [
-    readJson('trusted-match/context-match-request.json').properties.adcp_version.pattern,
-    readJson('trusted-match/identity-match-request.json').properties.adcp_version.pattern,
-    readJson('error-details/version-unsupported.json').properties.supported_versions.items.pattern,
-    readJson('protocol/get-adcp-capabilities-response.json').properties.adcp.properties.supported_versions.items.pattern,
-  ];
+    readJson('trusted-match/context-match-request.json').properties.adcp_version,
+    readJson('trusted-match/identity-match-request.json').properties.adcp_version,
+    readJson('error-details/version-unsupported.json').properties.supported_versions.items,
+    readJson('protocol/get-adcp-capabilities-response.json').properties.adcp.properties.supported_versions.items,
+  ].map(patternOf);
   assert.deepEqual(inlinedPatterns, Array(inlinedPatterns.length).fill(canonicalPattern));
 
   const storyboardPath = path.resolve(

@@ -6,6 +6,7 @@ const test = require('node:test');
 const { isDeepStrictEqual } = require('node:util');
 const Ajv = require('ajv').default;
 const addFormats = require('ajv-formats').default;
+const { resolveScalar, resolveSchema } = require('./helpers/named-scalar-schemas.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 const SCHEMAS = path.join(ROOT, 'static/schemas/source');
@@ -1176,7 +1177,7 @@ test('macro processing capabilities bind at the format-option layer, not canonic
 });
 
 test('creative delivery errors use typed detail schemas without closing the generic extension point', () => {
-  const genericDetails = ajv.getSchema('/schemas/core/error.json').schema.properties.details;
+  const genericDetails = resolveSchema(ajv.getSchema('/schemas/core/error.json').schema.properties.details);
   assert.equal(genericDetails.additionalProperties, true);
   assert.equal(genericDetails.properties, undefined,
     'error.details stays a pure extension point selected by error code');
@@ -1196,7 +1197,7 @@ test('creative delivery errors use typed detail schemas without closing the gene
   assert.equal(validateDeliveryDetails({}), false);
 
   const validateMacroDetails = ajv.getSchema('/schemas/error-details/macro-resolution-failed.json');
-  assert.equal(ajv.getSchema('/schemas/core/macro-declaration.json').schema.properties.declaration_id['x-entity'],
+  assert.equal(resolveScalar(ajv.getSchema('/schemas/core/macro-declaration.json').schema.properties.declaration_id)['x-entity'],
     'macro_declaration');
   assert.equal(ajv.getSchema('/schemas/core/macro-resolution-result.json').schema.properties.declaration_id['x-entity'],
     'macro_declaration');

@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/age-restriction.json",
+  "title": "Age Restriction",
+  "description": "Age restriction for compliance. Use for legal requirements (alcohol, gambling), not audience targeting.",
+  "type": "object",
+  "properties": {
+    "min": {
+      "type": "integer",
+      "minimum": 13,
+      "maximum": 99,
+      "description": "Minimum age required"
+    },
+    "verification_required": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether verified age (not inferred) is required for compliance"
+    },
+    "accepted_methods": {
+      "type": "array",
+      "description": "Accepted verification methods. If omitted, any method the platform supports is acceptable.",
+      "items": {
+        "$ref": "/schemas/enums/age-verification-method.json"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "min"
+  ],
+  "additionalProperties": true
+}

@@ -10,10 +10,7 @@
       "type": "object",
       "description": "Map from the publisher-assigned `provider_id` to that provider's key-to-destination mapping for this surface. Outer keys use the `provider_id` charset from provider-registration.json. Inner keys are exact provider-local targeting keys from `signals_by_provider[provider_id].targeting_kvs`; no separator, prefix, or case normalization is applied. Values are publisher-local ad-server targeting destinations. At serve time, the publisher applies a mapping only when both the provider and key are own properties of their respective maps. Missing providers and missing keys are dropped independently, without falling back to the provider-local key. Multiple tuples may intentionally map to one destination; each mapped tuple contributes its value and MUST NOT overwrite another value. Publishers SHOULD warn at startup when this map names a provider that is not registered.",
       "propertyNames": {
-        "type": "string",
-        "pattern": "^[A-Za-z0-9_]+$",
-        "minLength": 1,
-        "maxLength": 64
+        "$ref": "/schemas/core/trusted-match-provider-id.json"
       },
       "additionalProperties": {
         "type": "object",

@@ -5,7 +5,7 @@
   "description": "A qualified standard delivery value reported at package grain. The qualifier is required and must be non-empty; unqualified spend remains on the package's flat spend field.",
   "allOf": [
     {
-      "$ref": "/schemas/core/delivery-metric-aggregate.json#/oneOf/0"
+      "$ref": "/schemas/core/standard-delivery-metric-aggregate.json"
     },
     {
       "type": "object",

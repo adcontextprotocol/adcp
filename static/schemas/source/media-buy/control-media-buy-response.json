@@ -15,14 +15,14 @@
       "title": "Control Applied",
       "type": "object",
       "properties": {
-        "status": { "type": "string", "const": "completed" },
-        "media_buy_id": { "type": "string", "minLength": 1, "x-entity": "media_buy" },
+        "status": { "type": "string", "const": "completed", "default": "completed" },
+        "media_buy_id": { "$ref": "/schemas/core/media-buy-id.json" },
         "revision": { "type": "integer", "minimum": 1 },
         "media_buy_status": { "$ref": "/schemas/enums/media-buy-status.json" },
         "implementation_date": { "type": ["string", "null"], "format": "date-time" },
         "affected_package_ids": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1, "x-entity": "package" },
+          "items": { "$ref": "/schemas/core/package-id.json" },
           "uniqueItems": true
         },
         "available_actions": {
@@ -53,35 +53,11 @@
       "not": { "required": ["errors"] }
     },
     {
-      "title": "Control Error",
-      "type": "object",
-      "properties": {
-        "status": { "type": "string", "const": "failed" },
-        "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" }, "minItems": 1 },
-        "context": { "$ref": "/schemas/core/context.json" },
-        "ext": { "$ref": "/schemas/core/ext.json" }
-      },
-      "required": ["status", "errors"],
-      "additionalProperties": true,
-      "not": {
-        "anyOf": [
-          { "required": ["media_buy_id"] },
-          { "required": ["warnings"] }
-        ]
-      }
+      "$ref": "/schemas/core/media-buy-failed-result.json"
     },
     {
-      "allOf": [{ "$ref": "/schemas/core/task-submitted.json" }],
-      "title": "Control Submitted",
-      "type": "object",
-      "properties": {
-        "status": { "type": "string", "const": "submitted" },
-        "errors": { "type": "array", "items": { "$ref": "/schemas/core/error.json" } },
-        "context": { "$ref": "/schemas/core/context.json" },
-        "ext": { "$ref": "/schemas/core/ext.json" }
-      },
-      "required": ["status"],
-      "additionalProperties": true
+      "$ref": "/schemas/core/task-submitted-response.json",
+      "title": "Control Submitted"
     }
   ]
 }

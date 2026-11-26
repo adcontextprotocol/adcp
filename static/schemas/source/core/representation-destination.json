@@ -16,8 +16,7 @@
   "type": "object",
   "properties": {
     "product_id": {
-      "type": "string",
-      "minLength": 1,
+      "$ref": "/schemas/core/product-id.json",
       "x-entity": "product",
       "description": "Product owned by the destination seller."
     },

@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-media-buy-id.json",
+  "title": "Reporting Media Buy ID",
+  "description": "Seller-issued identifier of a media buy.",
+  "x-adcp-model-context-inline": true,
+  "x-entity": "media_buy",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/media-buy-id.json"
+    }
+  ]
+}

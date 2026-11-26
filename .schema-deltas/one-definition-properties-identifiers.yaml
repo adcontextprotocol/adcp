@@ -1,0 +1,327 @@
+# Delta manifest (format: scripts/schema-equivalence/README.md, "Delta manifest").
+title: >-
+  One definition per object: properties identifiers. The corrections the review chose; every other change is a $ref to
+  an identical definition.
+changes:
+  - location: core/property.json#/properties/identifiers/items
+    keyword: allOf
+    new:
+      if:
+        required:
+          - type
+        properties:
+          type:
+            const: domain
+      then:
+        properties:
+          value:
+            maxLength: 255
+            pattern: ^(?:\*\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$(?![\s\S])
+            else:
+              $at: core/identifier.json#/allOf/0/then/properties/value/allOf/0/else
+            if:
+              $at: core/identifier.json#/allOf/0/then/properties/value/allOf/0/if
+    direction: tighten
+    side: response
+    note: >-
+      core/property.json#/properties/identifiers/items -> core/identifier.json#. The domain rule, a member of
+      core/identifier.json's allOf beside the subdomain rule.
+  - location: core/placement-definition.json#/properties/identifiers/items
+    keyword: allOf
+    new:
+      if:
+        required:
+          - type
+        properties:
+          type:
+            const: domain
+      then:
+        properties:
+          value:
+            maxLength: 255
+            pattern: ^(?:\*\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$(?![\s\S])
+            else:
+              $at: core/identifier.json#/allOf/0/then/properties/value/allOf/0/else
+            if:
+              $at: core/identifier.json#/allOf/0/then/properties/value/allOf/0/if
+    direction: tighten
+    side: none
+    note: >-
+      core/placement-definition.json#/properties/identifiers/items -> core/identifier.json#. The domain rule, a member
+      of core/identifier.json's allOf beside the subdomain rule.
+  - location: >-
+      compliance/comply-test-controller-request.json#/properties/params/properties/installment_property_delivery/items/properties/identifier
+    keyword: allOf
+    new:
+      if:
+        required:
+          - type
+        properties:
+          type:
+            const: domain
+      then:
+        properties:
+          value:
+            maxLength: 255
+            pattern: ^(?:\*\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$(?![\s\S])
+            else:
+              $at: core/identifier.json#/allOf/0/then/properties/value/allOf/0/else
+            if:
+              $at: core/identifier.json#/allOf/0/then/properties/value/allOf/0/if
+    direction: tighten
+    side: request
+    note: >-
+      compliance/comply-test-controller-request.json#/properties/params/properties/installment_property_delivery/items/properties/identifier
+      -> core/identifier.json#. The domain rule, a member of core/identifier.json's allOf beside the subdomain rule.
+  - location: >-
+      compliance/comply-test-controller-request.json#/properties/params/properties/property_delivery/items/properties/identifier
+    keyword: allOf
+    new:
+      if:
+        required:
+          - type
+        properties:
+          type:
+            const: domain
+      then:
+        properties:
+          value:
+            maxLength: 255
+            pattern: ^(?:\*\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$(?![\s\S])
+            else:
+              $at: core/identifier.json#/allOf/0/then/properties/value/allOf/0/else
+            if:
+              $at: core/identifier.json#/allOf/0/then/properties/value/allOf/0/if
+    direction: tighten
+    side: request
+    note: >-
+      compliance/comply-test-controller-request.json#/properties/params/properties/property_delivery/items/properties/identifier
+      -> core/identifier.json#. The domain rule, a member of core/identifier.json's allOf beside the subdomain rule.
+  - location: core/placement.json#/properties/identifiers/items
+    keyword: allOf
+    new:
+      if:
+        required:
+          - type
+        properties:
+          type:
+            const: domain
+      then:
+        properties:
+          value:
+            maxLength: 255
+            pattern: ^(?:\*\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$(?![\s\S])
+            else:
+              $at: core/identifier.json#/allOf/0/then/properties/value/allOf/0/else
+            if:
+              $at: core/identifier.json#/allOf/0/then/properties/value/allOf/0/if
+    direction: tighten
+    side: both
+    note: >-
+      core/placement.json#/properties/identifiers/items -> core/identifier.json#. The domain rule, a member of
+      core/identifier.json's allOf beside the subdomain rule.
+  - location: core/canonical-placement.json#/properties/identifiers/items
+    keyword: allOf
+    new:
+      if:
+        required:
+          - type
+        properties:
+          type:
+            const: domain
+      then:
+        properties:
+          value:
+            maxLength: 255
+            pattern: ^(?:\*\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$(?![\s\S])
+            else:
+              $at: core/identifier.json#/allOf/0/then/properties/value/allOf/0/else
+            if:
+              $at: core/identifier.json#/allOf/0/then/properties/value/allOf/0/if
+    direction: tighten
+    side: response
+    note: >-
+      core/canonical-placement.json#/properties/identifiers/items -> core/identifier.json#. The domain rule, a member of
+      core/identifier.json's allOf beside the subdomain rule.
+  - location: core/property.json#/properties/identifiers/items
+    keyword: allOf
+    new:
+      if:
+        required:
+          - type
+        properties:
+          type:
+            const: subdomain
+      then:
+        properties:
+          value:
+            maxLength: 253
+            pattern: ^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$(?![\s\S])
+    direction: tighten
+    side: response
+    note: >-
+      core/property.json#/properties/identifiers/items -> core/identifier.json#. Witness: core/property.json
+      /identifiers/0 = {"type":"subdomain","value":"a"} (tighten).
+  - location: core/placement-definition.json#/properties/identifiers/items
+    keyword: allOf
+    new:
+      if:
+        required:
+          - type
+        properties:
+          type:
+            const: subdomain
+      then:
+        properties:
+          value:
+            maxLength: 253
+            pattern: ^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$(?![\s\S])
+    direction: tighten
+    side: none
+    note: >-
+      core/placement-definition.json#/properties/identifiers/items -> core/identifier.json#. Witness:
+      core/placement-definition.json /identifiers/0 = {"type":"subdomain","value":"a"} (tighten).
+  - location: core/installment-ref.json#
+    keyword: properties
+    new:
+      collection_ref:
+        required:
+          - collection_id
+          - publisher_domain
+        type:
+          - object
+        properties:
+          collection_id:
+            minLength: 1
+            type:
+              - string
+          publisher_domain:
+            maxLength: 253
+            pattern: ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$
+            type:
+              - string
+      installment_id:
+        minLength: 1
+        type:
+          - string
+    direction: tighten
+    side: request
+    note: >-
+      compliance/comply-test-controller-request.json#/properties/params/properties/installment_delivery/items/properties/installment_ref
+      -> core/installment-ref.json. The tool's witness search found none (cannot attribute: properties/$ref is not
+      written at core/installment-ref.json#).
+  - location: core/identifier.json#
+    keyword: properties
+    new:
+      type:
+        enum:
+          - android_package
+          - apple_app_store_id
+          - apple_podcast_id
+          - apple_tv_bundle
+          - bundle_id
+          - domain
+          - facility_id
+          - fire_tv_asin
+          - google_play_id
+          - ios_bundle
+          - network_id
+          - openooh_venue_type
+          - podcast_guid
+          - roku_store_id
+          - rss_url
+          - samsung_app_id
+          - screen_id
+          - spotify_collection_id
+          - station_id
+          - subdomain
+          - venue_id
+      value:
+        type:
+          - string
+    direction: tighten
+    side: request
+    note: >-
+      compliance/comply-test-controller-request.json#/properties/params/properties/installment_property_delivery/items/properties/identifier
+      -> core/identifier.json. The tool's witness search found none (cannot attribute: properties/0 is not written at
+      core/identifier.json#).
+  - location: >-
+      compliance/comply-test-controller-request.json#/properties/params/properties/installment_property_delivery/items/properties/identifier
+    keyword: allOf
+    new:
+      if:
+        required:
+          - type
+        properties:
+          type:
+            const: subdomain
+      then:
+        properties:
+          value:
+            maxLength: 253
+            pattern: ^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$(?![\s\S])
+    direction: tighten
+    side: request
+    note: >-
+      compliance/comply-test-controller-request.json#/properties/params/properties/installment_property_delivery/items/properties/identifier
+      -> core/identifier.json. Witness: compliance/comply-test-controller-request.json
+      /params/installment_property_delivery/0/identifier = {"type":"subdomain","value":"a"} (tighten).
+  - location: >-
+      compliance/comply-test-controller-request.json#/properties/params/properties/property_delivery/items/properties/identifier
+    keyword: allOf
+    new:
+      if:
+        required:
+          - type
+        properties:
+          type:
+            const: subdomain
+      then:
+        properties:
+          value:
+            maxLength: 253
+            pattern: ^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$(?![\s\S])
+    direction: tighten
+    side: request
+    note: >-
+      compliance/comply-test-controller-request.json#/properties/params/properties/property_delivery/items/properties/identifier
+      -> core/identifier.json. Witness: compliance/comply-test-controller-request.json
+      /params/property_delivery/0/identifier = {"type":"subdomain","value":"x"} (tighten).
+  - location: core/placement.json#/properties/identifiers/items
+    keyword: allOf
+    new:
+      if:
+        required:
+          - type
+        properties:
+          type:
+            const: subdomain
+      then:
+        properties:
+          value:
+            maxLength: 253
+            pattern: ^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$(?![\s\S])
+    direction: tighten
+    side: both
+    note: >-
+      core/placement.json#/properties/identifiers/items -> core/identifier.json#. The tool's witness search found none
+      (no tighten witness attributed to this line in 4 root(s)).
+  - location: core/canonical-placement.json#/properties/identifiers/items
+    keyword: allOf
+    new:
+      if:
+        required:
+          - type
+        properties:
+          type:
+            const: subdomain
+      then:
+        properties:
+          value:
+            maxLength: 253
+            pattern: ^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$(?![\s\S])
+    direction: tighten
+    side: response
+    note: >-
+      core/canonical-placement.json#/properties/identifiers/items -> core/identifier.json#. Witness:
+      core/canonical-placement.json /identifiers/0 = {"type":"subdomain","value":"a"} (tighten).

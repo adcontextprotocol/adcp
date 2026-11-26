@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/reporting-period-duration.json",
+  "title": "Reporting Period Duration",
+  "description": "Strictly positive ISO 8601 duration of one reporting period, such as PT15M, P1D, or P1M.",
+  "type": "string",
+  "maxLength": 64,
+  "pattern": "^P(?=.*[1-9])(?=\\d|T)(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?$"
+}

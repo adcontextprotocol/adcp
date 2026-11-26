@@ -15,12 +15,12 @@
         "selection_type": {
           "type": "string",
           "const": "publisher_tags",
+          "default": "publisher_tags",
           "description": "Discriminator indicating selection by property tags within a publisher"
         },
         "publisher_domain": {
-          "type": "string",
-          "description": "Domain where publisher's adagents.json is hosted (e.g., 'raptive.com')",
-          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          "$ref": "/schemas/core/domain-name.json",
+          "description": "Domain where publisher's adagents.json is hosted (e.g., 'raptive.com')"
         },
         "tags": {
           "type": "array",
@@ -42,12 +42,12 @@
         "selection_type": {
           "type": "string",
           "const": "publisher_ids",
+          "default": "publisher_ids",
           "description": "Discriminator indicating selection by specific property IDs within a publisher"
         },
         "publisher_domain": {
-          "type": "string",
-          "description": "Domain where publisher's adagents.json is hosted (e.g., 'raptive.com')",
-          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          "$ref": "/schemas/core/domain-name.json",
+          "description": "Domain where publisher's adagents.json is hosted (e.g., 'raptive.com')"
         },
         "property_ids": {
           "type": "array",
@@ -69,6 +69,7 @@
         "selection_type": {
           "type": "string",
           "const": "identifiers",
+          "default": "identifiers",
           "description": "Discriminator indicating selection by direct identifiers"
         },
         "identifiers": {

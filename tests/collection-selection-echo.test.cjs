@@ -134,7 +134,9 @@ test('canonical products expose collection composition for compact-lifecycle sel
   assert.deepEqual(canonical.properties.collections.items, legacy.properties.collections.items);
   assert.equal(canonical.properties.collection_targeting_allowed.default, false);
   const fields = JSON.parse(fs.readFileSync(schemaPathFromId('/schemas/media-buy/product-fields.json'), 'utf8'));
+  assert.equal(fields.items.$ref, '/schemas/media-buy/product-field.json');
+  const productField = JSON.parse(fs.readFileSync(schemaPathFromId('/schemas/media-buy/product-field.json'), 'utf8'));
   for (const field of ['collections', 'collection_targeting_allowed']) {
-    assert.ok(fields.items.enum.includes(field), `list_products fields must project ${field}`);
+    assert.ok(productField.enum.includes(field), `list_products fields must project ${field}`);
   }
 });
