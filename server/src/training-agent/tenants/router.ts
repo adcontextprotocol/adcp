@@ -1148,6 +1148,15 @@ function projectTenantToolDiscovery(
         const { include_collections: _flag, ...rest } = properties;
         tool.inputSchema = { ...tool.inputSchema, properties: rest };
       }
+      // The experimental 3.3 account and collection tools register on every
+      // sales registry once the current line is 3.3, but a listing served
+      // below 3.3 does not advertise them; their handlers refuse such callers.
+      parsed.result!.tools = tools.filter(tool => {
+        if (tool.name !== 'request_account' && tool.name !== 'list_collections') return true;
+        const listedAt = listingMeta?.adcp_version ?? (tool as { _meta?: { adcp_version?: unknown } })._meta?.adcp_version;
+        if (typeof listedAt !== 'string') return true;
+        return tool.name === 'request_account' ? supportsAccountSurfaces33(listedAt) : supportsCollections33(listedAt);
+      });
     }
     if (storyboardCompat?.version === '3.0') {
       parsed.result!.tools = tools.filter(tool => tool.name !== 'validate_input');

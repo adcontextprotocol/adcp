@@ -248,6 +248,14 @@ describe('retained 3.3-rc.3 negotiation over MCP', () => {
       const listing = await rpc('/sales/mcp', 'tools/list', params);
       expect(listing.result.tools.map((tool: { name: string }) => tool.name), JSON.stringify(params)).toContain('request_account');
     }
+    // A listing served below 3.3 does not advertise the 3.3 account and
+    // collection tools, as before the GA bump.
+    for (const params of [{ _meta: { adcp_version: '3.2' } }, { _meta: { adcp_version: '3.2-rc.7' } }]) {
+      const listing = await rpc('/sales/mcp', 'tools/list', params);
+      const names = listing.result.tools.map((tool: { name: string }) => tool.name);
+      expect(names, JSON.stringify(params)).not.toContain('request_account');
+      expect(names, JSON.stringify(params)).not.toContain('list_collections');
+    }
     for (const adcp_version of [CURRENT, RETAINED]) {
       const opened = await call('/sales/mcp', 'request_account', {
         adcp_version,
