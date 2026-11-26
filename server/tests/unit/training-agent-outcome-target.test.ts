@@ -1209,6 +1209,87 @@ describe('reverse-forecast outcome_target planning (training agent)', () => {
         productsById,
       )).toBeUndefined();
     });
+
+    describe('minimum spend per package', () => {
+      const minSpendProducts = new Map([
+        ['p1', { product_id: 'p1', pricing_options: [{ ...USD_FIXED_CPM_40, min_spend_per_package: 25_000 }] }],
+      ]) as unknown as PlanProducts;
+      const plan = (budgetRange: { max?: number } | undefined, volume = 1) => computeOutcomeTargetCostPlan(
+        CLICKS_GOAL,
+        clicksOptimizationGoal,
+        { amount: 40, currency: 'USD', strength: 'target' },
+        volume,
+        budgetRange,
+        proposal,
+        minSpendProducts,
+      );
+
+      it('raises the total to clear the purchase minimum when no range limits it', () => {
+        const result = plan(undefined);
+        expect(result?.totalBudgetGuidance.recommended).toBeGreaterThanOrEqual(25_000);
+        expect(result?.totalBudgetGuidance.min).toBeGreaterThanOrEqual(25_000);
+      });
+
+      it('plans no volume when the buyer ceiling is below the minimum', () => {
+        expect(plan({ max: 20_000 })?.plannedVolume).toBe(0);
+      });
+
+      it('clears each purchase minimum to the cent under an unequal split', () => {
+        const splitProposal = {
+          proposal_id: 'split',
+          name: 'Split',
+          allocations: [
+            { product_id: 'p1', allocation_percentage: 45, pricing_option_id: 'po_outcome_target_fixed_cpm' },
+            { product_id: 'p2', allocation_percentage: 55, pricing_option_id: 'po_outcome_target_fixed_cpm' },
+          ],
+        } as unknown as PlanProposal;
+        const splitProducts = new Map([
+          ['p1', { product_id: 'p1', pricing_options: [{ ...USD_FIXED_CPM_40, min_spend_per_package: 5_000 }] }],
+          ['p2', { product_id: 'p2', pricing_options: [USD_FIXED_CPM_40] }],
+        ]) as unknown as PlanProducts;
+        const result = computeOutcomeTargetCostPlan(
+          { kind: 'metric', metric: 'clicks' },
+          clicksOptimizationGoal,
+          { amount: 100, currency: 'USD', strength: 'target' },
+          1,
+          undefined,
+          splitProposal,
+          splitProducts,
+        )!;
+        // 5000 / 0.45 = 11111.11 leaves the 45% purchase at 4999.9995 unless rounded up.
+        expect(result.totalBudgetGuidance.recommended * 0.45).toBeGreaterThanOrEqual(5_000);
+        expect(result.totalBudgetGuidance.min * 0.45).toBeGreaterThanOrEqual(5_000);
+        expect(Math.round(result.totalBudgetGuidance.recommended * 100)).toBeCloseTo(result.totalBudgetGuidance.recommended * 100, 6);
+      });
+
+      it('does not step past a total that already clears the minimum under the canonical purchase expression', () => {
+        const splitProposal = {
+          proposal_id: 'split-ceiling',
+          name: 'Split ceiling',
+          allocations: [
+            { product_id: 'p1', allocation_percentage: 60, pricing_option_id: 'po_outcome_target_fixed_cpm' },
+            { product_id: 'p2', allocation_percentage: 40, pricing_option_id: 'po_outcome_target_fixed_cpm' },
+          ],
+        } as unknown as PlanProposal;
+        const splitProducts = new Map([
+          ['p1', { product_id: 'p1', pricing_options: [{ ...USD_FIXED_CPM_40, min_spend_per_package: 199.8 }] }],
+          ['p2', { product_id: 'p2', pricing_options: [USD_FIXED_CPM_40] }],
+        ]) as unknown as PlanProducts;
+        const result = computeOutcomeTargetCostPlan(
+          { kind: 'metric', metric: 'clicks' },
+          clicksOptimizationGoal,
+          { amount: 100, currency: 'USD', strength: 'target' },
+          1,
+          { max: 333 },
+          splitProposal,
+          splitProducts,
+        )!;
+        // 199.8 / 0.6 is 333 exactly; a float-naive check would step to 333.01 and exceed the ceiling.
+        expect(result.totalBudgetGuidance.recommended).toBe(333);
+        expect(result.totalBudgetGuidance.recommended * 60 / 100).toBeGreaterThanOrEqual(199.8);
+        expect(result.plannedVolume).toBeGreaterThanOrEqual(1);
+      });
+    });
   });
 
   describe('no outcome_target', () => {

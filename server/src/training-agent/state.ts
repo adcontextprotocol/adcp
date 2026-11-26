@@ -16,7 +16,10 @@
 
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
-import type { SessionState, AccountRef, BrandRef, CreativeState, MediaBuyState, PackageState } from './types.js';
+import type {
+  SessionState, AccountRef, BrandRef, ComplyDeliveryAccumulator, CreativeState, MediaBuyState, PackageState,
+} from './types.js';
+import { TRAINING_GEO_BREAKDOWN_SUPPORT } from './delivery-breakdowns.js';
 import { accountScopeFromRef, canonicalizeAccountRef } from './account-scope.js';
 import { cleanupExpiredTasks } from '@adcp/sdk';
 import {
@@ -384,6 +387,10 @@ export function getComplianceCreative(id: string): CreativeState | undefined {
   return getComplianceCreatives().find(c => c.creativeId === id);
 }
 
+const BROADCAST_FIXTURE_MEDIA_BUY_ID = 'seed_mb_broadcast_q4';
+const BROADCAST_FIXTURE_PRODUCT_ID = 'seed_product_linear_tv';
+const BROADCAST_FIXTURE_BUDGET = 120_000;
+
 /**
  * Canonical compliance media-buy fixtures for the open sandbox mode.
  *
@@ -394,17 +401,26 @@ export function getComplianceCreative(id: string): CreativeState | undefined {
  * Product IDs are training-agent-internal labels that don't resolve against
  * the live catalog; derivePricing falls back to the default $10 CPM rate,
  * which is intentional — the teaching goal is delivery-metric interpretation,
- * not catalog browsing.
+ * not catalog browsing. The reporting facts delivery needs for those labels
+ * (channels, breakdown support, measurement windows) live in
+ * COMPLIANCE_FIXTURE_PRODUCT_REPORTING below.
  *
  * AUTHORING NOTE: storyboard and lesson-plan authors MUST NOT reference the
- * fixture IDs (seed_mb_display_q2, seed_mb_video_q1) in criterion text or
- * criterion IDs — only in exercise scaffolds. Embedding a fixture ID in a
- * criterion string means that renaming a fixture would silently break
- * recertification triggers without surfacing as a criterion-ID drift.
+ * fixture IDs (seed_mb_display_q2, seed_mb_video_q1, seed_mb_broadcast_q4) in
+ * criterion text or criterion IDs — only in exercise scaffolds. Embedding a
+ * fixture ID in a criterion string means that renaming a fixture would
+ * silently break recertification triggers without surfacing as a criterion-ID
+ * drift.
  *
- * Two buys cover the two primary B3 lesson states:
- *  - seed_mb_display_q2: active, partial delivery (default status filter)
+ * Two buys cover the two primary B3 lesson states, and a third gives S1 a
+ * broadcast buy whose audience is still maturing:
+ *  - seed_mb_display_q2: active, partial delivery (default status filter);
+ *    supports geo and device_type breakdowns
  *  - seed_mb_video_q1: completed, 100% delivery (requires status_filter: ['completed'])
+ *  - seed_mb_broadcast_q4: completed linear TV flight whose last spots aired
+ *    five days ago, so delivery reports the provisional C3 window
+ *    (is_final: false) against a C7 guarantee (requires status_filter:
+ *    ['completed'] or its ID)
  *
  * Dates are recomputed on each call so elapsed fractions remain realistic
  * across server restarts.
@@ -449,6 +465,26 @@ export function getComplianceMediaBuys(): MediaBuyState[] {
     optimizationGoals: [{ kind: 'metric', metric: 'reach', reach_unit: 'devices' }],
   };
 
+  const broadcastPackage: PackageState = {
+    packageId: 'seed_pkg_broadcast_q4_a',
+    productId: BROADCAST_FIXTURE_PRODUCT_ID,
+    pricingOptionId: 'seed_po_linear_tv_cpm',
+    budget: BROADCAST_FIXTURE_BUDGET,
+    paused: false,
+    startTime: daysAgo(12),
+    endTime: daysAgo(5),
+    creativeAssignments: ['campaign_hero_video'],
+    agencyEstimateNumber: 'EST-2026-0412',
+    // Billing settles on the C7 window; earlier windows are provisional reads.
+    measurementTerms: {
+      billing_measurement: {
+        vendor: { domain: 'summit-measurement.example' },
+        measurement_window: 'c7',
+        max_variance_percent: 10,
+      },
+    },
+  };
+
   const activeBrand: AccountRef = { account_id: 'demo', brand: { domain: 'demo.example.com' } };
 
   return [
@@ -482,11 +518,101 @@ export function getComplianceMediaBuys(): MediaBuyState[] {
       updatedAt: daysAgo(30),
       history: [],
     },
+    {
+      mediaBuyId: BROADCAST_FIXTURE_MEDIA_BUY_ID,
+      accountRef: activeBrand,
+      brandRef: { domain: 'demo.example.com' },
+      status: 'completed',
+      currency: 'USD',
+      packages: [broadcastPackage],
+      startTime: daysAgo(12),
+      endTime: daysAgo(5),
+      revision: 1,
+      confirmedAt: daysAgo(20),
+      createdAt: daysAgo(20),
+      updatedAt: daysAgo(5),
+      history: [],
+    },
   ];
 }
 
 export function getComplianceMediaBuy(id: string): MediaBuyState | undefined {
   return getComplianceMediaBuys().find(mb => mb.mediaBuyId === id);
+}
+
+/**
+ * Default delivery state for read-through compliance fixtures that report
+ * something other than elapsed-time pacing. Fixtures live outside every
+ * session, so comply_test_controller cannot simulate delivery on them.
+ *
+ * The broadcast flight closed five days ago. Live and C3 reads are in for
+ * every airing; C7 DVR accumulation for the last airings closes seven days
+ * after air and lands a day later, so the package reports the provisional
+ * C3 window at 87% of the planned audience. That shortfall is maturation by
+ * design, not under-delivery: billing settles on C7.
+ *
+ * A dated read reports the share of the flight inside [start, end), spread
+ * evenly across the flight; a period outside the flight reports nothing.
+ */
+export function getComplianceDeliverySimulation(
+  mediaBuyId: string,
+  period?: { start: Date; end: Date },
+): ComplyDeliveryAccumulator | undefined {
+  if (mediaBuyId !== BROADCAST_FIXTURE_MEDIA_BUY_ID) return undefined;
+  const fixture = getComplianceMediaBuy(mediaBuyId);
+  if (!fixture) return undefined;
+  const flightStart = Date.parse(fixture.startTime);
+  const flightEnd = Date.parse(fixture.endTime);
+  const overlap = period
+    ? Math.max(0, Math.min(period.end.getTime(), flightEnd) - Math.max(period.start.getTime(), flightStart))
+    : flightEnd - flightStart;
+  const share = overlap / (flightEnd - flightStart);
+  // At the fixture's $10 CPM the budget plans 12,000,000 impressions.
+  const c3Spend = Math.round(BROADCAST_FIXTURE_BUDGET * 0.87 * share * 100) / 100;
+  return {
+    impressions: Math.round(c3Spend * 100),
+    clicks: 0,
+    plays: Math.round(48 * share),
+    reportedSpend: { amount: c3Spend, currency: 'USD' },
+    conversions: 0,
+    measurementWindow: 'c3',
+    isFinal: false,
+  };
+}
+
+export interface ComplianceFixtureProductReporting {
+  channels: string[];
+  coverageCountries: string[];
+  reportingCapabilities: Record<string, unknown>;
+}
+
+const SCREEN_FIXTURE_REPORTING = {
+  supports_geo_breakdown: TRAINING_GEO_BREAKDOWN_SUPPORT,
+  supports_device_type_breakdown: true,
+};
+
+/** Reporting facts for the compliance fixtures' internal product labels. */
+const COMPLIANCE_FIXTURE_PRODUCT_REPORTING: Readonly<Record<string, ComplianceFixtureProductReporting>> = {
+  seed_product_display: { channels: ['display'], coverageCountries: ['US'], reportingCapabilities: SCREEN_FIXTURE_REPORTING },
+  seed_product_social: { channels: ['social'], coverageCountries: ['US'], reportingCapabilities: SCREEN_FIXTURE_REPORTING },
+  seed_product_video: { channels: ['olv', 'ctv'], coverageCountries: ['US'], reportingCapabilities: SCREEN_FIXTURE_REPORTING },
+  [BROADCAST_FIXTURE_PRODUCT_ID]: {
+    channels: ['linear_tv'],
+    coverageCountries: ['US'],
+    reportingCapabilities: {
+      supports_geo_breakdown: { country: true, metro: { nielsen_dma: true } },
+      measurement_windows: [
+        { window_id: 'live', description: 'Live viewing only', duration_days: 0, expected_availability_days: 1, is_guarantee_basis: false },
+        { window_id: 'c3', description: 'Live plus 3 days of time-shifted viewing', duration_days: 3, expected_availability_days: 4, is_guarantee_basis: false },
+        { window_id: 'c7', description: 'Live plus 7 days of time-shifted viewing', duration_days: 7, expected_availability_days: 8, is_guarantee_basis: true },
+      ],
+    },
+  },
+};
+
+export function getComplianceFixtureProductReporting(productId: string): ComplianceFixtureProductReporting | undefined {
+  const reporting = COMPLIANCE_FIXTURE_PRODUCT_REPORTING[productId];
+  return reporting && structuredClone(reporting);
 }
 
 /**

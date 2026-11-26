@@ -3260,8 +3260,10 @@ import {
   runWithSessionContext, flushDirtySessions, evictSessionFromRequestCache,
   getComplianceCreatives, getComplianceCreative,
   getComplianceMediaBuys, getComplianceMediaBuy,
+  getComplianceDeliverySimulation, getComplianceFixtureProductReporting,
   MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION, MAX_USAGE_RECORDS_PER_SESSION,
 } from './state.js';
+import { dimensionalDeliveryBreakdowns } from './delivery-breakdowns.js';
 import { getAgentUrl, getIdentityBaseUrl } from './config.js';
 import {
   GOVERNANCE_TOOLS,
@@ -3418,6 +3420,8 @@ export function acceptancePolicyDiscoveryCapability(
 }
 const MAX_PACKAGES_PER_BUY = 50;
 const MAX_CONFIGURED_PRODUCTS_PER_SESSION = 128;
+/** Offers in a request_proposals plan built from criteria rather than the registry. */
+const MAX_CRITERIA_PLAN_PRODUCTS = 3;
 
 interface VersionUnsupportedDetails {
   adcp_version?: string;
@@ -7033,14 +7037,25 @@ function applyAvailabilityHorizonForecasts(
     return products;
   }
   const { seededProductAvailability } = session.complyExtensions;
-  if (seededProductAvailability.size === 0) return products;
+  // A controller-seeded session describes the calendar under test. An
+  // ordinary session sells the demonstration catalog, which has no booked
+  // windows (create_media_buy never refuses a catalog flight), so the
+  // advertised capability answers with an open calendar instead of a
+  // forecast that says nothing about the horizon.
+  // No minimum duration either: create_media_buy books any future catalog
+  // flight, including one shorter than a day.
+  const openCatalogCalendar: SeededProductAvailability | undefined = seededProductAvailability.size === 0
+    && seededProductIds(session).size === 0
+    ? { min_bookable_days: 0, booked_windows: [] }
+    : undefined;
+  if (seededProductAvailability.size === 0 && !openCatalogCalendar) return products;
   const horizonRange = { start_time: horizon.start_time, end_time: horizon.end_time };
   const now = Date.now();
   const generatedAt = toUtcSecondsIso(now);
   const validUntil = toUtcSecondsIso(now + 5 * 60 * 1000);
   return products.map(product => {
     if (immutableConfiguredProductIds?.has(product.product_id)) return product;
-    const availability = seededProductAvailability.get(
+    const availability = openCatalogCalendar ?? seededProductAvailability.get(
       sourceProductIds?.get(product.product_id) ?? product.product_id,
     );
     if (!availability) return product;
@@ -9734,6 +9749,37 @@ function applyDiscoveryTargeting(
   return { products: [...inherentlyMatched, ...configuredProducts], capacityDrops };
 }
 
+/** Name the discovery-targeting criterion that left no product: the first
+ * required_overlay_support or targeting_overlay field that none of the
+ * remaining offers supports, or the whole block when every field is supported
+ * somewhere but no single offer supports them all. Criteria-relative path. */
+function discoveryTargetingNarrowing(products: Product[], req: GetProductsRequest): string {
+  const request = req as unknown as Record<string, unknown>;
+  const supportOf = (product: Product): Record<string, unknown> => {
+    const support = (product as unknown as Record<string, unknown>).overlay_support;
+    return isRecord(support) ? support : {};
+  };
+  if (isRecord(request.required_overlay_support)) {
+    for (const [field, value] of Object.entries(request.required_overlay_support)) {
+      if (!products.some(product => overlaySupportContains(supportOf(product), { [field]: value }))) {
+        return `required_overlay_support.${field}`;
+      }
+    }
+  }
+  if (isRecord(request.targeting_overlay)) {
+    for (const [field, value] of Object.entries(request.targeting_overlay)) {
+      if (!products.some(product => concreteTargetingSupportedForProduct(supportOf(product), field, value))) {
+        return `targeting_overlay.${field}`;
+      }
+    }
+  }
+  if (isRecord(request.required_media_buy_support)) return 'required_media_buy_support';
+  if (isRecord(request.media_buy_frequency_cap)) return 'media_buy_frequency_cap';
+  return isRecord(request.required_overlay_support) && !isRecord(request.targeting_overlay)
+    ? 'required_overlay_support'
+    : 'targeting_overlay';
+}
+
 function bindConfiguredTargetingToProposal(proposal: Proposal, session: SessionState): Proposal {
   const internal = proposal as unknown as Record<string, unknown>;
   if (!isRecord(internal.__canonical_commercial_terms)) return proposal;
@@ -10229,15 +10275,35 @@ export function computeOutcomeTargetCostPlan(
   const planningCost = costPer.strength === 'cap' ? plannableCost : answeredAmount;
   const rangeFloor = budgetRange?.min ?? 0;
   const rangeCeiling = budgetRange?.max ?? Number.POSITIVE_INFINITY;
-  const budget = roundMoney(volume !== undefined
+  // Every purchase must clear its option's minimum spend, so the plan total
+  // is at least the largest minimum divided by that purchase's share,
+  // rounded up to a cent. Purchase budgets are unrounded, so the check uses
+  // buildCanonicalCommercialTerms' exact expression and steps up a cent
+  // while floating point leaves one a hair short.
+  const percentages = allocations.map(allocation => allocation.allocation_percentage ?? 0);
+  const minimumSpends = pricings.map(pricing => pricing!.min_spend_per_package ?? 0);
+  const clearsMinimums = (total: number) => percentages.every((percentage, index) => (
+    total * percentage / 100 >= minimumSpends[index]!
+  ));
+  let minimumSpendTotal = ceilToCents(Math.max(0, ...percentages.map((percentage, index) => (
+    percentage > 0 ? minimumSpends[index]! * 100 / percentage : 0
+  ))));
+  for (let step = 0; step < 100 && !clearsMinimums(minimumSpendTotal); step += 1) {
+    minimumSpendTotal = roundMoney(minimumSpendTotal + 0.01);
+  }
+  const targetBudget = volume !== undefined
     ? Math.min(Math.max(volume * planningCost, rangeFloor), rangeCeiling)
     : budgetRange
       ? budgetRange.max ?? budgetRange.min!
-      : OUTCOME_TARGET_DELIVERABLE_IMPRESSIONS * responseRate * planningCost);
+      : OUTCOME_TARGET_DELIVERABLE_IMPRESSIONS * responseRate * planningCost;
+  // A minimum spend above the buyer's ceiling leaves no executable plan; the
+  // caller drops a plan that buys less than one result.
+  const minimumSpendExceedsCeiling = minimumSpendTotal > rangeCeiling;
+  const budget = roundMoney(minimumSpendExceedsCeiling ? targetBudget : Math.max(targetBudget, minimumSpendTotal));
   const now = Date.now();
   return {
     totalBudgetGuidance: {
-      min: roundMoney(Math.min(budget, Math.max(rangeFloor, 0.8 * budget))),
+      min: roundMoney(Math.min(budget, Math.max(rangeFloor, 0.8 * budget, minimumSpendTotal))),
       recommended: budget,
       max: roundMoney(Math.max(budget, budgetRange?.max ?? 1.25 * budget)),
       currency: costPer.currency,
@@ -10267,7 +10333,7 @@ export function computeOutcomeTargetCostPlan(
     optimizationGoal: structuredClone(optimizationGoal),
     allocations,
     plannableCost,
-    plannedVolume: Math.floor(budget / planningCost),
+    plannedVolume: minimumSpendExceedsCeiling ? 0 : Math.floor(budget / planningCost),
   };
 }
 
@@ -12021,8 +12087,15 @@ async function handleGetProductsUnlocked(
     ? new Set(((req as unknown as Record<string, unknown>).product_ids as unknown[])
         .filter((id): id is string => typeof id === 'string'))
     : undefined;
+  // The first criterion that leaves no product, so a request_proposals
+  // rejection can name the constraint to broaden (criteria-relative path).
+  let emptiedByCriterion: string | undefined;
+  const noteNarrowing = (criterion: string) => {
+    if (emptiedByCriterion === undefined && products.length === 0) emptiedByCriterion = criterion;
+  };
   if (requestedProductIds) {
     products = products.filter(product => requestedProductIds.has(product.product_id));
+    noteNarrowing('product_ids');
   }
 
   // Apply filters
@@ -12034,9 +12107,12 @@ async function handleGetProductsUnlocked(
         products = products.filter(p => seededIds.has(p.product_id));
       }
       products = applyPricingCurrenciesFilterToProducts(products, pricingCurrencies);
+      noteNarrowing('offer_filters.pricing_currencies');
     }
     const coverageFilters = req.filters as Record<string, unknown>;
-    if (['countries', 'regions', 'metros', 'postal_areas', 'geo_proximity'].some(field => coverageFilters[field] !== undefined)) {
+    const coverageFields = ['countries', 'regions', 'metros', 'postal_areas', 'geo_proximity']
+      .filter(field => coverageFilters[field] !== undefined);
+    if (coverageFields.length > 0) {
       const seededIds = seededProductIds(session);
       if (seededIds.size > 0) products = products.filter(product => seededIds.has(product.product_id));
     }
@@ -12053,9 +12129,11 @@ async function handleGetProductsUnlocked(
       }] as TaskError[] };
     }
     products = coverage.products;
+    if (coverageFields.length > 0) noteNarrowing(coverageFields.map(field => `offer_filters.${field}`).join(' + '));
     const formatIdsFilter = req.filters.format_ids;
     if (formatIdsFilter?.length) {
       products = applyFormatIdsFilterToProducts(products, formatIdsFilter);
+      noteNarrowing('offer_filters.format_ids');
     }
     const canonicalFormatFilters = req.filters as unknown as {
       format_kinds?: string[];
@@ -12067,24 +12145,29 @@ async function handleGetProductsUnlocked(
         canonicalFormatFilters.format_kinds ?? [],
         canonicalFormatFilters.format_option_refs ?? [],
       );
+      noteNarrowing(canonicalFormatFilters.format_kinds?.length ? 'offer_filters.format_kinds' : 'offer_filters.format_option_refs');
     }
     const channelFilter = req.filters.channels;
     if (channelFilter?.length) {
       products = products.filter(p =>
         p.channels?.some(c => (channelFilter as string[]).includes(c)),
       );
+      noteNarrowing('offer_filters.channels');
     }
     const deliveryTypeFilter = req.filters.delivery_type;
     if (deliveryTypeFilter) {
       products = products.filter(p => p.delivery_type === deliveryTypeFilter);
+      noteNarrowing('offer_filters.delivery_type');
     }
     const fixedPriceFilter = req.filters.is_fixed_price;
     if (typeof fixedPriceFilter === 'boolean') {
       products = applyFixedPriceFilterToProducts(products, fixedPriceFilter);
+      noteNarrowing('offer_filters.is_fixed_price');
     }
     const pricingStructures = (req.filters as { pricing_structures?: PricingStructure[] }).pricing_structures;
     if (pricingStructures?.length) {
       products = applyPricingStructuresFilterToProducts(products, pricingStructures);
+      noteNarrowing('offer_filters.pricing_structures');
     }
     // Filter-not-fail per product-filters.json required_metrics: superset
     // evaluation under the container-subsumption rule (a product declaring
@@ -12097,6 +12180,7 @@ async function handleGetProductsUnlocked(
         );
         return requiredMetrics.every(metricId => reportingMetricIsAvailable(metricId, declared));
       });
+      noteNarrowing('offer_filters.required_metrics');
     }
     const requiredVendorMetrics = (req.filters as { required_vendor_metrics?: Array<{ vendor?: { domain?: string }; metric_id?: string }> }).required_vendor_metrics;
     if (requiredVendorMetrics?.length) {
@@ -12110,6 +12194,7 @@ async function handleGetProductsUnlocked(
           ),
         );
       });
+      noteNarrowing('offer_filters.required_vendor_metrics');
     }
     const audienceActivationMethods = (req.filters as { audience_activation_methods?: unknown[] }).audience_activation_methods;
     const implementsAudienceActivation = (ctx.tenantId === 'sales' || ctx.tenantId == null)
@@ -12118,8 +12203,10 @@ async function handleGetProductsUnlocked(
       products = products.filter(product => (
         productMatchesAudienceActivation(product, audienceActivationMethods)
       ));
+      noteNarrowing('offer_filters.audience_activation_methods');
     }
   }
+  const productsBeforeTargeting = products;
   const discoverySourceProductIds = new Map<string, string>();
   const reusedConfiguredProductIds = new Set<string>();
   const explicitTargeting = isRecord((req as unknown as Record<string, unknown>).targeting_overlay)
@@ -12153,6 +12240,9 @@ async function handleGetProductsUnlocked(
     };
   }
   products = discoveryTargeting.products;
+  if (emptiedByCriterion === undefined && products.length === 0 && productsBeforeTargeting.length > 0) {
+    emptiedByCriterion = discoveryTargetingNarrowing(productsBeforeTargeting, req);
+  }
   registryProducts = [...new Map(
     [...registryProducts, ...products].map(product => [product.product_id, product]),
   ).values()];
@@ -12838,18 +12928,21 @@ async function handleGetProductsUnlocked(
   const requestedMediaBuyFrequencyCap = isRecord(request.media_buy_frequency_cap)
     ? request.media_buy_frequency_cap
     : undefined;
-  if (requestedMediaBuyFrequencyCap) {
-    proposals = proposals.map(proposal => (
-      proposalLifecycle(proposal).proposal_status === 'committed'
-        || compactFinalizeSourceIds.has(proposal.proposal_id)
-        ? proposal
-        : {
-            ...proposal,
-            frequency_cap: structuredClone(requestedMediaBuyFrequencyCap),
-            __media_buy_frequency_cap: structuredClone(requestedMediaBuyFrequencyCap),
-          } as unknown as Proposal
-    ));
-  }
+  const bindRequestedMediaBuyFrequencyCap = (candidates: Proposal[]): Proposal[] => (
+    requestedMediaBuyFrequencyCap
+      ? candidates.map(proposal => (
+          proposalLifecycle(proposal).proposal_status === 'committed'
+            || compactFinalizeSourceIds.has(proposal.proposal_id)
+            ? proposal
+            : {
+                ...proposal,
+                frequency_cap: structuredClone(requestedMediaBuyFrequencyCap),
+                __media_buy_frequency_cap: structuredClone(requestedMediaBuyFrequencyCap),
+              } as unknown as Proposal
+        ))
+      : candidates
+  );
+  proposals = bindRequestedMediaBuyFrequencyCap(proposals);
   const requireProposals = buyingMode === 'brief'
     && (req as unknown as Record<string, unknown>).__require_proposals === true;
   // criteria.outcome_target expands to a top-level field by
@@ -13008,6 +13101,82 @@ async function handleGetProductsUnlocked(
           })) as Proposal['allocations'],
         } as Proposal];
       }
+    } else if (
+      proposals.length === 0
+      && !exactProductIds?.size
+      && seededProductIds(session).size === 0
+      && products.length > 0
+    ) {
+      // Ordinary sessions draw proposals from the pre-authored registry, whose
+      // plans name catalog product IDs. Criteria that narrow the catalog
+      // (offer_filters such as channels or delivery_type) or reconfigure it
+      // (a concrete targeting_overlay turns each offer into a configured
+      // product) leave no registry plan fully covered. Plan the best-matching
+      // offers instead of rejecting a satisfiable request (adcp#9087).
+      // The plan must be executable as returned: an equal split of the total
+      // clears every selected option's min_spend_per_package, inside the
+      // buyer's offer_filters.budget_range when one is given in this currency.
+      // A cost target is answered in its own currency (the seller does not
+      // convert), so only offers priced in it are planned, on that option.
+      const planOption = (product: Product): PricingOptionView | undefined => (
+        outcomeTargetCostPer
+          ? pricingOptionInCurrency(product, outcomeTargetCostPer.currency)
+          : product.pricing_options[0] as PricingOptionView | undefined
+      );
+      const planCurrency = outcomeTargetCostPer?.currency
+        ?? products[0]!.pricing_options[0]?.currency
+        ?? 'USD';
+      const minSpendOf = (product: Product) => planOption(product)?.min_spend_per_package ?? 0;
+      const filtersRecord = isRecord(req.filters) ? req.filters as Record<string, unknown> : undefined;
+      const budgetRangeCurrency = isRecord(filtersRecord?.budget_range) ? filtersRecord.budget_range.currency : undefined;
+      const budgetCeiling = budgetRangeCurrency === undefined || budgetRangeCurrency === planCurrency
+        ? outcomeTargetBudgetRange(filtersRecord)?.max
+        : undefined;
+      const planMinimum = (planned: Product[]) => Math.max(
+        Math.min(1_000, budgetCeiling ?? 1_000),
+        Math.max(0, ...planned.map(minSpendOf)) * planned.length,
+      );
+      const pricedProducts = products.filter(product => {
+        const option = planOption(product);
+        return option !== undefined && (option.currency ?? 'USD') === planCurrency;
+      });
+      const plannedProducts = pricedProducts
+        .filter(product => budgetCeiling === undefined || minSpendOf(product) <= budgetCeiling)
+        .slice(0, MAX_CRITERIA_PLAN_PRODUCTS);
+      while (budgetCeiling !== undefined && plannedProducts.length > 1 && planMinimum(plannedProducts) > budgetCeiling) {
+        plannedProducts.pop();
+      }
+      if (plannedProducts.length === 0) {
+        emptiedByCriterion ??= pricedProducts.length === 0
+          ? 'outcome_target.cost_per.currency'
+          : 'offer_filters.budget_range';
+      } else {
+        const minimum = planMinimum(plannedProducts);
+        const recommended = Math.max(minimum, Math.min(10_000, budgetCeiling ?? Infinity));
+        const allocationPercentage = 100 / plannedProducts.length;
+        const sortedProductIds = plannedProducts.map(product => product.product_id).sort();
+        proposals = [{
+          proposal_id: `criteria_match_${createHash('sha256').update(sortedProductIds.join('\0')).digest('hex').slice(0, 16)}`,
+          name: plannedProducts.length === 1
+            ? `Proposal for ${plannedProducts[0]!.name}`
+            : 'Proposal for products matching the requested criteria',
+          description: 'Indicative plan across the offers that satisfy the requested product and campaign criteria.',
+          brief_alignment: typeof brief === 'string'
+            ? brief
+            : 'Matches the offers satisfying the requested campaign criteria.',
+          total_budget_guidance: {
+            min: minimum,
+            recommended,
+            currency: planCurrency,
+          },
+          allocations: plannedProducts.map(product => ({
+            product_id: product.product_id,
+            allocation_percentage: allocationPercentage,
+            rationale: 'Offer satisfying the requested campaign criteria.',
+            pricing_option_id: planOption(product)!.pricing_option_id,
+          })) as Proposal['allocations'],
+        } as Proposal];
+      }
     }
     if (exactProductIds) {
       proposals = proposals.filter(proposal => proposal.allocations.every(allocation => (
@@ -13054,6 +13223,9 @@ async function handleGetProductsUnlocked(
         }
       }
     }
+    // Plans synthesized above did not exist when the requested aggregate cap
+    // was bound, and the canonical commercial terms read it from there.
+    proposals = bindRequestedMediaBuyFrequencyCap(proposals);
     const key = typeof (req as unknown as Record<string, unknown>).idempotency_key === 'string'
       ? (req as unknown as Record<string, unknown>).idempotency_key as string
       : 'unkeyed';
@@ -13190,10 +13362,24 @@ async function handleGetProductsUnlocked(
       );
     }
     if (proposals.length === 0) {
+      // Name the constraint the buyer has to change; a bare rejection leaves
+      // a learner guessing which of several criteria the seller could not meet.
+      const unplannableOutcome = outcomeTargetCostPer !== undefined && proposalsBeforeCostPlan > 0;
       return {
         status: 'rejected',
-        reason: 'The seller could not construct a proposal satisfying the supplied product and campaign criteria.',
-        suggestions: ['Broaden the product selection or campaign constraints and retry with a new idempotency key.'],
+        reason: emptiedByCriterion
+          ? `The seller could not construct a proposal: no offer satisfies criteria.${emptiedByCriterion} together with the other supplied criteria.`
+          : unplannableOutcome
+            ? 'The seller could not construct a proposal: within the supplied budget, criteria.outcome_target.cost_per plans less than one result, or cannot meet each offer\'s minimum spend, on every matching offer.'
+            : 'The seller could not construct a proposal satisfying the supplied product and campaign criteria.',
+        suggestions: emptiedByCriterion
+          ? [
+              `Remove or broaden criteria.${emptiedByCriterion} and retry with a new idempotency key.`,
+              `Call list_products without criteria.${emptiedByCriterion} to see what each offer declares.`,
+            ]
+          : unplannableOutcome
+            ? ['Raise the budget or the cost_per target in criteria.outcome_target and retry with a new idempotency key.']
+            : ['Broaden the product selection or campaign constraints and retry with a new idempotency key.'],
       } as GetProductsRejectedResponse;
     }
   }
@@ -18037,10 +18223,18 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     : 0;
 
   // Read simulated delivery upfront so vendor_metric_values can be spread into
-  // per-package entries inside the map below.
-  const simDeliveryEarly = req.start_date || req.end_date
+  // per-package entries inside the map below. A read-through compliance
+  // fixture may carry its own default delivery state (for example a broadcast
+  // buy whose audience is still maturing). Session buys never read it.
+  const complianceFixtureDelivery = session.mediaBuys.has(mb.mediaBuyId)
+    ? undefined
+    : getComplianceDeliverySimulation(
+      mb.mediaBuyId,
+      req.start_date || req.end_date ? { start: reportingStart, end: reportingEnd } : undefined,
+    );
+  const simDeliveryEarly = (req.start_date || req.end_date
     ? getDeliverySimulationForPeriod(session, mb.mediaBuyId, reportingStart, reportingEnd, reportingTimezone)
-    : getDeliverySimulation(session, mb.mediaBuyId);
+    : getDeliverySimulation(session, mb.mediaBuyId)) ?? complianceFixtureDelivery;
 
   // Build per-package metrics
   let totalImpressions = 0;
@@ -18408,10 +18602,25 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
         ? injectedRowsBreakdown('by_installment_property', injectedRows?.installmentPropertyDelivery, installmentPropertyDimension)
         : {}),
     };
+    // Compliance fixture packages carry internal product labels that do not
+    // resolve against the catalog; their reporting facts live with the fixture.
+    const fixtureProductReporting = product ? undefined : getComplianceFixtureProductReporting(pkg.productId);
+    const productCoverage = isRecord((product as unknown as Record<string, unknown> | undefined)?.ext)
+      ? ((product as unknown as { ext: { training?: { coverage?: { countries?: string[] } } } }).ext.training?.coverage?.countries)
+      : undefined;
+    const geoDeviceKeywordBreakdown = dimensionalDeliveryBreakdowns({
+      reporting: (reporting as unknown as Record<string, unknown> | undefined) ?? fixtureProductReporting?.reportingCapabilities,
+      channels: channels ?? fixtureProductReporting?.channels,
+      coverageCountries: productCoverage ?? fixtureProductReporting?.coverageCountries,
+      targeting: pkg.targeting as unknown as Record<string, unknown> | undefined,
+      totals: { impressions, spend, clicks },
+      dimensions: req.reporting_dimensions,
+    });
     const packageMetricsWithBreakdown = {
       ...packageDeliveryMetrics,
       ...formatBreakdown,
       ...injectedPropertyBreakdown,
+      ...geoDeviceKeywordBreakdown,
     };
     return {
       package_id: pkg.packageId,

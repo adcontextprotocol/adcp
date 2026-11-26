@@ -55,6 +55,12 @@ type TrainingProduct = Omit<Product,
 };
 import { PUBLISHERS } from './publishers.js';
 import { productSellsSelectableProperties } from './property-list-targeting.js';
+import {
+  deliveryDeviceTypes,
+  KEYWORD_MATCH_TYPES,
+  sellsKeywordInventory,
+  TRAINING_GEO_BREAKDOWN_SUPPORT,
+} from './delivery-breakdowns.js';
 import { FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAgentUrl } from './config.js';
 import { createLogger } from '../logger.js';
@@ -989,6 +995,9 @@ function buildProduct(
       available_metrics: pub.reportingMetrics as NonNullable<Product['reporting_capabilities']>['available_metrics'],
       date_range_support: 'date_range' as const,
       supports_creative_breakdown: true,
+      ...(!offer && { supports_geo_breakdown: structuredClone(TRAINING_GEO_BREAKDOWN_SUPPORT) }),
+      ...(!offer && deliveryDeviceTypes(template.channels).length > 0 && { supports_device_type_breakdown: true }),
+      ...(!offer && sellsKeywordInventory(template.channels) && { supports_keyword_breakdown: true }),
       // vendor_metrics is in the published spec (#3492) but the @adcp/client Product
       // type used here lags pending an SDK rebuild; cast through unknown until the
       // type catches up.
@@ -1007,6 +1016,12 @@ function buildProduct(
       // Broad legacy package-cap promise within the seller-wide
       // media_buy.frequency_capping limits, including update support.
       frequency_cap: true,
+      // Search and retail-media inventory is bought by keyword. Matches the
+      // seller-wide media_buy.execution.targeting declaration.
+      ...(sellsKeywordInventory(template.channels) && {
+        keyword_targets: { supported_match_types: [...KEYWORD_MATCH_TYPES] },
+        negative_keywords: { supported_match_types: [...KEYWORD_MATCH_TYPES] },
+      }),
     },
     ...(pub.catalogTypes?.length && { catalog_types: pub.catalogTypes as unknown as Product['catalog_types'] }),
     ...(metricOptimization && { metric_optimization: metricOptimization }),
