@@ -89,4 +89,53 @@ describe('specialist certification catalog', () => {
     expect(mocks.startModule).toHaveBeenCalledWith(USER_ID, 'S6');
     expect(mocks.createAttempt).toHaveBeenCalledWith(USER_ID, 'S', undefined, 'S6');
   });
+
+  describe('prerequisite redirect with an explanation-only key concept', () => {
+    const lessonPlan = {
+      objectives: ['Objective one'],
+      key_concepts: [
+        { topic: 'Notes concept', teaching_notes: 'Teaching notes text' },
+        { topic: 'Relationship types', explanation: 'Explanation-only text for the redirect' },
+        { topic: 'Empty concept' },
+      ],
+      discussion_prompts: [],
+    };
+    const missing = [{ moduleId: 'A1', status: 'not_started' }];
+
+    function expectRedirect(result: unknown) {
+      expect(result).toContain('Notes concept**: Teaching notes text');
+      expect(result).toContain('Relationship types**: Explanation-only text for the redirect');
+      expect(result).toContain('Empty concept**: ');
+      expect(mocks.startModule).not.toHaveBeenCalled();
+    }
+
+    it('start_certification_module returns the redirect instead of throwing', async () => {
+      mocks.checkPrerequisites.mockResolvedValue({ met: false, missing });
+      mocks.getModule.mockResolvedValue({
+        id: 'C2', track_id: 'C', title: 'Buyer', description: 'Desc', format: 'interactive',
+        is_free: true, lesson_plan: lessonPlan, exercise_definitions: [],
+      });
+      const handler = createCertificationToolHandlers(memberContext()).get('start_certification_module');
+
+      const result = await handler?.({ module_id: 'C2' });
+
+      expect(result).not.toContain('Failed');
+      expectRedirect(result);
+      expect(result).toContain('The learner needs A1 first');
+    });
+
+    it('start_certification_exam returns the redirect instead of throwing', async () => {
+      mocks.checkPrerequisites.mockResolvedValue({ met: false, missing });
+      mocks.getModule.mockResolvedValue({
+        id: 'S6', track_id: 'S', title: 'Security', description: 'Desc', format: 'capstone',
+        lesson_plan: lessonPlan, exercise_definitions: [],
+      });
+      const handler = createCertificationToolHandlers(memberContext()).get('start_certification_exam');
+
+      const result = await handler?.({ module_id: 'S6' });
+
+      expectRedirect(result);
+      expect(result).toContain('The learner needs to complete A1 first');
+    });
+  });
 });
