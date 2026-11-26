@@ -523,6 +523,104 @@ describe('simulation', () => {
     });
   });
 
+  describe('traffic-following pacing', () => {
+    const exactSeed = (): SeasonSeed => {
+      const seed = structuredClone(ADSERVER_SEASON);
+      seed.forecast_error = { bias: 0, day_sigma: 0, cell_sigma: 0 };
+      seed.events = [];
+      return seed;
+    };
+    const EXACT = exactSeed();
+    const bookedAt = at('2026-12-31T12:00:00Z');
+    const starts = { sunday: '2027-01-03T00:00:00Z', wednesday: '2027-01-06T00:00:00Z' } as const;
+    const flightFrom = (iso: string) => ({
+      product_id: 'ros_display_guaranteed',
+      flight_start_ms: at(iso),
+      flight_end_ms: at(iso) + 30 * 86_400_000,
+    });
+    const runThrough = (sim: InventorySimulation, iso: string) => sim.advanceTo(at(iso) + 31 * 86_400_000);
+
+    for (const [name, iso] of Object.entries(starts)) {
+      it(`delivers a lone run-of-site goal in full with exact traffic, starting on a ${name}`, () => {
+        const sim = InventorySimulation.create(EXACT, bookedAt);
+        const available = sim.forecast(flightFrom(iso), bookedAt).available;
+        sim.book({ ...flightFrom(iso), booking_id: 'a', budget: 10_000_000, impression_goal: available }, bookedAt);
+        runThrough(sim, iso);
+        expect(sim.booking('a').delivered.impressions).toBeGreaterThanOrEqual(available - 30);
+        expect(sim.booking('a').delivered.impressions).toBeLessThanOrEqual(available);
+      });
+
+      it(`sells the second booking exactly what the first leaves, starting on a ${name}`, () => {
+        const sim = InventorySimulation.create(EXACT, bookedAt);
+        const whole = sim.forecast(flightFrom(iso), bookedAt).available;
+        const a = Math.floor(whole * 0.75);
+        sim.book({ ...flightFrom(iso), booking_id: 'a', budget: 10_000_000, impression_goal: a }, bookedAt);
+        const available = sim.forecast(flightFrom(iso), bookedAt).available;
+        expect(Math.abs(available - (whole - a))).toBeLessThanOrEqual(2);
+        sim.book({ ...flightFrom(iso), booking_id: 'b', budget: 10_000_000, impression_goal: available }, bookedAt);
+        runThrough(sim, iso);
+        expect(sim.booking('a').delivered.impressions).toBeGreaterThanOrEqual(a - 30);
+        expect(sim.booking('b').delivered.impressions).toBeGreaterThanOrEqual(available - 30);
+      });
+    }
+
+    it('re-plans each day in proportion to the traffic left, so a shortfall is made up by the flight end', () => {
+      const shape = [0.6, 1, 1.2, 1.2, 1, 1, 0.8];
+      const sim = InventorySimulation.create(scarceSeed({ traffic: { weekday_shape: shape } }), now);
+      sim.book({ booking_id: 'g', product_id: 'banner_guaranteed', ...flight, budget: 10_000, impression_goal: 200_000 }, now);
+      sim.advanceTo(at('2027-01-31T00:00:00Z'));
+      const booking = sim.booking('g');
+      const forecastOf = (day: number) => [...sim.traffic.day(day).forecast.values()].reduce((sum, value) => sum + value, 0);
+      let left = 200_000;
+      for (const record of booking.days) {
+        const day = sim.traffic.calendar.dayOf(at(`${record.date}T00:00:00Z`));
+        let sumF = 0;
+        for (let d = day; d < booking.flight_end_day; d++) sumF += forecastOf(d);
+        const expected = Math.max(0, Math.min(left, Math.ceil((left * forecastOf(day)) / sumF - 1e-9)));
+        expect(record.target).toBe(expected);
+        left -= record.impressions;
+      }
+      const target = (date: string) => booking.days.find(record => record.date === date)!.target!;
+      // 2027-01-03 is a Sunday (0.6), 2027-01-05 a Tuesday (1.2): before the outage the plan follows the shape.
+      expect(target('2027-01-05') / target('2027-01-03')).toBeCloseTo(2, 1);
+      const perUnit = (date: string) => target(date) / forecastOf(sim.traffic.calendar.dayOf(at(`${date}T00:00:00Z`)));
+      expect(perUnit('2027-01-11')).toBeGreaterThan(perUnit('2027-01-05'));
+      expect(booking.delivered.impressions).toBe(200_000);
+    });
+
+    it('targets everything left on the last in-season day of a flight that runs past the season', () => {
+      const sim = InventorySimulation.create(scarceSeed(), at('2027-02-20T12:00:00Z'));
+      const bookNow = at('2027-02-20T12:00:00Z');
+      sim.book({
+        booking_id: 'g',
+        product_id: 'banner_guaranteed',
+        flight_start_ms: at('2027-02-25T00:00:00Z'),
+        flight_end_ms: at('2027-03-10T00:00:00Z'),
+        budget: 100_000,
+        impression_goal: 40_000,
+      }, bookNow);
+      sim.advanceTo(at('2027-03-11T00:00:00Z'));
+      const days = sim.booking('g').days;
+      const last = days.find(day => day.date === '2027-03-01')!;
+      expect(last.target).toBe(40_000 - days.filter(day => day.date < '2027-03-01').reduce((sum, day) => sum + day.impressions, 0));
+      expect(sim.booking('g').delivered.impressions).toBe(40_000);
+    });
+
+    it('reports a traffic-weighted pace, so an on-plan booking reads about 1 every day', () => {
+      const sim = InventorySimulation.create(EXACT, bookedAt);
+      const iso = starts.sunday;
+      const available = sim.forecast(flightFrom(iso), bookedAt).available;
+      sim.book({ ...flightFrom(iso), booking_id: 'a', budget: 10_000_000, impression_goal: available }, bookedAt);
+      for (let offset = 1; offset <= 30; offset++) {
+        const nowMs = at(iso) + offset * 86_400_000 + 3_600_000;
+        const report = sim.delivery('a', nowMs);
+        if (report.expected_impressions === undefined) continue;
+        const index = report.totals.impressions / report.expected_impressions;
+        expect(Math.abs(index - 1)).toBeLessThan(0.001);
+      }
+    });
+  });
+
   it('pauses and cancels', () => {
     const sim = InventorySimulation.create(scarceSeed(), now);
     sim.book({ booking_id: 'g', product_id: 'banner_guaranteed', ...flight, budget: 10_000, impression_goal: 100_000 }, now);

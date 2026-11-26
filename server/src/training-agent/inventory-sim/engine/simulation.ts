@@ -107,8 +107,8 @@ export interface DeliveryReport {
   reported_through_day?: number;
   totals: DeliveryMetrics;
   days: BookingDay[];
-  /** Goal bookings: impressions a straight-line pace would have delivered
-   * by the reported day. */
+  /** Goal bookings: impressions an even pace against forecast traffic would
+   * have delivered by the reported day. */
   expected_impressions?: number;
 }
 
@@ -151,6 +151,11 @@ function overlaps(a: readonly number[], b: ReadonlySet<number>): boolean {
 export class InventorySimulation {
   readonly traffic: SeasonTraffic;
   private readonly cellCache = new Map<string, number[]>();
+  /** Per booking id, running totals of forecast impressions over the booking's
+   * cells: entry d is the sum over days [0, d). Cells never change after
+   * booking, so only the flight end is read live. An as-of forecast reader
+   * has to key this by as-of day or bypass it. */
+  private readonly forecastPrefix = new Map<string, Float64Array>();
 
   /** `products` are sold beside the seed's own, on its placements. */
   constructor(readonly seed: SeasonSeed, readonly state: SimulationState, products: readonly SeedProduct[] = []) {
@@ -288,6 +293,18 @@ export class InventorySimulation {
     return booking;
   }
 
+  private forecastTotals(booking: Pick<Booking, 'booking_id' | 'product_id' | 'targeting'>): Float64Array {
+    let prefix = this.forecastPrefix.get(booking.booking_id);
+    if (!prefix) {
+      const cells = this.cellsFor(booking);
+      const { days } = this.traffic.calendar;
+      prefix = new Float64Array(days + 1);
+      for (let d = 0; d < days; d++) prefix[d + 1] = prefix[d] + supplyOf(this.traffic.day(d).forecast, cells);
+      this.forecastPrefix.set(booking.booking_id, prefix);
+    }
+    return prefix;
+  }
+
   private runDay(day: number): void {
     const { calendar } = this.traffic;
     const tables = this.traffic.day(day);
@@ -305,9 +322,18 @@ export class InventorySimulation {
     const goals: GoalRequest[] = [];
     for (const booking of serving.filter(b => b.kind === 'goal')) {
       const left = Math.max(0, (booking.impression_goal ?? 0) - booking.delivered.impressions);
-      const daysLeft = booking.flight_end_day - day;
       const affordable = Math.floor(((booking.budget - booking.delivered.spend) * 1000) / booking.cpm + 1e-9);
-      const target = Math.max(0, Math.min(Math.ceil(left / daysLeft), affordable));
+      // What is left is spread over the days [day, end) in proportion to forecast
+      // traffic. The even split when the window has no forecast is defensive: no
+      // seed reaches it, but installment cells can have none on days they serve.
+      const prefix = this.forecastTotals(booking);
+      const end = Math.min(booking.flight_end_day, calendar.days);
+      const forecastToday = prefix[day + 1] - prefix[day];
+      const sumF = prefix[end] - prefix[day];
+      const planned = sumF > 0
+        ? Math.ceil((left * forecastToday) / sumF - 1e-9)
+        : Math.ceil(left / (booking.flight_end_day - day));
+      const target = Math.max(0, Math.min(left, planned, affordable));
       targets.set(booking.booking_id, target);
       goals.push({ id: booking.booking_id, cells: this.cellsFor(booking), target });
     }
@@ -573,7 +599,13 @@ export class InventorySimulation {
     if (booking.kind === 'goal' && reportedThrough !== undefined) {
       const firstServe = Math.max(booking.confirmed_day + 1, booking.flight_start_day);
       const span = booking.flight_end_day - firstServe;
-      expected = Math.round(((booking.impression_goal ?? 0) * (reportedThrough + 1 - firstServe)) / Math.max(1, span));
+      const prefix = this.forecastTotals(booking);
+      const end = Math.min(booking.flight_end_day, this.traffic.calendar.days);
+      const from = Math.min(Math.max(0, firstServe), end);
+      const planned = prefix[end] - prefix[from];
+      const through = prefix[Math.min(reportedThrough + 1, end)] - prefix[from];
+      const fraction = planned > 0 ? through / planned : (reportedThrough + 1 - firstServe) / Math.max(1, span);
+      expected = Math.round((booking.impression_goal ?? 0) * Math.min(1, fraction));
     }
     return {
       booking: structuredClone(summary),
