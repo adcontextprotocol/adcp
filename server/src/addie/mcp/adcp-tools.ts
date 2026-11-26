@@ -1065,7 +1065,7 @@ const getAdcpCapabilitiesTool: AddieTool = {
       debug: { type: 'boolean' },
       adcp_version: {
         type: 'string',
-        description: 'Optional release pin, for example "3.2"',
+        description: 'Optional release pin, for example "3.3"',
       },
       adcp_major_version: {
         type: 'integer',
