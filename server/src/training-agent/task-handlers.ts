@@ -2844,12 +2844,36 @@ function applyPricingCurrenciesFilterToProducts(products: Product[], currencies:
     .filter((product): product is Product => product !== null);
 }
 
+const FORMAT_ID_PARAMETERS = ['width', 'height', 'duration_ms', 'pixel_ratio'] as const;
+
+// A parameterized format ID names one variant of a template. A declaration
+// that carries a different value for a requested parameter is a different
+// variant; a declaration without that parameter is the template, which
+// accepts it (specs/legacy-compact-lifecycle-compatibility.md, `filters.format_ids`).
+// `pixel_ratio` is the exception: a sized format ID that omits it is the 1x
+// variant, not a template (`core/format-id.json`).
+function formatIdParameter(formatId: FormatID, parameter: typeof FORMAT_ID_PARAMETERS[number]): unknown {
+  const value = (formatId as unknown as Record<string, unknown>)[parameter];
+  if (parameter === 'pixel_ratio' && value === undefined
+      && formatId.width !== undefined && formatId.height !== undefined) return 1;
+  return value;
+}
+
+function formatIdParametersMatch(actual: FormatID, wanted: FormatID): boolean {
+  return FORMAT_ID_PARAMETERS.every(parameter => {
+    const requested = formatIdParameter(wanted, parameter);
+    const declared = formatIdParameter(actual, parameter);
+    return requested === undefined || declared === undefined || declared === requested;
+  });
+}
+
 function productMatchesAnyFormatId(product: Product, requestedFormatIds: FormatID[]): boolean {
   if (!Array.isArray(product.format_ids) || product.format_ids.length === 0) return false;
   return product.format_ids.some(actual => {
     if (!actual?.id) return false;
     return requestedFormatIds.some(wanted => {
       if (!wanted?.id || actual.id !== wanted.id) return false;
+      if (!formatIdParametersMatch(actual, wanted)) return false;
       if (!wanted.agent_url || !actual.agent_url) return true;
       return canonicalizeAgentUrl(actual.agent_url) === canonicalizeAgentUrl(wanted.agent_url);
     });
