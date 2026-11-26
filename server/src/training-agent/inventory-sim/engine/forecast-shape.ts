@@ -12,6 +12,7 @@ export interface ForecastRange {
 
 export interface AdcpDeliveryForecast {
   points: Array<{
+    label?: string;
     budget?: number;
     metrics: Record<string, ForecastRange>;
   }>;
@@ -24,7 +25,7 @@ export interface AdcpDeliveryForecast {
 
 export function toAdcpForecast(
   result: ForecastResult,
-  options: { guaranteed: boolean; budget?: number; generatedAt: string; validUntil: string },
+  options: { guaranteed: boolean; budget?: number; label?: string; generatedAt: string; validUntil: string },
 ): AdcpDeliveryForecast {
   const metrics: Record<string, ForecastRange> = {
     impressions: { low: result.low, mid: result.impressions, high: result.high },
@@ -33,7 +34,7 @@ export function toAdcpForecast(
   if (result.cpm !== undefined) metrics.spend = { mid: result.spend };
   if (result.completed_views > 0) metrics.completed_views = { mid: result.completed_views };
   return {
-    points: [{ ...(options.budget !== undefined && { budget: options.budget }), metrics }],
+    points: [{ ...(options.label !== undefined && { label: options.label }), ...(options.budget !== undefined && { budget: options.budget }), metrics }],
     forecast_range_unit: options.budget !== undefined ? 'spend' : 'availability',
     method: options.guaranteed ? 'guaranteed' : 'modeled',
     currency: result.currency,

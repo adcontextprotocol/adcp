@@ -1073,14 +1073,121 @@ describe('inventory tenants', () => {
         }
       });
 
-      const bookAt = async (key: string, pricingOptionId: string, budget: number) => {
+      const seedOne = async (productId: string, delivery_type: string, options: Record<string, unknown>) => {
+        expect((await controller('seed_product', {
+          product_id: productId,
+          fixture: {
+            delivery_type,
+            channels: ['display'],
+            name: productId,
+            format_options: [{ format_option_id: 'display_300x250', format_kind: 'image', params: { width: 300, height: 250 } }],
+          },
+        })).success).toBe(true);
+        for (const [id, price] of Object.entries(options)) {
+          expect((await controller('seed_pricing_option', {
+            product_id: productId, pricing_option_id: id, fixture: { pricing_model: 'cpm', currency: 'USD', ...(delivery_type === 'guaranteed' ? { fixed_price: price } : { floor_price: price }) },
+          })).success).toBe(true);
+        }
+      };
+      const forecastOf = async (productId: string, budget: number) => {
+        const offer = await call(tenant, 'get_products', {
+          buying_mode: 'wholesale', account: ACCOUNT, brand: BRAND, filters: { ...flight, budget_range: { max: budget } },
+        }, TOKEN_PRICE);
+        expectCanonical('get_products', offer);
+        return offer.products.find((product: Structured) => product.product_id === productId).forecast as Structured;
+      };
+      const bookAt = async (key: string, pricingOptionId: string, budget: number, productId = 'seeded_two_rates') => {
         const buy = await call(tenant, 'create_media_buy', {
           idempotency_key: key, account: ACCOUNT, brand: BRAND, ...times,
-          packages: [{ product_id: 'seeded_two_rates', pricing_option_id: pricingOptionId, budget }],
+          packages: [{ product_id: productId, pricing_option_id: pricingOptionId, budget }],
         }, TOKEN_PRICE);
         expectCanonical('create_media_buy', buy);
         return buy;
       };
+
+      it('prices a single-rate forecast without a label, and booking matches it', async () => {
+        await seedOne('seeded_one_rate', 'guaranteed', { cpm_only: 10 });
+        const forecast = await forecastOf('seeded_one_rate', 1000);
+        expect(forecast.forecast_range_unit).toBe('spend');
+        expect(forecast.points[0].budget).toBe(1000);
+        expect(forecast.points[0].label).toBeUndefined();
+        expect(forecast.points[0].metrics.impressions.mid).toBe(100_000);
+        expect(forecast.points[0].metrics.spend.mid).toBe(1000);
+        const buy = await bookAt('inventory-forecast-one-rate-001', 'cpm_only', 1000, 'seeded_one_rate');
+        expect(buy.packages[0].impressions).toBe(forecast.points[0].metrics.impressions.mid);
+      });
+
+      it('prices the forecast without a label when several options share one rate', async () => {
+        await seedOne('seeded_equal_rates', 'guaranteed', { cpm_a: 10, cpm_b: 10 });
+        const forecast = await forecastOf('seeded_equal_rates', 1000);
+        expect(forecast.forecast_range_unit).toBe('spend');
+        expect(forecast.points[0].budget).toBe(1000);
+        expect(forecast.points[0].label).toBeUndefined();
+        expect(forecast.points[0].metrics.spend.mid).toBe(1000);
+        const buy = await bookAt('inventory-forecast-equal-rates-1', 'cpm_b', 1000, 'seeded_equal_rates');
+        expect(buy.packages[0].impressions).toBe(forecast.points[0].metrics.impressions.mid);
+      });
+
+      it('labels an auction forecast with the first floor it is priced at', async () => {
+        await seedOne('seeded_two_floors', 'non_guaranteed', { floor_one: 1, floor_ten: 10 });
+        const forecast = await forecastOf('seeded_two_floors', 1000);
+        expect(forecast.forecast_range_unit).toBe('spend');
+        expect(forecast.points[0].budget).toBe(1000);
+        expect(forecast.points[0].label).toBe('Priced at pricing option floor_one');
+        expect(forecast.points[0].metrics.spend).toBeDefined();
+      });
+
+      it('labels the forecast with the full sentence when it is exactly 128 characters', async () => {
+        const firstId = 'p'.repeat(103);
+        await seedOne('seeded_label_103', 'guaranteed', { [firstId]: 1, cpm_ten_label: 10 });
+        const forecast = await forecastOf('seeded_label_103', 1000);
+        expect(forecast.points[0].label).toBe(`Priced at pricing option ${firstId}`);
+        expect(forecast.points[0].label).toHaveLength(128);
+        expect(forecast.points[0].metrics.impressions.mid).toBe(1_000_000);
+      });
+
+      it('falls back to the bare id when the sentence would pass 128 characters', async () => {
+        const firstId = 'q'.repeat(104);
+        await seedOne('seeded_label_104', 'guaranteed', { [firstId]: 1, cpm_ten_label: 10 });
+        const forecast = await forecastOf('seeded_label_104', 1000);
+        expect(forecast.points[0].label).toBe(firstId);
+        expect(forecast.points[0].metrics.impressions.mid).toBe(1_000_000);
+      });
+
+      it('labels the forecast by position when the first option\'s id is too long to name', async () => {
+        await seedOne('seeded_label_129', 'guaranteed', { ['r'.repeat(129)]: 1, ['s'.repeat(129)]: 10 });
+        const forecast = await forecastOf('seeded_label_129', 100);
+        expect(forecast.points[0].label).toBe('Priced at the first pricing option listed');
+        expect(forecast.points[0].metrics.impressions.mid).toBe(100_000);
+        expect(forecast.points[0].metrics.spend.mid).toBe(100);
+        const buy = await bookAt('inventory-forecast-long-id-0001', 'r'.repeat(129), 100, 'seeded_label_129');
+        expect(buy.packages[0].impressions).toBe(forecast.points[0].metrics.impressions.mid);
+      });
+
+      it('prices an auction forecast at the placements\' lowest floor when the first option has none', async () => {
+        expect((await controller('seed_product', {
+          product_id: 'seeded_no_floor',
+          fixture: {
+            delivery_type: 'non_guaranteed',
+            channels: ['display'],
+            name: 'seeded_no_floor',
+            format_options: [{ format_option_id: 'display_300x250', format_kind: 'image', params: { width: 300, height: 250 } }],
+          },
+        })).success).toBe(true);
+        for (const [id, fixture] of [
+          ['floor_none', { pricing_model: 'cpm', currency: 'USD' }],
+          ['floor_ten', { pricing_model: 'cpm', currency: 'USD', floor_price: 10 }],
+        ] as const) {
+          const seeded = await controller('seed_pricing_option', { product_id: 'seeded_no_floor', pricing_option_id: id, fixture });
+          expect(seeded.success, JSON.stringify(seeded).slice(0, 300)).toBe(true);
+        }
+        const forecast = await forecastOf('seeded_no_floor', 1000);
+        expect(forecast.points[0].label).toBe('Priced at pricing option floor_none');
+        expect(forecast.points[0].metrics.spend.mid).toBe(1000);
+        // A $10 floor would buy exactly 100,000 at most.
+        expect(forecast.points[0].metrics.impressions.mid).toBeGreaterThan(100_000);
+      });
+
       const delivered = async (mediaBuyId: string) => {
         const delivery = await call(tenant, 'get_media_buy_delivery', { account: ACCOUNT, media_buy_ids: [mediaBuyId] }, TOKEN_PRICE);
         expectCanonical('get_media_buy_delivery', delivery);
@@ -1089,10 +1196,18 @@ describe('inventory tenants', () => {
 
       it('derives the goal and spend from the selected option, not the first', async () => {
         const budget = 1000;
+        // Discovery prices the forecast at the first option and names it.
+        const forecast = await forecastOf('seeded_two_rates', budget);
+        expect(forecast.forecast_range_unit).toBe('spend');
+        expect(forecast.points[0].budget).toBe(budget);
+        expect(forecast.points[0].label).toBe('Priced at pricing option cpm_one');
+        expect(forecast.points[0].metrics.spend.mid).toBe(budget);
+        expect(forecast.points[0].metrics.impressions.mid).toBe(1_000_000);
         const second = await bookAt('inventory-goal-price-second-1', 'cpm_ten', budget);
         expect(second.packages[0].impressions).toBe(Math.floor((budget * 1000) / 10));
         const first = await bookAt('inventory-goal-price-first-01', 'cpm_one', budget);
         expect(first.packages[0].impressions).toBe(Math.floor((budget * 1000) / 1));
+        expect(first.packages[0].impressions).toBe(forecast.points[0].metrics.impressions.mid);
 
         const clock = await controller('sandbox_clock', { operation: 'advance_time', by: 'P40D' });
         expect(clock.success, JSON.stringify(clock).slice(0, 500)).toBe(true);

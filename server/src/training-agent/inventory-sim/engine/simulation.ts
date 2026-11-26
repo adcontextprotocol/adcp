@@ -76,6 +76,9 @@ export interface ForecastQuery {
   flight_start_ms: number;
   flight_end_ms: number;
   budget?: number;
+  /** Guaranteed products: the rate of the pricing option forecast. Defaults
+   * to the product's rate. */
+  rate_cpm?: number;
   bid_cpm?: number;
 }
 
@@ -545,7 +548,7 @@ export class InventorySimulation {
       completed += free * rates.completion_rate;
       conversions += free * rates.click_rate * rates.conversion_rate;
     });
-    const cpm = product.delivery_type === 'guaranteed' ? product.rate_cpm : query.bid_cpm;
+    const cpm = product.delivery_type === 'guaranteed' ? query.rate_cpm ?? product.rate_cpm : query.bid_cpm;
     const affordable = query.budget !== undefined && cpm ? Math.floor((query.budget * 1000) / cpm) : Number.POSITIVE_INFINITY;
     const impressions = Math.min(available, affordable);
     const scale = available > 0 ? impressions / available : 0;
