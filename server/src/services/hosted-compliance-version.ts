@@ -16,10 +16,10 @@ export const DEFAULT_HOSTED_COMPLIANCE_LINE = '3.0';
 // stable alias, then its RC and beta aliases (each followed by every bundled
 // checkpoint of that channel), so an agent that advertises a stable line is
 // graded on that line's GA bundle before any of its prereleases. Aliases that
-// do not resolve yet (for example "3.2" before 3.2.1 is registered in
+// do not resolve yet (for example "3.3" before 3.3.0 is registered in
 // published-versions.json) are skipped. The default line is the unpinned
 // fallback.
-export const HOSTED_COMPLIANCE_PREFERRED_LINES = ['3.2', '3.1'] as const;
+export const HOSTED_COMPLIANCE_PREFERRED_LINES = ['3.3', '3.2', '3.1'] as const;
 export const HOSTED_COMPLIANCE_TARGET_PREFERENCE: readonly string[] = Object.freeze([
   ...HOSTED_COMPLIANCE_PREFERRED_LINES.flatMap(line => [line, `${line}-rc`, `${line}-beta`]),
   DEFAULT_HOSTED_COMPLIANCE_LINE,

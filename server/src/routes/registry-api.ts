@@ -692,7 +692,7 @@ const badgeEligibilityMetadata = (eligibleVersions: readonly string[]) => ({
   badge_eligible_adcp_versions: [...eligibleVersions],
 });
 const INVALID_COMPLIANCE_TARGET_MESSAGE =
-  "Invalid compliance_target. Use 3.2, 3.1, 3.0, 3.2-rc, 3.2-beta, or an exact bundled version.";
+  "Invalid compliance_target. Use 3.3, 3.2, 3.1, 3.0, 3.3-rc, 3.3-beta, or an exact bundled version.";
 
 class InvalidComplianceTargetError extends Error {}
 
@@ -4108,7 +4108,7 @@ registry.registerPath({
     params: z.object({
       encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
       role: BadgeRoleSchema.openapi({ description: "Canonical badge role" }),
-      version: z.string().openapi({ description: "AdCP release as MAJOR.MINOR (e.g. '3.1', '3.2')" }),
+      version: z.string().openapi({ description: "AdCP release as MAJOR.MINOR (e.g. '3.2', '3.3')" }),
     }),
   },
   responses: {
@@ -4584,10 +4584,10 @@ registry.registerPath({
               provenance: ComplianceRunProvenanceSchema.nullable().optional(),
               run_id: z.string().optional().openapi({ description: "Compliance run id written by this refresh. Use with /compliance/diagnostics?run_id=... to inspect failing-step wire evidence." }),
               test_session_id: z.string().optional().openapi({ description: "Fresh test session id used for the compliance run. Useful when matching seller-side logs to the refresh." }),
-              requested_compliance_target: z.string().optional().openapi({ description: "Requested compliance target before alias resolution, e.g. 3.2, 3.1, 3.0, 3.2-rc, or 3.2-beta. Present when `ran` is true." }),
-              adcp_version: z.string().optional().openapi({ description: "Concrete AdCP compliance bundle version used for the run, e.g. 3.2.1, 3.1.24, or 3.2.0-rc.7. Present when `ran` is true." }),
+              requested_compliance_target: z.string().optional().openapi({ description: "Requested compliance target before alias resolution, e.g. 3.3, 3.2, 3.1, 3.0, 3.3-rc, or 3.3-beta. Present when `ran` is true." }),
+              adcp_version: z.string().optional().openapi({ description: "Concrete AdCP compliance bundle version used for the run, e.g. 3.3.0, 3.2.12, or 3.3.0-rc.3. Present when `ran` is true." }),
               badge_eligible: z.boolean().optional().openapi({ description: "True when this run can update public badge state." }),
-              badge_eligible_adcp_versions: z.array(z.string()).optional().openapi({ description: "Public badge versions this run can issue, e.g. ['3.2']." }),
+              badge_eligible_adcp_versions: z.array(z.string()).optional().openapi({ description: "Public badge versions this run can issue, e.g. ['3.3']." }),
               overall_status: z.string().optional().openapi({ description: "Aggregate verdict from the run (passing / failing / partial / unknown). Only present when `ran` is true." }),
               storyboards_passing: z.number().int().optional().openapi({ description: "Number of storyboards passing on this run." }),
               storyboards_total: z.number().int().optional().openapi({ description: "Number of storyboards evaluated on this run." }),
@@ -5008,7 +5008,7 @@ registry.registerPath({
   request: {
     query: z.object({
       category: z.string().optional().openapi({ description: "Filter by storyboard category" }),
-      compliance_target: z.string().optional().openapi({ description: "Compliance target to inspect, e.g. 3.2, 3.1, 3.0, 3.2-rc, or 3.2-beta" }),
+      compliance_target: z.string().optional().openapi({ description: "Compliance target to inspect, e.g. 3.3, 3.2, 3.1, 3.0, 3.3-rc, or 3.3-beta" }),
     }),
   },
   responses: {
@@ -5042,7 +5042,7 @@ registry.registerPath({
       id: z.string().openapi({ description: "Storyboard ID" }),
     }),
     query: z.object({
-      compliance_target: z.string().optional().openapi({ description: "Compliance target to inspect, e.g. 3.2, 3.1, 3.0, 3.2-rc, or 3.2-beta" }),
+      compliance_target: z.string().optional().openapi({ description: "Compliance target to inspect, e.g. 3.3, 3.2, 3.1, 3.0, 3.3-rc, or 3.3-beta" }),
     }),
   },
   responses: {
@@ -5319,7 +5319,7 @@ registry.registerPath({
       storyboardId: z.string(),
     }),
     query: z.object({
-      compliance_target: z.string().optional().openapi({ description: "Compliance target to inspect, e.g. 3.2, 3.1, 3.0, 3.2-rc, or 3.2-beta" }),
+      compliance_target: z.string().optional().openapi({ description: "Compliance target to inspect, e.g. 3.3, 3.2, 3.1, 3.0, 3.3-rc, or 3.3-beta" }),
     }),
   },
   responses: {
