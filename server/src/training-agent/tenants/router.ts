@@ -58,7 +58,8 @@ import { sellerOptimizedDeclarationForVersion, sellerOptimizedFeatureFlags } fro
 import { supportsAccountChangeFeed, supportsAccountSurfaces33, TRAINING_AGENT_REGISTERS_ACCOUNT_SURFACES_33, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, supportsGetProductsRejected, supportsReliableReporting, supportsReportingStatus, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_STABLE_REGISTRY_VERSIONS, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext } from '../types.js';
 import { getIdentityBaseUrl } from '../config.js';
 import { complianceScenariosForServedVersion } from '../compliance-scenarios.js';
-import { omitFieldsAddedAfterRelease, servedReleaseEnum } from '../served-release-fields.js';
+import { omitFieldsAddedAfterRelease, servedLifecycleTools, servedReleaseEnum } from '../served-release-fields.js';
+import { toolsForTenant } from './tool-catalog.js';
 import { runWithReleaseLineEcho } from './release-line-echo.js';
 import { redactConflictEnvelopeInBody } from '../conflict-envelope.js';
 import { proposalCapabilitiesForProfile } from '../proposal-negotiation-profiles.js';
@@ -227,16 +228,6 @@ const SALES_CURRENT_SCENARIOS = [
   'reliable_reporting_reconciled_billing_probe',
   'query_provenance_audit_observations',
   'evaluate_distributed_brand_resolution',
-] as const;
-
-const PRODUCT_DISCOVERY_LIFECYCLE_TOOL_NAMES = [
-  'list_products',
-  'request_proposals',
-  'refine_proposals',
-  'decline_proposals',
-  'buy_products',
-  'accept_proposal',
-  'control_media_buy',
 ] as const;
 
 function bearerToken(req: Request): string | undefined {
@@ -1410,6 +1401,10 @@ function projectTenantCapabilities(
         delete mediaBuy.outcome_target;
       }
       const salesProjection = salesCapabilityProjection();
+      const lifecycleTools = servedLifecycleTools(
+        toolsForTenant(tenantId, { storyboardCompat, adcpVersion: servedVersion }),
+        servedVersion,
+      );
       structured.media_buy = {
         ...mediaBuy,
         ...salesProjection,
@@ -1435,7 +1430,8 @@ function projectTenantCapabilities(
           primary_countries: ['US', 'CA', 'GB'],
         },
         ...(supportsGetProductsRejected(servedVersion) && {
-          lifecycle_tools: [...PRODUCT_DISCOVERY_LIFECYCLE_TOOL_NAMES],
+          // Exactly the compact lifecycle tools this route lists (adcp#8981).
+          lifecycle_tools: lifecycleTools,
           // Flexible-window availability discovery: the platform parses
           // offer_filters.availability_horizon and answers with
           // time-dimensioned forecast points (see handleGetProductsUnlocked).
@@ -1502,8 +1498,12 @@ function projectTenantCapabilities(
           experimentalFeatures.push(REPORTING_SUBSCRIPTIONS_FEATURE);
         }
       }
-      if (!supportsGetProductsRejected(servedVersion)) {
+      if (!supportsGetProductsRejected(servedVersion) || lifecycleTools.length === 0) {
         delete structured.media_buy.lifecycle_tools;
+      }
+      // proposal_refinement describes refine_proposals, so the schema requires
+      // that tool among the declared lifecycle tools.
+      if (!(structured.media_buy.lifecycle_tools as string[] | undefined)?.includes('refine_proposals')) {
         delete structured.media_buy.proposal_refinement;
       }
       const creative = structured.creative && typeof structured.creative === 'object'
