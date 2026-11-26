@@ -7,7 +7,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import express from 'express';
 import http from 'node:http';
 import { createHash } from 'node:crypto';
-import { TRAINING_AGENT_CURRENT_ADCP_VERSION, type TrainingContext } from '../types.js';
+import { type TrainingContext } from '../types.js';
 import { validateSourceSchema } from '../source-schema.js';
 import { clearAccountStore, handleSyncGovernance } from '../account-handlers.js';
 import { clearIdempotencyCache } from '../idempotency.js';
@@ -2294,7 +2294,7 @@ describe('tenant routing smoke', () => {
           jsonrpc: '2.0',
           id: 2,
           method: 'tools/call',
-          params: { name: 'get_adcp_capabilities', arguments: {} },
+          params: { name: 'get_adcp_capabilities', arguments: { adcp_version: '3.2' } },
         }),
       });
       const body = await r.json() as {
@@ -2325,14 +2325,14 @@ describe('tenant routing smoke', () => {
       const previewRouteIds = creative?.preview?.routes?.map(route => route.capability_id) ?? [];
       expect(body.result?.structuredContent?.adcp_version).toBe('3.2');
       expect(body.result?.structuredContent?.adcp?.major_versions).toContain(3);
-      // The opt-in 3.3 preview (#8181) is advertised last, served to an exact pin only.
-      expect(body.result?.structuredContent?.adcp?.supported_versions).toEqual(['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', '3.2-beta.6', '3.2-rc.0', '3.2-rc.7', '3.2', '3.3-rc.3']);
+      // 3.3 GA is advertised last; 3.3-rc.3, the retired preview, stays listed as
+      // an exact pin before it.
+      expect(body.result?.structuredContent?.adcp?.supported_versions).toEqual(['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', '3.2-beta.6', '3.2-rc.0', '3.2-rc.7', '3.2', '3.3-rc.3', '3.3']);
       expect(mediaBuy?.features?.inline_creative_management).toBe(true);
       expect(mediaBuy?.supported_optimization_metrics).toContain('clicks');
       expect(mediaBuy?.vendor_metric_optimization?.supported_targets).toContain('threshold_rate');
       // The supported_metrics rollup is a 3.3 field (#8070), withheld from
-      // this 3.2 response (#8487); training-agent-candidate-version.test.ts
-      // covers it on 3.3.
+      // this 3.2 response (#8487) and served at 3.3 (checked below).
       expect(mediaBuy?.vendor_metric_optimization).not.toHaveProperty('supported_metrics');
       expect(mediaBuy?.conversion_tracking?.supported_targets).toEqual(['cost_per']);
       expect(previewCapabilityIds.length).toBeGreaterThan(0);
@@ -2345,6 +2345,30 @@ describe('tenant routing smoke', () => {
       );
       expect(body.result?.structuredContent?.compliance_testing?.scenarios)
         .toContain('reporting_core_lifecycle_probe');
+      // An unpinned caller on a tenant route is served the current 3.3 line,
+      // which adds the supported_metrics rollup the 3.2 response withholds.
+      const unpinnedResponse = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 3,
+          method: 'tools/call',
+          params: { name: 'get_adcp_capabilities', arguments: {} },
+        }),
+      });
+      const unpinned = await unpinnedResponse.json() as {
+        result?: { structuredContent?: {
+          adcp_version?: string;
+          adcp?: { supported_versions?: string[] };
+          media_buy?: { vendor_metric_optimization?: Record<string, unknown> };
+        } };
+      };
+      expect(unpinned.result?.structuredContent?.adcp_version).toBe('3.3');
+      expect(unpinned.result?.structuredContent?.adcp?.supported_versions)
+        .toEqual(body.result?.structuredContent?.adcp?.supported_versions);
+      expect(unpinned.result?.structuredContent?.media_buy?.vendor_metric_optimization)
+        .toHaveProperty('supported_metrics');
       const validation = validateSourceSchema(
         'protocol/get-adcp-capabilities-response.json',
         body.result?.structuredContent,
@@ -3031,7 +3055,7 @@ describe('tenant routing smoke', () => {
 
       for (const [index, fields] of [undefined, ['format_options']].entries()) {
         const listed = await callTenantTool(url, 72 + index, 'list_products', {
-          account, criteria: { product_ids: [productId] }, ...(fields && { fields }),
+          adcp_version: '3.2', account, criteria: { product_ids: [productId] }, ...(fields && { fields }),
         }) as { result?: { structuredContent?: {
           products?: Array<{ product_id?: string; format_options?: Array<Record<string, unknown>> }>;
         } } };
@@ -3039,15 +3063,15 @@ describe('tenant routing smoke', () => {
         expect(result?.products, JSON.stringify(listed)).toHaveLength(1);
         expect(result?.products?.[0].product_id).toBe(productId);
         expect(result?.products?.[0].format_options).toEqual([format]);
-        // The response is served at the training agent's current line (3.2),
-        // so it is graded against that line's newest published schema, not
+        // The call pins 3.2, where the compact lifecycle first shipped, so the
+        // response is graded against that line's newest published schema, not
         // the 3.3 source: 3.2's list_products does not compose the protocol
         // envelope and rejects the `status` the 3.3 source requires, and the
         // SDK omits `status` for a served 3.2 (adcp-client#3493).
         const served = (result as { adcp_version?: unknown } | undefined)?.adcp_version;
-        expect(served).toBe(TRAINING_AGENT_CURRENT_ADCP_VERSION);
+        expect(served).toBe('3.2');
         const validation = validatePublishedSchema(
-          newestPublishedRelease(TRAINING_AGENT_CURRENT_ADCP_VERSION),
+          newestPublishedRelease('3.2'),
           'media-buy/list-products-response.json',
           result,
         );
@@ -3961,7 +3985,7 @@ describe('tenant routing smoke', () => {
         field: 'adcp_version',
         details: {
           adcp_version: '4.0',
-          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', '3.2-beta.6', '3.2-rc.0', '3.2-rc.7', '3.2', '3.3-rc.3'],
+          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', '3.2-beta.6', '3.2-rc.0', '3.2-rc.7', '3.2', '3.3-rc.3', '3.3'],
         },
       });
       expect(unsupportedBody.result?.structuredContent?.context?.correlation_id).toBe('tenant-local-version-unsupported');

@@ -285,7 +285,13 @@ describe('wrapper contract', () => {
   });
 
   it('selects the highest hosted target advertised by the agent', () => {
+    // 3.3 is newest first, but its stable alias is skipped until the v3.3.0
+    // Version Packages PR registers 3.3.0 in published-versions.json (which
+    // then adds '3.3' ahead of '3.3-rc' here), so the 3.3 prerelease aliases
+    // lead and a 3.2 agent keeps grading on the newest 3.2.x.
     expect(hostedComplianceTargetPreference().map(t => t.requested)).toEqual([
+      '3.3-rc',
+      '3.3-beta',
       '3.2',
       '3.1',
       '3.1-rc',
@@ -304,6 +310,18 @@ describe('wrapper contract', () => {
     expect(selectHostedComplianceTargetForSupportedVersions(['3.2-rc.7']).requested).toBe('3.0');
     expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1', '3.2']).version).toBe(latestRegistered32);
     expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1', '3.2-rc.7']).version).toBe(latestRegistered31);
+
+    // An agent advertising 3.3 alongside older lines is not graded on a 3.3
+    // prerelease for its stable advertisement while 3.3.0 is unregistered; it
+    // stays on the newest registered stable line it also advertises.
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1', '3.2', '3.3']).requested).toBe('3.2');
+    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.0', '3.1', '3.2', '3.3']).version).toBe(latestRegistered32);
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.3']).requested).toBe('3.0');
+    // A pin to the retained 3.3 release candidate grades the 3.3.0-rc.3 bundle
+    // in preferred selection and falls back to 3.0 in canonical selection.
+    expect(selectHostedComplianceTargetForSupportedVersions(['3.3-rc.3']).version).toBe('3.3.0-rc.3');
+    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.0', '3.3-rc.3']).requested).toBe('3.0');
+    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.2', '3.3-rc.2']).version).toBe(latestRegistered32);
 
     expect(selectHostedComplianceTargetForSupportedVersions(['3.0']).requested).toBe('3.0');
     expect(selectHostedComplianceTargetForSupportedVersions(['3.0', '3.1-beta.7']).requested).toBe('3.1-beta');
@@ -337,7 +355,14 @@ describe('wrapper contract', () => {
       { alias: '3.2', channel: /^3\.2\.\d+$/, floor: '3.2.12' },
       { alias: '3.1-beta', channel: /^3\.1\.0-beta\.\d+$/, floor: '3.1.0-beta.7' },
       { alias: '3.1-rc', channel: /^3\.1\.0-rc\.\d+$/, floor: '3.1.0-rc.14' },
+      { alias: '3.3-beta', channel: /^3\.3\.0-beta\.\d+$/, floor: '3.3.0-beta.6' },
+      { alias: '3.3-rc', channel: /^3\.3\.0-rc\.\d+$/, floor: '3.3.0-rc.3' },
     ];
+    // 3.3.0 is registered by the v3.3.0 Version Packages PR, not before it, so
+    // the stable alias does not resolve yet. Drop this and add '3.3' to the
+    // alias table above when that PR lands.
+    expect(() => hostedComplianceTarget('3.3')).toThrow(/No npm-published compliance version is registered for 3\.3/);
+    expect(() => hostedComplianceTarget('3.3.0')).toThrow(/not available from a published/);
     for (const retired of ['3.2-rc', '3.2-beta', '3.2-rc.7']) {
       expect(() => hostedComplianceTarget(retired), retired).toThrow();
     }

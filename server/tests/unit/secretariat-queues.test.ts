@@ -67,10 +67,11 @@ function resetState() {
     waitingOnWg: searchResult([]),
     burnDownPrs: searchResult([]),
     milestones: [
-      { number: 10, title: '3.3.0', open_issues: 118, closed_issues: 17 },
+      { number: 10, title: '3.3.0', open_issues: 0, closed_issues: 135 },
       { number: 8, title: 'P0 Bugs', open_issues: 2, closed_issues: 23 },
       { number: 9, title: 'Spec Backlog', open_issues: 77, closed_issues: 38 },
       { number: 5, title: '4.0', open_issues: 36, closed_issues: 4 },
+      { number: 13, title: '4.x', open_issues: 12, closed_issues: 0 },
     ],
   };
 }
@@ -198,23 +199,25 @@ describe('secretariat queues snapshot', () => {
     expect(waitingOnWg.items).toHaveLength(3);
   });
 
-  it('reports the 3.3 burn-down from milestone open/closed counts plus a context row of nearby milestones', async () => {
+  it('reports the 4.0 burn-down from milestone open/closed counts plus a context row of nearby milestones', async () => {
     state.burnDownPrs = searchResult([], 1);
 
     const { buildQueuesSnapshot } = await import('../../src/addie/jobs/secretariat-queues.js');
     const snapshot = await buildQueuesSnapshot(REPO);
 
     expect(snapshot!.burnDown).toEqual({
-      milestoneTitle: '3.3.0',
-      closedIssues: 17,
-      openIssues: 118,
+      milestoneTitle: '4.0',
+      closedIssues: 4,
+      openIssues: 36,
       openPrs: 1,
+      // 3.3.0 is released and there is no 3.4: the context row is the 4.x
+      // follow-on milestone, not the shipped one.
       otherMilestones: [
         { title: 'P0 Bugs', openIssues: 2 },
         { title: 'Spec Backlog', openIssues: 77 },
-        { title: '4.0', openIssues: 36 },
+        { title: '4.x', openIssues: 12 },
       ],
-      viewAllUrl: `https://github.com/${REPO}/milestone/10`,
+      viewAllUrl: `https://github.com/${REPO}/milestone/5`,
     });
   });
 

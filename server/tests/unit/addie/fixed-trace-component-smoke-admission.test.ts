@@ -74,7 +74,7 @@ describe('fixed-trace component-smoke credential-free admission', () => {
     expect(admission.pricing.profiles.every((profile) => profile.effectiveFrom <= admission.asOf
       && (profile.effectiveBefore === null || admission.asOf < profile.effectiveBefore))).toBe(true);
     expect(Object.values(admission.fingerprints).every((value) => typeof value === 'string' && value.length > 0)).toBe(true);
-    expect(admission.fingerprints.aggregateAdmission).toBe('fa331c387fd038a7db836d46fe4061afbbeec4ae2fc49b84c679046369058308');
+    expect(admission.fingerprints.aggregateAdmission).toBe('f542b643c5b652fb89feb89bb0df04d6812436c0aae8ce957f4d49a37f818817');
   });
 
   it('reserves each provider attempt independently at or above its exact dated maximum', () => {

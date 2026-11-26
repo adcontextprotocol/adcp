@@ -13,10 +13,13 @@ const admission = fixedTraceComponentSmokeAdmission();
 const LEGACY_ADMISSION_FINGERPRINT = '731930c18475672a0ec6b44c9ff91fa89d30c441e34af32b536a28258271077d';
 // Admitted by migration 583; superseded by the 3.2 GA tool-description reissue (615).
 const REISSUED_583_ADMISSION_FINGERPRINT = '817ab57d30cc89dab4a81016f5c826857b8dc2a83e2f73aa0b7eb9c82f0b5d71';
-const CURRENT_PLAN_MANIFEST_DIGEST = 'bda91890329f1da236a0cddbafa65afe25ff986fb1aa0b04594d2c79d521f70a';
+// Admitted by migration 615; superseded by the 3.3 GA tool-description reissue (643).
+const REISSUED_615_ADMISSION_FINGERPRINT = 'fa331c387fd038a7db836d46fe4061afbbeec4ae2fc49b84c679046369058308';
+const CURRENT_PLAN_MANIFEST_DIGEST = '16bcc8df61de10718ca50083a79f5f424b83cec9326680da5f6b0ccbcab19a64';
 const BASE_LEDGER_MIGRATION = readFileSync(new URL('../../../src/db/migrations/582_addie_fixed_trace_component_smoke_private_ledger.sql', import.meta.url), 'utf8');
 const REISSUED_GUARD_MIGRATION = readFileSync(new URL('../../../src/db/migrations/583_reissue_addie_fixed_trace_component_smoke_plan_guard.sql', import.meta.url), 'utf8');
-const GA_REISSUE_MIGRATION = readFileSync(new URL('../../../src/db/migrations/615_reissue_addie_fixed_trace_component_smoke_3_2_ga.sql', import.meta.url), 'utf8');
+const GA_32_REISSUE_MIGRATION = readFileSync(new URL('../../../src/db/migrations/615_reissue_addie_fixed_trace_component_smoke_3_2_ga.sql', import.meta.url), 'utf8');
+const GA_REISSUE_MIGRATION = readFileSync(new URL('../../../src/db/migrations/643_reissue_addie_fixed_trace_component_smoke_3_3_ga.sql', import.meta.url), 'utf8');
 
 async function rejects(statement: string, values: unknown[] = [], subject = client!) {
   await subject.query('SAVEPOINT private_ledger_expected_failure');
@@ -92,8 +95,9 @@ async function insertAuthorization(
 function planForAdmissionFingerprint(aggregateAdmissionFingerprint: string) {
   if (aggregateAdmissionFingerprint === admission.fingerprints.aggregateAdmission) return plan;
   if (aggregateAdmissionFingerprint !== LEGACY_ADMISSION_FINGERPRINT
-    && aggregateAdmissionFingerprint !== REISSUED_583_ADMISSION_FINGERPRINT) {
-    throw new Error('test only supports the current, migration-582, or migration-583 admission fingerprint');
+    && aggregateAdmissionFingerprint !== REISSUED_583_ADMISSION_FINGERPRINT
+    && aggregateAdmissionFingerprint !== REISSUED_615_ADMISSION_FINGERPRINT) {
+    throw new Error('test only supports the current, migration-582, migration-583, or migration-615 admission fingerprint');
   }
   return plan.map((entry) => ({
     ...entry,
@@ -166,6 +170,7 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
   it('applies the reissued guards to a clean schema and accepts the current exact plan', async () => {
     await withLedgerMigrationSchema(async (isolated) => {
       await isolated.query(REISSUED_GUARD_MIGRATION);
+      await isolated.query(GA_32_REISSUE_MIGRATION);
       await isolated.query(GA_REISSUE_MIGRATION);
       const admissionConstraint = await isolated.query<{ conname: string; definition: string }>(
         `SELECT conname, pg_get_constraintdef(oid) AS definition
@@ -178,6 +183,10 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
         expect.objectContaining({ conname: 'addie_fixed_trace_smoke_admission_fingerprint_check' }),
       ]);
       expect(admissionConstraint.rows[0]?.definition).toContain(admission.fingerprints.aggregateAdmission);
+      // The reissue is additive: every earlier admitted fingerprint stays valid.
+      for (const earlier of [LEGACY_ADMISSION_FINGERPRINT, REISSUED_583_ADMISSION_FINGERPRINT, REISSUED_615_ADMISSION_FINGERPRINT]) {
+        expect(admissionConstraint.rows[0]?.definition).toContain(earlier);
+      }
       await isolated.query('BEGIN');
       const currentAuthorization = await seedExactPlan(isolated);
       await isolated.query('SET CONSTRAINTS addie_fixed_trace_component_smoke_plan_exact IMMEDIATE');
@@ -198,6 +207,7 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
       const reissuedAuthorization = await seedExactPlan(isolated, false, REISSUED_583_ADMISSION_FINGERPRINT);
       await isolated.query('SET CONSTRAINTS addie_fixed_trace_component_smoke_plan_exact IMMEDIATE');
       await isolated.query('COMMIT');
+      await isolated.query(GA_32_REISSUE_MIGRATION);
       await isolated.query(GA_REISSUE_MIGRATION);
       expect((await isolated.query(
         'SELECT aggregate_admission_fingerprint FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1',
@@ -215,6 +225,35 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
     });
   });
 
+  it('upgrades a migration-615 schema without discarding its authority and fails that plan closed', async () => {
+    await withLedgerMigrationSchema(async (isolated) => {
+      await isolated.query(REISSUED_GUARD_MIGRATION);
+      await isolated.query(GA_32_REISSUE_MIGRATION);
+      await isolated.query('BEGIN');
+      const reissued615Authorization = await seedExactPlan(isolated, false, REISSUED_615_ADMISSION_FINGERPRINT);
+      await isolated.query('SET CONSTRAINTS addie_fixed_trace_component_smoke_plan_exact IMMEDIATE');
+      await isolated.query('COMMIT');
+      await isolated.query(GA_REISSUE_MIGRATION);
+      expect((await isolated.query(
+        'SELECT aggregate_admission_fingerprint FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1',
+        [reissued615Authorization],
+      )).rows).toEqual([{ aggregate_admission_fingerprint: REISSUED_615_ADMISSION_FINGERPRINT }]);
+      expect((await isolated.query(
+        'SELECT count(*)::int AS count FROM addie_fixed_trace_component_smoke_run_plan WHERE authorization_digest = $1',
+        [reissued615Authorization],
+      )).rows).toEqual([{ count: 168 }]);
+      await expect(isolated.query(
+        'SELECT addie_fixed_trace_component_smoke_check_plan_group($1)', [reissued615Authorization],
+      )).rejects.toThrow('fixed-trace component smoke plan is not the admitted exact plan');
+      await isolated.query('BEGIN');
+      const currentAuthorization = await seedExactPlan(isolated);
+      await isolated.query('SET CONSTRAINTS addie_fixed_trace_component_smoke_plan_exact IMMEDIATE');
+      await isolated.query('COMMIT');
+      await expect(insertIntent(isolated, reissued615Authorization, dispatchEntryFor(REISSUED_615_ADMISSION_FINGERPRINT), 'r')).rejects.toThrow('fixed-trace component smoke plan is not the admitted exact plan');
+      await expect(insertIntent(isolated, currentAuthorization, undefined, 'c')).resolves.toBeDefined();
+    });
+  });
+
   it('upgrades a migration-582 schema without discarding legacy authority and fails it closed', async () => {
     await withLedgerMigrationSchema(async (isolated) => {
       // Commit the full exact migration-582 plan before the reissue. Its
@@ -224,6 +263,7 @@ describe.skipIf(!databaseUrl)('private ledger migration on PostgreSQL', () => {
       await isolated.query('SET CONSTRAINTS addie_fixed_trace_component_smoke_plan_exact IMMEDIATE');
       await isolated.query('COMMIT');
       await isolated.query(REISSUED_GUARD_MIGRATION);
+      await isolated.query(GA_32_REISSUE_MIGRATION);
       await isolated.query(GA_REISSUE_MIGRATION);
       expect((await isolated.query(
         'SELECT aggregate_admission_fingerprint FROM addie_fixed_trace_component_smoke_authorizations WHERE authorization_digest = $1',

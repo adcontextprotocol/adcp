@@ -1,7 +1,7 @@
 /**
  * adcp-client#3715: @adcp/sdk 17.0.0-beta.23+ discovers capabilities unpinned
  * for a prerelease pin and profiles whatever the agent serves unpinned. The
- * training agent serves its 3.3 preview only to an exact pin, so hosted
+ * training agent serves its retained 3.3-rc.3 checkpoint only to an exact pin, so hosted
  * grading of a 3.3 prerelease bundle would profile 3.2 and skip every
  * capability-gated 3.3 storyboard. The hosted option builders pin discovery
  * for prerelease targets only; stable targets keep the SDK default.
@@ -14,7 +14,8 @@ import { testCapabilityDiscovery } from '@adcp/sdk/testing';
 
 process.env.PUBLIC_TEST_AGENT_TOKEN = 'hosted-prerelease-discovery-token';
 
-import { TRAINING_AGENT_HOSTED_PREVIEW } from '../../src/training-agent/candidate-version.js';
+import { TRAINING_AGENT_RETAINED_PREVIEW_ADCP_VERSION } from '../../src/training-agent/types.js';
+import { RETAINED_SCHEMA_BUNDLES } from '../../src/training-agent/schema-compat.js';
 import { stopSessionCleanup } from '../../src/training-agent/state.js';
 import { hostedComplianceTarget, withHostedTestOptions } from '../../src/services/hosted-compliance-version.js';
 
@@ -54,8 +55,10 @@ describe('hosted capability discovery against an agent that serves its preview o
   };
 
   it('profiles the prerelease surface for a prerelease target', async () => {
-    const raw = await discover(TRAINING_AGENT_HOSTED_PREVIEW.bundle);
-    expect(raw?.adcp_version).toBe(TRAINING_AGENT_HOSTED_PREVIEW.wireVersion);
+    // The retired preview's retained 3.3-rc.3 checkpoint is still served to an
+    // exact pin only, so a prerelease grading target must pin discovery to it.
+    const raw = await discover(RETAINED_SCHEMA_BUNDLES[TRAINING_AGENT_RETAINED_PREVIEW_ADCP_VERSION]);
+    expect(raw?.adcp_version).toBe(TRAINING_AGENT_RETAINED_PREVIEW_ADCP_VERSION);
     expect(raw?.experimental_features).toContain('media_buy.hold_policy');
   }, 60_000);
 

@@ -115,7 +115,7 @@ describe('fixed-trace no-spend model-judge amendment', () => {
 
   it('requires the exact v2 smoke identity before exposing tranche-one planning', () => {
     const smoke = fixedTraceComponentSmokeAdmission();
-    expect(smoke.fingerprints.aggregateAdmission).toBe('fa331c387fd038a7db836d46fe4061afbbeec4ae2fc49b84c679046369058308');
+    expect(smoke.fingerprints.aggregateAdmission).toBe('f542b643c5b652fb89feb89bb0df04d6812436c0aae8ce957f4d49a37f818817');
     expect(FIXED_TRACE_API_BUDGET_LADDER.tranches[0]).toMatchObject({ v2AdmissionFingerprint: smoke.fingerprints.aggregateAdmission, maximumProviderCalls: 192, maximumCostMicrodollars: 5_000_000, reservedMaximumMicrodollars: 2_819_484 });
     const sameAggregatesDifferentIdentity = structuredClone(smoke);
     sameAggregatesDifferentIdentity.fingerprints.aggregateAdmission = 'b'.repeat(64);

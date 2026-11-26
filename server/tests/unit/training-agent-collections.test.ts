@@ -1,6 +1,6 @@
 /**
  * #8181 / #8093: the experimental 3.3 collection surfaces on the training
- * agent, exercised over MCP at the hosted 3.3 preview pin and graded with the
+ * agent, exercised over MCP at the current 3.3 line and graded with the
  * reference grader for collection copies
  * (tests/helpers/collection-copies-grader.cjs, the same module that replays
  * static/compliance/source/test-vectors/collection-copies/).
@@ -23,7 +23,7 @@ import { createRequire } from 'node:module';
 
 process.env.PUBLIC_TEST_AGENT_TOKEN = 'collections-test-public-token';
 
-import { TRAINING_AGENT_HOSTED_PREVIEW } from '../../src/training-agent/candidate-version.js';
+import { TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_RETAINED_PREVIEW_ADCP_VERSION } from '../../src/training-agent/types.js';
 import { stopSessionCleanup } from '../../src/training-agent/state.js';
 import { clearCollectionCardState } from '../../src/training-agent/collections/card-catalog.js';
 import { bulkThreshold } from '../../src/training-agent/collections/seed-collection.js';
@@ -40,11 +40,15 @@ const grader = createRequire(import.meta.url)('../../../tests/helpers/collection
   applyEvents: (vector: Record<string, unknown>) => { verdict: string; repair_token: string | null; mirror: { cards: unknown[]; version: string } };
 };
 
-const PREVIEW = TRAINING_AGENT_HOSTED_PREVIEW.wireVersion;
+/** The release that serves the experimental collection surfaces: the current 3.3 line. */
+const PREVIEW = TRAINING_AGENT_CURRENT_ADCP_VERSION;
+/** The retired hosted preview, still served to an exact pin. */
+const RETAINED_PREVIEW = TRAINING_AGENT_RETAINED_PREVIEW_ADCP_VERSION;
 /** A caller-unique demo credential: card changes are kept per principal. */
 const TOKEN = 'demo-collection-cards-v1';
-const STABLE_PINS: Array<Record<string, unknown>> = [
-  {}, { adcp_major_version: 3 }, { adcp_version: '3.2' }, { adcp_version: '3.1' }, { adcp_version: '3.0' }, { adcp_version: '3.3' },
+/** Pins served a release below 3.3, which carries no collection surface. */
+const BELOW_33_PINS: Array<Record<string, unknown>> = [
+  { adcp_version: '3.2' }, { adcp_version: '3.1' }, { adcp_version: '3.0' },
 ];
 const CARD_EVENTS = ['collection_card.updated', 'collection_card.removed', 'collection_catalog.bulk_change'];
 const CREATORS = 'creatorloop.example';
@@ -155,7 +159,7 @@ describe('experimental 3.3 collections on the training agent', () => {
     }
   });
 
-  it('declares the collection features and card events at the preview pin only', async () => {
+  it('declares the collection features and card events at 3.3 and the retained 3.3-rc.3 pin only', async () => {
     const sales = await preview('get_adcp_capabilities');
     expect(sales.adcp_version).toBe(PREVIEW);
     expect(sales.experimental_features).toEqual(expect.arrayContaining([grader.CARDS_FEATURE, grader.CATALOG_FEATURE]));
@@ -166,7 +170,14 @@ describe('experimental 3.3 collections on the training agent', () => {
     const brand = await preview('get_adcp_capabilities', {}, '/brand/mcp');
     expect(brand.experimental_features).toContain('brand.collection_links');
 
-    for (const pin of STABLE_PINS) {
+    // The retired preview's exact pin keeps the surface; unpinned and major-only
+    // callers are served 3.3 on these routes, so they reach it too.
+    for (const pin of [{ adcp_version: RETAINED_PREVIEW }, {}, { adcp_major_version: 3 }]) {
+      const served = await call('/sales/mcp', 'get_adcp_capabilities', pin);
+      expect(served.experimental_features, JSON.stringify(pin)).toEqual(expect.arrayContaining([grader.CARDS_FEATURE, grader.CATALOG_FEATURE]));
+    }
+
+    for (const pin of BELOW_33_PINS) {
       const stable = await call('/sales/mcp', 'get_adcp_capabilities', pin);
       expect(stable.adcp_version, JSON.stringify(pin)).not.toBe(PREVIEW);
       expect(stable.experimental_features ?? []).not.toContain(grader.CARDS_FEATURE);
@@ -177,16 +188,16 @@ describe('experimental 3.3 collections on the training agent', () => {
     }
   }, 60_000);
 
-  it('lists list_collections and seed_collection only at the preview pin', async () => {
-    const pinned = await rpc('/sales/mcp', 'tools/list', { _meta: { adcp_version: PREVIEW } });
-    expect(pinned.result.tools.map((tool: { name: string }) => tool.name)).toContain('list_collections');
-    for (const params of [{}, { _meta: { adcp_version: '3.2' } }, { _meta: { adcp_version: '3.3' } }]) {
-      const stable = await rpc('/sales/mcp', 'tools/list', params);
-      expect(stable.result.tools.map((tool: { name: string }) => tool.name)).not.toContain('list_collections');
+  it('serves list_collections and seed_collection at 3.3 and refuses list_collections below it', async () => {
+    // The tool registers on the stable sales route from 3.3 GA; its handler
+    // refuses a request served below 3.3.
+    for (const params of [{ _meta: { adcp_version: PREVIEW } }, { _meta: { adcp_version: RETAINED_PREVIEW } }, {}]) {
+      const listed = await rpc('/sales/mcp', 'tools/list', params);
+      expect(listed.result.tools.map((tool: { name: string }) => tool.name), JSON.stringify(params)).toContain('list_collections');
     }
-    for (const adcp_version of ['3.2', '3.3']) {
-      const refused = await rpc('/sales/mcp', 'tools/call', { name: 'list_collections', arguments: { adcp_version } });
-      expect(refused.result?.isError, JSON.stringify(refused).slice(0, 300)).toBe(true);
+    for (const adcp_version of ['3.2', '3.1', '3.0']) {
+      const refused = await call('/sales/mcp', 'list_collections', { adcp_version });
+      expect(refused.adcp_error?.code, `${adcp_version}: ${JSON.stringify(refused).slice(0, 300)}`).toMatch(/^(UNSUPPORTED_FEATURE|VERSION_UNSUPPORTED|INVALID_REQUEST)$/);
     }
     const scenarios = await preview('comply_test_controller', { scenario: 'list_scenarios' });
     expect(scenarios.scenarios).toContain('seed_collection');
@@ -576,7 +587,7 @@ describe('experimental 3.3 collections on the training agent', () => {
     expect(repaired.outcome).toBe('listed');
   }, 120_000);
 
-  it('links creator identities back to their collections on /brand at the preview only', async () => {
+  it('links creator identities back to their collections on /brand at 3.3 and the retained pin only', async () => {
     const { cards } = await listAll();
     const creators = cards.filter(card => card.publisher_domain === CREATORS && card.talent?.[0]?.brand_ref);
     const confirmed: string[] = [];
@@ -596,10 +607,15 @@ describe('experimental 3.3 collections on the training agent', () => {
 
     const narrowed = await preview('get_brand_identity', { brand_id: 'juniper_vale', fields: ['description'] }, '/brand/mcp');
     expect(narrowed.collections).toBeUndefined();
-    for (const pin of [{ adcp_version: '3.2' }, { adcp_major_version: 3 }, {}]) {
-      const stable = await call('/brand/mcp', 'get_brand_identity', { ...pin, brand_id: 'juniper_vale' });
-      expect(stable.adcp_error, JSON.stringify(stable).slice(0, 300)).toBeUndefined();
-      expect(stable.collections, JSON.stringify(pin)).toBeUndefined();
+    // A 3.2 caller sees no collection links; unpinned and major-only callers
+    // are served 3.3 on this route and see them, like the retained rc.3 pin.
+    const older = await call('/brand/mcp', 'get_brand_identity', { adcp_version: '3.2', brand_id: 'juniper_vale' });
+    expect(older.adcp_error, JSON.stringify(older).slice(0, 300)).toBeUndefined();
+    expect(older.collections).toBeUndefined();
+    for (const pin of [{ adcp_version: RETAINED_PREVIEW }, { adcp_major_version: 3 }, {}]) {
+      const served = await call('/brand/mcp', 'get_brand_identity', { ...pin, brand_id: 'juniper_vale' });
+      expect(served.adcp_error, JSON.stringify(served).slice(0, 300)).toBeUndefined();
+      expect(Array.isArray(served.collections), JSON.stringify(pin)).toBe(true);
     }
   }, 60_000);
 
