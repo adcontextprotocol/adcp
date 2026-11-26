@@ -327,11 +327,20 @@ export function parseSeasonSeed(input: unknown, source: string, options: SeasonF
 
 /** Read a YAML or JSON season file (JSON is valid YAML). */
 export function readSeasonFile(path: string, options: SeasonFileOptions = {}): SeasonSeed {
-  const stat = fs.statSync(path);
-  if (!stat.isFile()) invalid(path, ['not a regular file']);
-  const { size } = stat;
-  if (size > MAX_SEASON_FILE_BYTES) invalid(path, [`the file is ${size} bytes; season files are limited to 5 MB`]);
-  const text = fs.readFileSync(path, 'utf8');
+  // Check and read through one descriptor, so the file can't change between the two.
+  const fd = fs.openSync(path, 'r');
+  let text: string;
+  try {
+    const stat = fs.fstatSync(fd);
+    if (!stat.isFile()) invalid(path, ['not a regular file']);
+    const { size } = stat;
+    if (size > MAX_SEASON_FILE_BYTES) invalid(path, [`the file is ${size} bytes; season files are limited to 5 MB`]);
+    text = fs.readFileSync(fd, 'utf8');
+  } finally {
+    fs.closeSync(fd);
+  }
+  const read = Buffer.byteLength(text, 'utf8');
+  if (read > MAX_SEASON_FILE_BYTES) invalid(path, [`the file is ${read} bytes; season files are limited to 5 MB`]);
   const documents = parseAllDocuments(text, { schema: 'core' });
   if (documents.length > 1) invalid(path, ['a season file must hold one document, found several']);
   const document = documents[0];
