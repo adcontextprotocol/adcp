@@ -109,6 +109,23 @@ describe('product discovery MCP schema parity', () => {
     }
   });
 
+  it('carries no example payloads in tools/list', () => {
+    // The source request schemas document themselves with root `examples`;
+    // tools/list is model context, so it carries none at any depth.
+    expect(sourceSchema('request-proposals-request').examples).toEqual(expect.any(Array));
+    const examplePaths = (node: unknown, path: string): string[] => {
+      if (Array.isArray(node)) return node.flatMap((entry, index) => examplePaths(entry, `${path}/${index}`));
+      if (!node || typeof node !== 'object') return [];
+      return Object.entries(node).flatMap(([key, value]) => [
+        ...(key === 'examples' || key === 'example' ? [`${path}/${key}`] : []),
+        ...examplePaths(value, `${path}/${key}`),
+      ]);
+    };
+    for (const tool of productDiscoveryAliasToolDefinitions()) {
+      expect(examplePaths(tool.inputSchema, tool.name)).toEqual([]);
+    }
+  });
+
   it('keeps compact discovery within its tools/list context budget', () => {
     const tools = productDiscoveryAliasToolDefinitions().filter(tool => (
       ['list_products', 'request_proposals', 'refine_proposals', 'decline_proposals'].includes(tool.name)

@@ -49,5 +49,55 @@
     "event_source_id",
     "events"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "idempotency_key": "a5b6c7d8-e9f0-4123-a456-123456789012",
+      "event_source_id": "acme_website_pixel",
+      "events": [
+        {
+          "event_id": "evt_abc123",
+          "event_type": "purchase",
+          "event_time": "2026-05-15T10:30:00Z",
+          "action_source": "website",
+          "custom_data": {
+            "value": 149.99,
+            "currency": "USD"
+          }
+        }
+      ]
+    },
+    {
+      "idempotency_key": "6d549d4b-fce9-41a1-b341-aca2924203fa",
+      "event_source_id": "creator_channel",
+      "events": [
+        {
+          "event_id": "evt_watch_001",
+          "event_type": "watch_milestone",
+          "event_time": "2026-01-16T11:05:00Z",
+          "action_source": "system_generated",
+          "surface": {
+            "category": "owned_property",
+            "property_type": "channel",
+            "namespace": "video_platform",
+            "property_id": "channel_123"
+          },
+          "user_match": {
+            "uids": [
+              {
+                "type": "uid2",
+                "value": "CreatorViewer456"
+              }
+            ]
+          },
+          "custom_data": {
+            "content_ids": [
+              "episode_001"
+            ],
+            "progress_percent": 75
+          }
+        }
+      ]
+    }
+  ]
 }

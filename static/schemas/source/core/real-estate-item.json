@@ -149,51 +149,87 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "City apartment for sale",
-      "data": {
-        "listing_id": "ams-jordaan-3br",
-        "title": "Spacious 3BR Apartment in Jordaan",
-        "address": {
-          "street": "Prinsengracht 450",
-          "city": "Amsterdam",
-          "region": "NL-NH",
-          "postal_code": "1017 KE",
-          "country": "NL"
-        },
-        "price": { "amount": 650000, "currency": "EUR" },
-        "property_type": "apartment",
-        "listing_type": "for_sale",
-        "bedrooms": 3,
-        "bathrooms": 1,
-        "area": { "value": 95, "unit": "sqm" },
-        "location": { "lat": 52.3667, "lng": 4.8833 },
-        "image_url": "https://images.acmerealty.com/jordaan-3br/hero.jpg",
-        "url": "https://acmerealty.com/listings/ams-jordaan-3br",
-        "neighborhood": "Jordaan",
-        "year_built": 1920,
-        "tags": ["canal-view", "renovated"]
+      "listing_id": "ams-jordaan-3br",
+      "title": "Spacious 3BR Apartment in Jordaan",
+      "address": {
+        "street": "Prinsengracht 450",
+        "city": "Amsterdam",
+        "region": "NL-NH",
+        "postal_code": "1017 KE",
+        "country": "NL"
+      },
+      "price": { "amount": 650000, "currency": "EUR" },
+      "property_type": "apartment",
+      "listing_type": "for_sale",
+      "bedrooms": 3,
+      "bathrooms": 1,
+      "area": { "value": 95, "unit": "sqm" },
+      "location": { "lat": 52.3667, "lng": 4.8833 },
+      "image_url": "https://images.acmerealty.com/jordaan-3br/hero.jpg",
+      "url": "https://acmerealty.com/listings/ams-jordaan-3br",
+      "neighborhood": "Jordaan",
+      "year_built": 1920,
+      "tags": ["canal-view", "renovated"]
+    },
+    {
+      "listing_id": "bklyn-2br-rental",
+      "title": "Modern 2BR in Brooklyn Heights",
+      "address": {
+        "street": "100 Atlantic Ave",
+        "city": "Brooklyn",
+        "region": "US-NY",
+        "postal_code": "11201",
+        "country": "US"
+      },
+      "price": { "amount": 3200, "currency": "USD", "period": "month" },
+      "property_type": "apartment",
+      "listing_type": "for_rent",
+      "bedrooms": 2,
+      "bathrooms": 1,
+      "url": "https://acmerealty.com/listings/bklyn-2br-rental",
+      "tags": ["doorman", "laundry"]
+    },
+    {
+      "listing_id": "ams-jordaan-3br",
+      "title": "Spacious 3BR Apartment in Jordaan",
+      "address": {
+        "city": "Amsterdam",
+        "country": "NL"
       }
     },
     {
-      "description": "Suburban rental",
-      "data": {
-        "listing_id": "bklyn-2br-rental",
-        "title": "Modern 2BR in Brooklyn Heights",
-        "address": {
-          "street": "100 Atlantic Ave",
-          "city": "Brooklyn",
-          "region": "US-NY",
-          "postal_code": "11201",
-          "country": "US"
-        },
-        "price": { "amount": 3200, "currency": "USD", "period": "month" },
-        "property_type": "apartment",
-        "listing_type": "for_rent",
-        "bedrooms": 2,
-        "bathrooms": 1,
-        "url": "https://acmerealty.com/listings/bklyn-2br-rental",
-        "tags": ["doorman", "laundry"]
-      }
+      "listing_id": "ams-jordaan-3br",
+      "title": "Spacious 3BR Apartment in Jordaan",
+      "description": "Bright canal-view apartment with original features and modern kitchen, steps from Noordermarkt.",
+      "address": {
+        "street": "Prinsengracht 450",
+        "city": "Amsterdam",
+        "region": "NL-NH",
+        "postal_code": "1017 KE",
+        "country": "NL"
+      },
+      "price": {
+        "amount": 650000,
+        "currency": "EUR"
+      },
+      "property_type": "apartment",
+      "listing_type": "for_sale",
+      "bedrooms": 3,
+      "bathrooms": 1,
+      "area": {
+        "value": 95,
+        "unit": "sqm"
+      },
+      "location": {
+        "lat": 52.3667,
+        "lng": 4.8833
+      },
+      "neighborhood": "Jordaan",
+      "year_built": 1920,
+      "tags": [
+        "canal-view",
+        "renovated"
+      ]
     }
   ]
 }

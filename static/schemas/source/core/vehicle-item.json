@@ -138,42 +138,65 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "New sedan at dealership",
-      "data": {
-        "vehicle_id": "dlr-2024-civic-001",
-        "title": "2024 Honda Civic EX Sedan",
-        "make": "Honda",
-        "model": "Civic",
-        "year": 2024,
-        "trim": "EX",
-        "price": { "amount": 28500, "currency": "USD" },
-        "condition": "new",
-        "body_style": "sedan",
-        "transmission": "cvt",
-        "fuel_type": "gasoline",
-        "exterior_color": "Lunar Silver Metallic",
-        "image_url": "https://images.acmemotors.com/civic-ex-2024.jpg",
-        "url": "https://acmemotors.com/inventory/civic-001",
-        "tags": ["new-arrival"]
-      }
+      "vehicle_id": "dlr-2024-civic-001",
+      "title": "2024 Honda Civic EX Sedan",
+      "make": "Honda",
+      "model": "Civic",
+      "year": 2024,
+      "trim": "EX",
+      "price": { "amount": 28500, "currency": "USD" },
+      "condition": "new",
+      "body_style": "sedan",
+      "transmission": "cvt",
+      "fuel_type": "gasoline",
+      "exterior_color": "Lunar Silver Metallic",
+      "image_url": "https://images.acmemotors.com/civic-ex-2024.jpg",
+      "url": "https://acmemotors.com/inventory/civic-001",
+      "tags": ["new-arrival"]
     },
     {
-      "description": "Used electric SUV",
-      "data": {
-        "vehicle_id": "dlr-2022-my-042",
-        "title": "2022 Tesla Model Y Long Range",
-        "make": "Tesla",
-        "model": "Model Y",
-        "year": 2022,
-        "price": { "amount": 38900, "currency": "USD" },
-        "condition": "used",
-        "vin": "5YJYGDEE4NF123456",
-        "mileage": { "value": 28000, "unit": "mi" },
-        "body_style": "suv",
-        "fuel_type": "electric",
-        "url": "https://acmemotors.com/inventory/my-042",
-        "tags": ["low-mileage", "one-owner"]
-      }
+      "vehicle_id": "dlr-2022-my-042",
+      "title": "2022 Tesla Model Y Long Range",
+      "make": "Tesla",
+      "model": "Model Y",
+      "year": 2022,
+      "price": { "amount": 38900, "currency": "USD" },
+      "condition": "used",
+      "vin": "5YJYGDEE4NF123456",
+      "mileage": { "value": 28000, "unit": "mi" },
+      "body_style": "suv",
+      "fuel_type": "electric",
+      "url": "https://acmemotors.com/inventory/my-042",
+      "tags": ["low-mileage", "one-owner"]
+    },
+    {
+      "vehicle_id": "dlr-2024-horizon-001",
+      "title": "2024 Apex Horizon EX Sedan",
+      "make": "Apex",
+      "model": "Horizon",
+      "year": 2024
+    },
+    {
+      "vehicle_id": "dlr-2024-horizon-001",
+      "title": "2024 Apex Horizon EX Sedan",
+      "make": "Apex",
+      "model": "Horizon",
+      "year": 2024,
+      "trim": "EX",
+      "price": {
+        "amount": 28500,
+        "currency": "USD"
+      },
+      "condition": "new",
+      "body_style": "sedan",
+      "transmission": "cvt",
+      "fuel_type": "gasoline",
+      "exterior_color": "Lunar Silver Metallic",
+      "image_url": "https://images.apexmotors.com/horizon-ex-2024.jpg",
+      "url": "https://apexmotors.com/inventory/horizon-001",
+      "tags": [
+        "new-arrival"
+      ]
     }
   ]
 }

@@ -22,6 +22,7 @@ Sam starts with what he wants to accomplish, not a segment taxonomy.
 
 Sam's agency platform translates the brief into a `get_signals` call. No need to know which providers have what — the signal agent searches across all of them:
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/signals/get-signals-request.json",
@@ -127,6 +128,7 @@ sequenceDiagram
 
 Each activation call specifies the destination platform and account:
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/signals/activate-signal-request.json",
@@ -149,6 +151,7 @@ The signal agent pushes segment membership to each platform. Sam gets back deplo
 
 Sam also wants to run a sponsored article campaign through Wonderstruck, a premium publisher with its own sales agent. Instead of activating the signal on a specific DSP, Sam activates it on the sales agent directly — Wonderstruck handles its own DSP coordination:
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/signals/activate-signal-request.json",
@@ -181,6 +184,7 @@ The key point: signals and media buys are separate concerns. The Signals Protoco
 
 The campaign runs. Two weeks in, display CPAs are running 40% above target while CTV is pacing well. Sam reallocates: he deactivates the geo signal on Nova DSP to reduce display data costs:
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/signals/activate-signal-request.json",

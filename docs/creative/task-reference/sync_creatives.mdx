@@ -197,14 +197,26 @@ After an assignment `merge`, the buyer creative's landing page for that package 
 
 After checking the capability and setting an override with an `assign` operation, the buyer can restore inheritance with this atomic reset. This reset uses existing operations, so its example references the released `v3` request schema.
 
+{/* schema-example: #/examples/5 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-request.json",
-  "account": { "account_id": "acct_acme" },
+  "account": {
+    "account_id": "acct_acme"
+  },
   "idempotency_key": "assignment-landing-page-reset-0001",
   "assignment_operations": [
-    { "operation": "unassign", "creative_id": "hero", "package_id": "pkg_display" },
-    { "operation": "assign", "creative_id": "hero", "package_id": "pkg_display", "weight": 50 }
+    {
+      "operation": "unassign",
+      "creative_id": "hero",
+      "package_id": "pkg_display"
+    },
+    {
+      "operation": "assign",
+      "creative_id": "hero",
+      "package_id": "pkg_display",
+      "weight": 50
+    }
   ]
 }
 ```
@@ -238,9 +250,13 @@ Supporting sellers MUST return `trackers` in [`list_creatives`](/docs/creative/t
 
 This request assigns one existing creative to two packages with different measurement values. It requires the unreleased 3.3 assignment fields; each tracker follows the [assignment tracker schema](https://adcontextprotocol.org/schemas/latest/core/assignment-tracker.json). The request is validated against the source schema by the assignment-tracker tests.
 
+{/* schema-example: #/examples/6 */}
 ```json
 {
-  "account": { "account_id": "acct_acme" },
+  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-request.json",
+  "account": {
+    "account_id": "acct_acme"
+  },
   "idempotency_key": "assignment-trackers-example-0001",
   "assignment_operations": [
     {
@@ -248,8 +264,15 @@ This request assigns one existing creative to two packages with different measur
       "creative_id": "hero",
       "package_id": "pkg_display_a",
       "trackers": [
-        { "event": "impression", "url": "https://measurement.example/imp?mb=mb_a&pkg=pkg_display_a&cb={CACHEBUSTER}" },
-        { "event": "custom", "custom_event_name": "engagement_3s", "url": "https://measurement.example/engagement?mb=mb_a" }
+        {
+          "event": "impression",
+          "url": "https://measurement.example/imp?mb=mb_a&pkg=pkg_display_a&cb={CACHEBUSTER}"
+        },
+        {
+          "event": "custom",
+          "custom_event_name": "engagement_3s",
+          "url": "https://measurement.example/engagement?mb=mb_a"
+        }
       ]
     },
     {
@@ -257,7 +280,10 @@ This request assigns one existing creative to two packages with different measur
       "creative_id": "hero",
       "package_id": "pkg_display_b",
       "trackers": [
-        { "event": "impression", "url": "https://measurement.example/imp?mb=mb_b&pkg=pkg_display_b&cb={CACHEBUSTER}" }
+        {
+          "event": "impression",
+          "url": "https://measurement.example/imp?mb=mb_b&pkg=pkg_display_b&cb={CACHEBUSTER}"
+        }
       ]
     }
   ]
@@ -279,10 +305,13 @@ A `weight` supplied on the operation replaces the transferred weight. So does a 
 
 The seller MUST validate every transferred setting against the replacement, including tracker-slot capacity and events for its format, whether the landing-page override can apply to its clicks, and any destination review, and MUST reject the atomic request with the existing assignment errors rather than drop or partially apply a setting. Readback in [`list_creatives`](/docs/creative/task-reference/list_creatives) and [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) `creative_approvals[]` shows the transferred settings on the replacement's row.
 
+{/* schema-example: #/examples/7 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-request.json",
-  "account": { "account_id": "acct_acme" },
+  "account": {
+    "account_id": "acct_acme"
+  },
   "idempotency_key": "replace-hero-v2-0001",
   "assignment_operations": [
     {
@@ -309,9 +338,13 @@ Buyers MUST NOT send `installment_refs` unless the seller lists `media_buy.insta
 
 This request gives each post of a two-post creator package its own creative: the awareness brief for the first post and the offer, with its discount code, for the second. It uses the unreleased experimental `installment_refs`; the installment creative assignment tests validate it against the source schema.
 
+{/* schema-example: #/examples/8 */}
 ```json
 {
-  "account": { "account_id": "acct_acme" },
+  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-request.json",
+  "account": {
+    "account_id": "acct_acme"
+  },
   "idempotency_key": "juniper-vale-posts-0001",
   "assignment_operations": [
     {
@@ -320,7 +353,10 @@ This request gives each post of a two-post creator package its own creative: the
       "package_id": "pkg_juniper_vale",
       "installment_refs": [
         {
-          "collection_ref": { "publisher_domain": "creatorloop.example", "collection_id": "creatorloop_channel_juniper_vale" },
+          "collection_ref": {
+            "publisher_domain": "creatorloop.example",
+            "collection_id": "creatorloop_channel_juniper_vale"
+          },
           "installment_id": "juniper_vale_slot_1"
         }
       ]
@@ -331,7 +367,10 @@ This request gives each post of a two-post creator package its own creative: the
       "package_id": "pkg_juniper_vale",
       "installment_refs": [
         {
-          "collection_ref": { "publisher_domain": "creatorloop.example", "collection_id": "creatorloop_channel_juniper_vale" },
+          "collection_ref": {
+            "publisher_domain": "creatorloop.example",
+            "collection_id": "creatorloop_channel_juniper_vale"
+          },
           "installment_id": "juniper_vale_slot_2"
         }
       ]
@@ -544,6 +583,7 @@ Modes rank from least to most disruptive: `uninterrupted`, `staged` with `on_rej
 
 **Refusal.** A declaring seller fails an item it does not apply in place to a live creative with [`CREATIVE_LIVE_UPDATE_UNSUPPORTED`](/docs/building/verification/compliance-catalog#error-code-creative-live-update-unsupported), and leaves the creative, its review state, and its serving unchanged. Other items in the request still process. `error.details` SHOULD conform to [`error-details/creative-live-update-unsupported.json`](https://adcontextprotocol.org/schemas/latest/error-details/creative-live-update-unsupported.json): `refused_changes` and `live_package_ids`. To make the change anyway, sync it as a new `creative_id` and swap it in with an `assignment_operations` `replace` on each live package. A declaring seller MUST list `replace` in [`creative.assignment_operations`](#which-operations-a-seller-accepts), so this swap is always available. A seller that does not declare `creative.live_updates` is not covered by this section: the original rule applies unchanged (creatives on active, non-paused packages cannot be updated, and the refusal is [`INVALID_STATE`](/docs/building/verification/compliance-catalog#error-code-invalid-state)), so buyers handle both codes.
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-response.json",
@@ -581,12 +621,15 @@ This is the only localization mutation surface. Inline package creatives in
 [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) and [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) reject `localization`; sync the
 localized library creative here, then assign it by `creative_id`.
 
+{/* schema-example: #/examples/9 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-request.json",
   "adcp_version": "3.1",
   "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
-  "account": { "account_id": "acct_nova" },
+  "account": {
+    "account_id": "acct_nova"
+  },
   "creatives": [
     {
       "creative_id": "summer_image_localized",
@@ -708,10 +751,14 @@ update protection applies to all three operations.
 
 When a buyer keeps a produced build leaf, the canonical promotion is to use the kept `build_variant_id` as the new `creative_id`. The seller does not need to hold a separate lineage mapping; delivery reporting can join back to the build leaf through the normal `creative_id`.
 
+{/* schema-example: #/examples/10 */}
 ```json test=false
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-request.json",
   "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
-  "account": { "account_id": "acct_acmecorp" },
+  "account": {
+    "account_id": "acct_acmecorp"
+  },
   "creatives": [
     {
       "creative_id": "bv_card01_a",
@@ -1325,17 +1372,22 @@ Invoke [`get_task_status`](https://adcontextprotocol.org/schemas/v3/protocol/get
 
 A seller's operator or system can create its own copy of a creative the buyer already synced and attach it to a package. `list_creatives` then shows two rows for one creative: the buyer's `acme_video_001` and, on `pkg_premium_video`, seller-assigned `slr_88412`. A `replace` operation would swap them, but the seller traffics the replacement as a new serving object, so it is reviewed again and delivery restarts. A `merge` operation says "`slr_88412` on this package is my `acme_video_001`": the seller keeps the existing serving object, approval, and delivery, and reports them under the buyer's `creative_id`.
 
+{/* schema-example: #/examples/11 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-request.json",
-  "account": { "account_id": "acct_acme_2026" },
+  "account": {
+    "account_id": "acct_acme_2026"
+  },
   "idempotency_key": "7d4f2a90-3c1e-4b8a-9f62-0e5d8c1b7a34",
-  "assignment_operations": [{
-    "operation": "merge",
-    "creative_id": "acme_video_001",
-    "package_id": "pkg_premium_video",
-    "merged_creative_id": "slr_88412"
-  }]
+  "assignment_operations": [
+    {
+      "operation": "merge",
+      "creative_id": "acme_video_001",
+      "package_id": "pkg_premium_video",
+      "merged_creative_id": "slr_88412"
+    }
+  ]
 }
 ```
 
@@ -1356,17 +1408,20 @@ If the seller needs a person to confirm a match, it returns the [`submitted` env
 
 **Response.** A successful response carries `merges[]`, one entry per applied merge in request order: `creative_id`, `package_id`, `merged_creative_id`, and the inherited `approval_status`. The buyer learns each merge's outcome from the response itself, without a follow-up read. A merge-only request returns an empty `creatives` array.
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/creative/sync-creatives-response.json",
   "status": "completed",
   "creatives": [],
-  "merges": [{
-    "creative_id": "acme_video_001",
-    "package_id": "pkg_premium_video",
-    "merged_creative_id": "slr_88412",
-    "approval_status": "approved"
-  }]
+  "merges": [
+    {
+      "creative_id": "acme_video_001",
+      "package_id": "pkg_premium_video",
+      "merged_creative_id": "slr_88412",
+      "approval_status": "approved"
+    }
+  ]
 }
 ```
 

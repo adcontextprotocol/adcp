@@ -131,5 +131,23 @@
       "audiences"
     ]
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "idempotency_key": "a7d1b4e5-3456-48c2-3456-789012345abc",
+      "account": {
+        "brand": {
+          "domain": "acmeoutdoor.com"
+        },
+        "operator": "pinnacle-agency.com"
+      },
+      "audiences": [
+        {
+          "audience_id": "acme_existing_customers",
+          "name": "Acme Outdoor — existing customers",
+          "audience_type": "suppression"
+        }
+      ]
+    }
+  ]
 }

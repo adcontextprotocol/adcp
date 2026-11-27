@@ -55,8 +55,11 @@ Sellers do not call this task. They report delivery data via [`check_governance`
 
 ### Response (no issues)
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/governance/report-plan-outcome-response.json",
+  "status": "completed",
   "outcome_id": "out_001",
   "outcome_state": "accepted",
   "committed_budget": 150000,
@@ -75,8 +78,11 @@ The transport credential must resolve to the same buyer-side agent URL that made
 
 In this alternative scenario for the same action, the seller modified the request:
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/governance/report-plan-outcome-response.json",
+  "status": "completed",
   "outcome_id": "out_002",
   "outcome_state": "findings",
   "committed_budget": 150000,
@@ -87,8 +93,16 @@ In this alternative scenario for the same action, the seller modified the reques
       "explanation": "Caller reported $120,000; ledger reserved the governance-authorized $150,000. A seller-side purchase execution check is required to narrow the authoritative amount.",
       "details": {
         "discrepancies": [
-          { "field": "packages[0].budget", "requested": 150000, "received": 120000 },
-          { "field": "packages[0].targeting_overlay.geo.include", "requested": ["US"], "received": ["US", "CA"] }
+          {
+            "field": "packages[0].budget",
+            "requested": 150000,
+            "received": 120000
+          },
+          {
+            "field": "packages[0].targeting_overlay.geo.include",
+            "requested": ["US"],
+            "received": ["US", "CA"]
+          }
         ]
       }
     }
@@ -141,8 +155,11 @@ Authoritative seller monitoring uses [`check_governance`](/docs/governance/campa
 
 ### Response (on track)
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/governance/report-plan-outcome-response.json",
+  "status": "completed",
   "outcome_id": "out_del_001",
   "outcome_state": "accepted",
   "delivery_reconciliation_status": "consistent",
@@ -154,8 +171,11 @@ Authoritative seller monitoring uses [`check_governance`](/docs/governance/campa
 
 A `seller_statement_copy` whose statement ID or digest differs from what the seller filed with governance means the seller told two different stories. This is a dispute, and it blocks adjustment acceptance while the period is open:
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/governance/report-plan-outcome-response.json",
+  "status": "completed",
   "outcome_id": "out_del_002",
   "outcome_state": "findings",
   "delivery_reconciliation_status": "disputed",
@@ -181,8 +201,11 @@ A forwarded copy whose digest matches the canonical statement but whose values d
 
 A `buyer_measurement` with a matching period and currency but a different `cumulative_spend` is expected measurement noise, not equivocation. It is recorded, attributed, and non-blocking:
 
+{/* schema-example: #/examples/4 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/governance/report-plan-outcome-response.json",
+  "status": "completed",
   "outcome_id": "out_del_004",
   "outcome_state": "findings",
   "delivery_reconciliation_status": "measurement_variance",
@@ -210,8 +233,11 @@ In every disagreement, governance retains both attributed amounts and reports `m
 
 The plan owner may submit a new observation for the same seller statement and `reporting_period` with `period_closed: true`. Only the authenticated plan owner can close a period; the governance agent rejects `period_closed: true` from any other authenticated reporter. If the values still disagree, the response makes the limited operational meaning explicit:
 
+{/* schema-example: #/examples/5 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/governance/report-plan-outcome-response.json",
+  "status": "completed",
   "outcome_id": "out_del_003",
   "outcome_state": "findings",
   "delivery_reconciliation_status": "closed_unresolved",
@@ -254,8 +280,11 @@ Every field in this error remains reporter-supplied evidence. Governance agents 
 
 Sellers may disclose progressively. A [`POLICY_VIOLATION`](/docs/building/verification/compliance-catalog#error-code-policy-violation) can include a registry `policy_id`, category, rule IDs, and remediation when those are publishable, or an opaque `seller_policy_ref` when disclosure would reveal enforcement controls. Use [`ACTION_NOT_ALLOWED`](/docs/building/verification/compliance-catalog#error-code-action-not-allowed) when the proposed change was not a negotiated/current right. Reserve [`PERMISSION_DENIED`](/docs/building/verification/compliance-catalog#error-code-permission-denied) for caller identity, credential, account scope, or signed-governance authorization failures.
 
+{/* schema-example: #/examples/6 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/governance/report-plan-outcome-response.json",
+  "status": "completed",
   "outcome_id": "out_003",
   "outcome_state": "accepted",
   "committed_budget": 0,

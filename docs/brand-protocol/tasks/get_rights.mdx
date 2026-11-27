@@ -26,17 +26,24 @@ Typically 2-10 seconds. The agent may perform compatibility checks against the b
 ## Quick start
 
 <CodeGroup>
+{/* schema-example: #/examples/0 */}
 ```json Request
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand/get-rights-request.json",
   "query": "Dutch athlete for restaurant brand in Amsterdam, budget 400 EUR/month",
   "uses": ["likeness", "voice"],
-  "buyer_brand": { "domain": "bistro-oranje.nl" },
+  "buyer_brand": {
+    "domain": "bistro-oranje.nl"
+  },
   "include_excluded": true
 }
 ```
 
+{/* schema-example: #/examples/0 */}
 ```json Response
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand/get-rights-response.json",
+  "status": "completed",
   "rights": [
     {
       "rights_id": "janssen_likeness_voice",
@@ -56,7 +63,7 @@ Typically 2-10 seconds. The agent may perform compatibility checks against the b
         {
           "pricing_option_id": "cpm_endorsement",
           "model": "cpm",
-          "price": 3.50,
+          "price": 3.5,
           "currency": "EUR",
           "uses": ["likeness"],
           "description": "Per-impression royalty for AI-generated creatives using likeness"
@@ -69,13 +76,16 @@ Typically 2-10 seconds. The agent may perform compatibility checks against the b
           "period": "monthly",
           "uses": ["likeness", "voice"],
           "impression_cap": 100000,
-          "overage_cpm": 4.00,
+          "overage_cpm": 4,
           "description": "Monthly exclusive license for likeness + voice, up to 100K impressions"
         }
       ],
       "content_restrictions": ["approval_required"],
       "preview_assets": [
-        { "url": "https://cdn.lotientertainment.com/janssen/headshot.jpg", "usage": "preview_only" }
+        {
+          "url": "https://cdn.lotientertainment.com/janssen/headshot.jpg",
+          "usage": "preview_only"
+        }
       ]
     }
   ],

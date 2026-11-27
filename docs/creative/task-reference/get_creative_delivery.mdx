@@ -171,8 +171,11 @@ locale, or rendered-output boundaries contains distinct variant rows; a row's
 metrics match the creative totals only when it is the sole row in the reporting
 period.
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/get-creative-delivery-response.json",
+  "status": "completed",
   "media_buy_id": "mb_12345",
   "currency": "USD",
   "reporting_period": {
@@ -232,8 +235,11 @@ The `ext` field is not standardized across platforms — each platform defines i
 
 Buyer provides multiple asset alternatives using a format with `selection_mode: "optimize"`. Platform tests combinations and returns the manifest for each variant showing which assets were selected.
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/get-creative-delivery-response.json",
+  "status": "completed",
   "media_buy_id": "mb_12345",
   "currency": "USD",
   "reporting_period": {
@@ -307,8 +313,11 @@ Platform generates variants from brand manifest and input contexts. The `manifes
 
 When the publisher uses AdCP content standards, `generation_context` can include an `artifact` reference linking the variant to the specific content (article, video, etc.) that triggered generation. Platforms can also use `ext` for vendor-specific context structures.
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/get-creative-delivery-response.json",
+  "status": "completed",
   "media_buy_id": "mb_12345",
   "currency": "USD",
   "reporting_period": {
@@ -331,7 +340,10 @@ When the publisher uses AdCP content standards, `generation_context` can include
           "generation_context": {
             "context_type": "web_page",
             "artifact": {
-              "property_id": { "type": "domain", "value": "techreview.example.com" },
+              "property_id": {
+                "type": "domain",
+                "value": "techreview.example.com"
+              },
               "artifact_id": "article_semiconductor_trends_2026"
             },
             "topic": "technology, semiconductors",
@@ -394,8 +406,10 @@ When the publisher uses AdCP content standards, `generation_context` can include
 
 Use [`preview_creative`](/docs/creative/task-reference/preview_creative) with `request_type: "variant"` to see what a specific variant looked like when served:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/preview-creative-request.json",
   "request_type": "variant",
   "variant_id": "gen_mobile_morning"
 }

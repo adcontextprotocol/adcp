@@ -58,5 +58,11 @@
       ]
     }
   ],
-  "properties": {}
+  "properties": {},
+  "examples": [
+    {
+      "status": "completed",
+      "standards_id": "emea_digital_safety"
+    }
+  ]
 }

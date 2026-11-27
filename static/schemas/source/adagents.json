@@ -1221,6 +1221,861 @@
         }
       ],
       "last_updated": "2025-01-15T10:00:00Z"
+    },
+    {
+      "contact": {
+        "name": "StreamHaus",
+        "email": "adops@streamhaus.example",
+        "domain": "streamhaus.example"
+      },
+      "properties": [
+        {
+          "property_id": "streamhaus_ctv",
+          "property_type": "ctv_app",
+          "name": "StreamHaus CTV App",
+          "publisher_domain": "streamhaus.example",
+          "identifiers": [
+            {
+              "type": "bundle_id",
+              "value": "com.streamhaus.ctv"
+            }
+          ]
+        }
+      ],
+      "authorized_agents": [
+        {
+          "authorization_type": "property_ids",
+          "url": "https://ads.streamhaus.example/mcp",
+          "authorized_for": "StreamHaus direct CTV inventory",
+          "property_ids": [
+            "streamhaus_ctv"
+          ],
+          "signing_keys": [
+            {
+              "kid": "streamhaus-sales-prod-2026",
+              "kty": "OKP",
+              "alg": "EdDSA",
+              "crv": "Ed25519",
+              "x": "w8zcY1LZqV4n1oKbfyq3n2q3sL2uV3z7kEw1m9Qjv4A",
+              "use": "sig"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "contact": {
+        "name": "StreamHaus",
+        "email": "adops@streamhaus.example",
+        "domain": "streamhaus.example"
+      },
+      "properties": [
+        {
+          "property_id": "streamhaus_web",
+          "property_type": "website",
+          "name": "StreamHaus",
+          "publisher_domain": "streamhaus.example",
+          "identifiers": [
+            {
+              "type": "domain",
+              "value": "streamhaus.example"
+            }
+          ]
+        }
+      ],
+      "authorized_agents": [
+        {
+          "authorization_type": "property_ids",
+          "url": "https://northwind.example/mcp",
+          "authorized_for": "StreamHaus inventory via delegated sales agreement",
+          "property_ids": [
+            "streamhaus_web"
+          ],
+          "delegation_type": "delegated",
+          "signing_keys": [
+            {
+              "kid": "northwind-sales-prod-2026",
+              "kty": "OKP",
+              "alg": "EdDSA",
+              "crv": "Ed25519",
+              "x": "Xe2lAKRJR_zr3FQRdSNwp3zsrv_IXnVCWJXDcWXwkLI",
+              "use": "sig"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "contact": {
+        "name": "Example Publisher",
+        "email": "adops@publisher.example.com",
+        "domain": "publisher.example.com"
+      },
+      "properties": [
+        {
+          "property_id": "publisher_home",
+          "property_type": "website",
+          "name": "Example Publisher",
+          "publisher_domain": "publisher.example.com",
+          "identifiers": [
+            {
+              "type": "domain",
+              "value": "publisher.example.com"
+            }
+          ]
+        }
+      ],
+      "authorized_agents": [
+        {
+          "authorization_type": "property_ids",
+          "url": "https://ads.publisher.example.com/mcp",
+          "authorized_for": "Example Publisher direct inventory",
+          "property_ids": [
+            "publisher_home"
+          ],
+          "signing_keys": [
+            {
+              "kid": "publisher-sales-prod-2026",
+              "kty": "OKP",
+              "alg": "EdDSA",
+              "crv": "Ed25519",
+              "x": "w8zcY1LZqV4n1oKbfyq3n2q3sL2uV3z7kEw1m9Qjv4A",
+              "use": "sig"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "properties": [
+        {
+          "property_id": "harbor_tavern_12345",
+          "property_type": "dooh",
+          "name": "Harbor Tavern 12345",
+          "identifiers": [
+            {
+              "type": "venue_id",
+              "value": "harbor:STP-12345"
+            },
+            {
+              "type": "openooh_venue_type",
+              "value": "openooh-1.1:804"
+            }
+          ],
+          "supported_channels": [
+            "dooh",
+            "streaming_audio"
+          ]
+        }
+      ],
+      "placements": [
+        {
+          "placement_id": "harbor_tavern_12345_audio",
+          "name": "In-venue audio player",
+          "property_ids": [
+            "harbor_tavern_12345"
+          ],
+          "channels": [
+            "dooh"
+          ],
+          "identifiers": [
+            {
+              "type": "venue_id",
+              "value": "harbor:STP-12345"
+            }
+          ],
+          "dooh_placement_attributes": {
+            "slot_duration_seconds": 30,
+            "loop_duration_seconds": 900
+          },
+          "format_options": [
+            {
+              "format_kind": "audio_hosted",
+              "params": {
+                "duration_ms_exact": 30000,
+                "audio_codecs": [
+                  "mp3",
+                  "aac"
+                ],
+                "slots": [
+                  {
+                    "asset_group_id": "audio_main",
+                    "asset_type": "audio",
+                    "required": true
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "authorized_agents": [
+        {
+          "url": "https://sales.harbor-audio.example/adcp",
+          "authorized_for": "In-venue audio inventory",
+          "authorization_type": "property_ids",
+          "property_ids": [
+            "harbor_tavern_12345"
+          ],
+          "placement_ids": [
+            "harbor_tavern_12345_audio"
+          ],
+          "delegation_type": "delegated"
+        }
+      ],
+      "last_updated": "2026-08-30T00:00:00Z"
+    },
+    {
+      "contact": {
+        "name": "Example Publisher Ad Operations",
+        "email": "adops@example.com",
+        "domain": "example.com",
+        "seller_id": "pub-example-12345",
+        "tag_id": "67890"
+      },
+      "properties": [
+        {
+          "property_id": "example_site",
+          "property_type": "website",
+          "name": "Example Site",
+          "identifiers": [
+            {
+              "type": "domain",
+              "value": "example.com"
+            }
+          ]
+        }
+      ],
+      "authorized_agents": [
+        {
+          "url": "https://agent.example.com/mcp",
+          "authorized_for": "Official sales agent",
+          "authorization_type": "property_ids",
+          "property_ids": [
+            "example_site"
+          ],
+          "delegation_type": "direct",
+          "exclusive": true
+        }
+      ],
+      "last_updated": "2025-01-10T12:00:00Z"
+    },
+    {
+      "authoritative_location": "https://cdn.example.com/adagents/v2/adagents.json",
+      "last_updated": "2025-01-15T10:00:00Z"
+    },
+    {
+      "authoritative_location": "https://cdn.publisher.com/adagents/v2/adagents.json",
+      "last_updated": "2025-01-15T10:00:00Z"
+    },
+    {
+      "contact": {
+        "name": "Publisher Ad Operations",
+        "email": "adops@publisher.com"
+      },
+      "properties": [
+        {
+          "property_id": "domain1_site",
+          "property_type": "website",
+          "name": "Domain 1",
+          "identifiers": [
+            {
+              "type": "domain",
+              "value": "domain1.com"
+            }
+          ],
+          "publisher_domain": "domain1.com"
+        },
+        {
+          "property_id": "domain2_site",
+          "property_type": "website",
+          "name": "Domain 2",
+          "identifiers": [
+            {
+              "type": "domain",
+              "value": "domain2.com"
+            }
+          ],
+          "publisher_domain": "domain2.com"
+        }
+      ],
+      "authorized_agents": [
+        {
+          "url": "https://sales-agent.publisher.com",
+          "authorized_for": "All publisher properties",
+          "authorization_type": "property_ids",
+          "property_ids": [
+            "domain1_site",
+            "domain2_site"
+          ]
+        }
+      ],
+      "last_updated": "2025-01-15T09:00:00Z"
+    },
+    {
+      "contact": {
+        "name": "Premium News Publisher",
+        "email": "adops@news.example.com",
+        "domain": "news.example.com"
+      },
+      "properties": [
+        {
+          "property_id": "news_main",
+          "property_type": "website",
+          "name": "News Example",
+          "identifiers": [
+            {
+              "type": "domain",
+              "value": "news.example.com"
+            }
+          ],
+          "tags": [
+            "premium",
+            "news"
+          ],
+          "publisher_domain": "news.example.com"
+        }
+      ],
+      "tags": {
+        "premium": {
+          "name": "Premium Properties",
+          "description": "High-quality, brand-suitable properties"
+        },
+        "news": {
+          "name": "News Properties",
+          "description": "News and journalism content"
+        }
+      },
+      "authorized_agents": [
+        {
+          "url": "https://sales.news.example.com",
+          "authorized_for": "All news properties",
+          "authorization_type": "property_tags",
+          "property_tags": [
+            "news"
+          ]
+        }
+      ],
+      "property_features": [
+        {
+          "url": "https://api.sustainability-vendor.example",
+          "name": "Sustainability Vendor",
+          "features": [
+            "carbon_score",
+            "green_media_certified"
+          ],
+          "publisher_id": "pub_news_12345"
+        },
+        {
+          "url": "https://api.quality-vendor.example",
+          "name": "Quality Vendor",
+          "features": [
+            "mfa_score",
+            "ad_density",
+            "page_speed"
+          ]
+        },
+        {
+          "url": "https://api.suitability-vendor.example",
+          "name": "Suitability Vendor",
+          "features": [
+            "content_category",
+            "brand_risk_score",
+            "sentiment"
+          ],
+          "publisher_id": "suit_news_67890"
+        }
+      ],
+      "last_updated": "2025-01-10T18:00:00Z"
+    },
+    {
+      "contact": {
+        "name": "Sports Network Media",
+        "email": "adops@sportsnetwork.com",
+        "domain": "sportsnetwork.com"
+      },
+      "properties": [
+        {
+          "property_id": "sports_network_main",
+          "property_type": "website",
+          "name": "Sports Network",
+          "identifiers": [
+            {
+              "type": "domain",
+              "value": "sportsnetwork.com"
+            }
+          ],
+          "tags": [
+            "premium",
+            "sports"
+          ]
+        }
+      ],
+      "authorized_agents": [
+        {
+          "url": "https://sports-media-sales.com",
+          "authorized_for": "All Sports Network properties",
+          "authorization_type": "property_tags",
+          "property_tags": [
+            "sports"
+          ],
+          "delegation_type": "direct"
+        },
+        {
+          "url": "https://premium-ad-network.com",
+          "authorized_for": "Premium inventory only",
+          "authorization_type": "property_tags",
+          "property_tags": [
+            "premium"
+          ],
+          "delegation_type": "ad_network",
+          "countries": [
+            "US",
+            "CA"
+          ]
+        }
+      ],
+      "last_updated": "2025-01-10T12:00:00Z"
+    },
+    {
+      "properties": [
+        {
+          "property_id": "example_site",
+          "property_type": "website",
+          "name": "Example Site",
+          "identifiers": [
+            {
+              "type": "domain",
+              "value": "example.com"
+            }
+          ]
+        }
+      ],
+      "authorized_agents": [
+        {
+          "url": "https://agent.example.com",
+          "authorized_for": "Official sales agent",
+          "authorization_type": "property_ids",
+          "property_ids": [
+            "example_site"
+          ],
+          "delegation_type": "direct"
+        }
+      ],
+      "property_features": [
+        {
+          "url": "https://api.sustainability-vendor.example",
+          "name": "Sustainability Vendor",
+          "features": [
+            "carbon_score",
+            "green_media_certified"
+          ]
+        },
+        {
+          "url": "https://api.quality-vendor.example",
+          "name": "Quality Vendor",
+          "features": [
+            "mfa_score",
+            "ad_load_rating",
+            "page_speed"
+          ]
+        }
+      ]
+    },
+    {
+      "authoritative_location": "https://network.example.com/adagents/v2/adagents.json",
+      "last_updated": "2025-06-01T00:00:00Z"
+    },
+    {
+      "contact": {
+        "name": "Example Network Ad Operations",
+        "email": "adops@network.example.com",
+        "domain": "network.example.com"
+      },
+      "properties": [
+        {
+          "property_id": "site_cooking_daily",
+          "property_type": "website",
+          "name": "Cooking Daily",
+          "identifiers": [
+            {
+              "type": "domain",
+              "value": "cookingdaily.com"
+            }
+          ],
+          "tags": [
+            "food",
+            "managed_network"
+          ],
+          "publisher_domain": "cookingdaily.com"
+        },
+        {
+          "property_id": "site_garden_weekly",
+          "property_type": "website",
+          "name": "Garden Weekly",
+          "identifiers": [
+            {
+              "type": "domain",
+              "value": "gardenweekly.com"
+            }
+          ],
+          "tags": [
+            "home",
+            "managed_network"
+          ],
+          "publisher_domain": "gardenweekly.com"
+        }
+      ],
+      "tags": {
+        "managed_network": {
+          "name": "Managed Network",
+          "description": "All domains managed by Example Network"
+        }
+      },
+      "authorized_agents": [
+        {
+          "url": "https://sales.network.example.com",
+          "authorized_for": "All managed network properties",
+          "authorization_type": "property_tags",
+          "property_tags": [
+            "managed_network"
+          ],
+          "delegation_type": "ad_network"
+        }
+      ],
+      "last_updated": "2025-06-01T00:00:00Z"
+    },
+    {
+      "contact": {
+        "name": "Pinnacle Auto Data",
+        "email": "partnerships@pinnacle-auto-data.com",
+        "domain": "pinnacle-auto-data.com"
+      },
+      "signals": [
+        {
+          "id": "likely_ev_buyers",
+          "name": "Likely EV Buyers",
+          "description": "Consumers modeled as likely to purchase an electric vehicle in the next 12 months",
+          "value_type": "binary",
+          "tags": [
+            "automotive",
+            "green"
+          ]
+        }
+      ],
+      "signal_tags": {
+        "automotive": {
+          "name": "Automotive Signals",
+          "description": "Vehicle-related audience segments"
+        },
+        "green": {
+          "name": "Green/Sustainability",
+          "description": "Environmentally-conscious consumer segments"
+        }
+      },
+      "authorized_agents": [
+        {
+          "url": "https://signals-agent.example.com",
+          "authorized_for": "All automotive signals",
+          "authorization_type": "signal_tags",
+          "signal_tags": [
+            "automotive"
+          ]
+        }
+      ],
+      "last_updated": "2025-01-15T10:00:00Z"
+    },
+    {
+      "contact": {
+        "name": "Pinnacle Auto Data",
+        "email": "partnerships@pinnacle-auto-data.com",
+        "domain": "pinnacle-auto-data.com"
+      },
+      "signals": [
+        {
+          "id": "likely_ev_buyers",
+          "name": "Likely EV Buyers",
+          "description": "Consumers modeled as likely to purchase an electric vehicle in the next 12 months based on vehicle registration, financial, and behavioral data",
+          "value_type": "binary",
+          "tags": [
+            "automotive",
+            "premium"
+          ]
+        },
+        {
+          "id": "vehicle_ownership",
+          "name": "Current Vehicle Ownership",
+          "description": "Current vehicle category owned by the consumer",
+          "value_type": "categorical",
+          "allowed_values": [
+            "luxury_ev",
+            "luxury_non_ev",
+            "mid_range",
+            "economy",
+            "none"
+          ],
+          "tags": [
+            "automotive"
+          ]
+        },
+        {
+          "id": "purchase_propensity",
+          "name": "Auto Purchase Propensity",
+          "description": "Likelihood score of purchasing any new vehicle in the next 6 months",
+          "value_type": "numeric",
+          "range": {
+            "min": 0,
+            "max": 1,
+            "unit": "score"
+          },
+          "tags": [
+            "automotive"
+          ]
+        }
+      ],
+      "signal_tags": {
+        "automotive": {
+          "name": "Automotive Signals",
+          "description": "Vehicle-related audience segments"
+        },
+        "premium": {
+          "name": "Premium Signals",
+          "description": "High-value premium audience segments with enhanced pricing"
+        }
+      },
+      "authorized_agents": [
+        {
+          "url": "https://luminary-data.com/.well-known/adcp/signals",
+          "authorized_for": "All Pinnacle automotive signals via Luminary Data",
+          "authorization_type": "signal_tags",
+          "signal_tags": [
+            "automotive"
+          ]
+        },
+        {
+          "url": "https://nova-dsp.com/.well-known/adcp/signals",
+          "authorized_for": "Pinnacle premium signals only",
+          "authorization_type": "signal_ids",
+          "signal_ids": [
+            "likely_ev_buyers"
+          ]
+        }
+      ],
+      "last_updated": "2025-01-15T10:00:00Z"
+    },
+    {
+      "contact": {
+        "name": "Meridian Geo",
+        "email": "partnerships@meridiangeo.example",
+        "domain": "meridiangeo.example"
+      },
+      "signals": [
+        {
+          "id": "competitor_visitors",
+          "name": "Competitor Store Visitors",
+          "value_type": "binary",
+          "description": "Consumers who visited a competitor retail location in the past 30 days based on verified foot traffic data",
+          "tags": [
+            "geo",
+            "retail",
+            "conquest"
+          ]
+        },
+        {
+          "id": "trade_area_residents",
+          "name": "Trade Area Residents",
+          "value_type": "binary",
+          "description": "Consumers whose primary residence is within a specified trade area defined by drive time or radius",
+          "tags": [
+            "geo",
+            "proximity"
+          ]
+        },
+        {
+          "id": "visit_frequency",
+          "name": "Location Visit Frequency",
+          "value_type": "numeric",
+          "range": {
+            "min": 0,
+            "max": 30
+          },
+          "description": "Monthly visit count to a specified location category (QSR, grocery, gym, auto dealer)",
+          "tags": [
+            "geo",
+            "frequency"
+          ]
+        },
+        {
+          "id": "dwell_time",
+          "name": "Average Dwell Time",
+          "value_type": "numeric",
+          "range": {
+            "min": 0,
+            "max": 120,
+            "unit": "minutes"
+          },
+          "description": "Average minutes spent on-site, distinguishing drive-bys from intentional visits",
+          "tags": [
+            "geo",
+            "behavioral",
+            "dwell"
+          ]
+        },
+        {
+          "id": "daypart_visitation",
+          "name": "Day-Part Visitation",
+          "value_type": "categorical",
+          "allowed_values": [
+            "morning_commute",
+            "midday",
+            "evening_commute",
+            "weekend_daytime",
+            "weekend_evening"
+          ],
+          "description": "When consumers typically visit a specified venue type",
+          "tags": [
+            "geo",
+            "temporal"
+          ]
+        }
+      ],
+      "signal_tags": {
+        "geo": {
+          "name": "Geographic Signals",
+          "description": "Location-derived audience segments from opted-in mobile data"
+        }
+      },
+      "authorized_agents": [
+        {
+          "url": "https://signals-agent.example.com",
+          "authorized_for": "All geo signals",
+          "authorization_type": "signal_tags",
+          "signal_tags": [
+            "geo"
+          ]
+        }
+      ]
+    },
+    {
+      "contact": {
+        "name": "Acme Marketplace",
+        "email": "partnerships@acme-marketplace.example",
+        "domain": "acme-marketplace.example"
+      },
+      "properties": [
+        {
+          "property_id": "marketplace_web",
+          "property_type": "website",
+          "name": "Acme Marketplace",
+          "identifiers": [
+            {
+              "type": "domain",
+              "value": "acme-marketplace.example"
+            }
+          ],
+          "supported_channels": [
+            "retail_media",
+            "display"
+          ]
+        }
+      ],
+      "signals": [
+        {
+          "id": "category_buyer",
+          "name": "Category Buyer",
+          "value_type": "categorical",
+          "allowed_values": [
+            "electronics",
+            "home",
+            "beauty",
+            "grocery",
+            "fashion"
+          ],
+          "description": "Purchased in category in past 90 days",
+          "tags": [
+            "retail",
+            "purchase"
+          ]
+        },
+        {
+          "id": "loyalty_tier",
+          "name": "Loyalty Program Tier",
+          "value_type": "categorical",
+          "allowed_values": [
+            "platinum",
+            "gold",
+            "silver",
+            "bronze"
+          ],
+          "tags": [
+            "retail",
+            "loyalty"
+          ]
+        },
+        {
+          "id": "new_to_brand",
+          "name": "New to Brand",
+          "value_type": "binary",
+          "description": "Never purchased from specified brand on marketplace",
+          "tags": [
+            "retail",
+            "conquest"
+          ]
+        }
+      ],
+      "authorized_agents": [
+        {
+          "url": "https://signals-agent.example.com",
+          "authorized_for": "All retail signals",
+          "authorization_type": "signal_tags",
+          "signal_tags": [
+            "retail"
+          ]
+        }
+      ]
+    },
+    {
+      "contact": {
+        "name": "StreamHaus Publishing",
+        "email": "adops@streamhaus.example",
+        "domain": "streamhaus.example"
+      },
+      "properties": [
+        {
+          "property_id": "streamhaus_ctv",
+          "property_type": "ctv_app",
+          "name": "StreamHaus CTV App",
+          "publisher_domain": "streamhaus.example",
+          "identifiers": [
+            {
+              "type": "roku_store_id",
+              "value": "12345"
+            }
+          ]
+        }
+      ],
+      "authorized_agents": [
+        {
+          "url": "https://northwind.example/mcp",
+          "authorized_for": "StreamHaus CTV inventory via delegated authority",
+          "authorization_type": "property_ids",
+          "property_ids": [
+            "streamhaus_ctv"
+          ],
+          "delegation_type": "delegated",
+          "signing_keys": [
+            {
+              "kid": "northwind-sell-prod-2026",
+              "kty": "OKP",
+              "alg": "EdDSA",
+              "crv": "Ed25519",
+              "x": "Xe2lAKRJR_zr3FQRdSNwp3zsrv_IXnVCWJXDcWXwkLI",
+              "use": "sig"
+            }
+          ]
+        }
+      ],
+      "last_updated": "2026-04-12T10:00:00Z"
     }
   ]
 }

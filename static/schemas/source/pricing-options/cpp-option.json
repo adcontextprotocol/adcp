@@ -74,5 +74,18 @@
     }
   },
   "required": ["pricing_option_id", "pricing_model", "currency", "parameters"],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "pricing_option_id": "cpp_usd_a18-49",
+      "pricing_model": "cpp",
+      "fixed_price": 250,
+      "currency": "USD",
+      "parameters": {
+        "demographic": "A18-49",
+        "min_points": 50
+      },
+      "min_spend_per_package": 12500
+    }
+  ]
 }

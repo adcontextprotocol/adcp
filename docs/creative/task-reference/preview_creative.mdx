@@ -24,8 +24,11 @@ description: "preview_creative renders an existing creative manifest into viewab
 
 Response:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/preview-creative-response.json",
+  "status": "completed",
   "response_type": "single",
   "previews": [
     {
@@ -38,7 +41,10 @@ Response:
           "role": "primary"
         }
       ],
-      "input": { "name": "Default", "macros": {} }
+      "input": {
+        "name": "Default",
+        "macros": {}
+      }
     }
   ],
   "expires_at": "2027-02-15T18:00:00Z"
@@ -155,8 +161,10 @@ Response contains results in order:
 
 Preview what a specific variant looked like when served. Use `variant_id` from [`get_creative_delivery`](/docs/creative/task-reference/get_creative_delivery) response:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/preview-creative-request.json",
   "request_type": "variant",
   "variant_id": "gen_mobile_morning"
 }
@@ -164,8 +172,11 @@ Preview what a specific variant looked like when served. Use `variant_id` from [
 
 Response:
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/preview-creative-response.json",
+  "status": "completed",
   "response_type": "variant",
   "variant_id": "gen_mobile_morning",
   "previews": [
@@ -177,7 +188,10 @@ Response:
           "output_format": "url",
           "preview_url": "https://creative-agent.example.com/preview/variant/gen_mobile_morning",
           "role": "primary",
-          "dimensions": { "width": 300, "height": 250 }
+          "dimensions": {
+            "width": 300,
+            "height": 250
+          }
         }
       ]
     }
@@ -234,8 +248,10 @@ An agent cannot grant itself authority. Even `platform_native` remains informati
 
 `preview_creative` is synchronous by default. A buyer that can poll task results MAY set `allow_async: true`. Only then may an agent hand rendering to a queue or external renderer, release the request connection, and return:
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/preview-creative-response.json",
   "response_type": "submitted",
   "status": "submitted",
   "task_id": "task_preview_abc123",
@@ -330,6 +346,7 @@ For generative formats — contextual display, AI-generated native, conversation
 
 Before the campaign runs, use single or batch mode to preview what the agent *could* generate given different contexts. Pass `inputs` with `context_description` to simulate serve-time conditions:
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "/schemas/creative/preview-creative-request.json",
@@ -349,8 +366,14 @@ Before the campaign runs, use single or batch mode to preview what the agent *co
     }
   },
   "inputs": [
-    { "name": "Tech article", "context_description": "Article about semiconductor manufacturing" },
-    { "name": "Lifestyle blog", "context_description": "Blog post about sustainable living" }
+    {
+      "name": "Tech article",
+      "context_description": "Article about semiconductor manufacturing"
+    },
+    {
+      "name": "Lifestyle blog",
+      "context_description": "Blog post about sustainable living"
+    }
   ]
 }
 ```
@@ -361,8 +384,10 @@ These previews are *representative*, not definitive. Real serve-time output depe
 
 After the campaign runs, use variant mode to replay the retained output for a served execution. Pass a `variant_id` from [`get_creative_delivery`](/docs/creative/task-reference/get_creative_delivery):
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/preview-creative-request.json",
   "request_type": "variant",
   "variant_id": "gen_tech_mobile_001"
 }
@@ -436,6 +461,7 @@ Variant previews (post-flight) depend on the agent retaining variant data. Agent
 
 ### Device Variants
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
   "$schema": "/schemas/creative/preview-creative-request.json",
@@ -443,13 +469,31 @@ Variant previews (post-flight) depend on the agent retaining variant data. Agent
   "creative_manifest": {
     "format_kind": "native_in_feed",
     "assets": {
-      "hero_image": { "asset_type": "image", "url": "https://cdn.example.com/hero.jpg", "width": 1200, "height": 627 },
-      "headline": { "asset_type": "text", "content": "Veterinarian Recommended" }
+      "hero_image": {
+        "asset_type": "image",
+        "url": "https://cdn.example.com/hero.jpg",
+        "width": 1200,
+        "height": 627
+      },
+      "headline": {
+        "asset_type": "text",
+        "content": "Veterinarian Recommended"
+      }
     }
   },
   "inputs": [
-    { "name": "Desktop", "macros": { "DEVICE_TYPE": "desktop" } },
-    { "name": "Mobile", "macros": { "DEVICE_TYPE": "mobile" } }
+    {
+      "name": "Desktop",
+      "macros": {
+        "DEVICE_TYPE": "desktop"
+      }
+    },
+    {
+      "name": "Mobile",
+      "macros": {
+        "DEVICE_TYPE": "mobile"
+      }
+    }
   ]
 }
 ```

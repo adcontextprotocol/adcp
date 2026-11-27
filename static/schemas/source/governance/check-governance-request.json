@@ -514,5 +514,83 @@
   "required": [
     "caller"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "plan_id": "plan_nova_signal_launch",
+      "caller": "https://buying.pinnacle-agency.example",
+      "target_agent": "https://signals.meridian.example/adcp",
+      "purchase_type": "signal_activation",
+      "proposed_commitment": {
+        "amount": 0,
+        "currency": "USD"
+      },
+      "tool": "activate_signal",
+      "payload": {
+        "idempotency_key": "67da3ce4-f2aa-4b63-93a1-215106690f73",
+        "signal_agent_segment_id": "segment_urban_commuters",
+        "destinations": [
+          {
+            "type": "agent",
+            "agent_url": "https://sales.streamhaus.example"
+          }
+        ]
+      },
+      "runtime_attestations": [
+        {
+          "issuer": {
+            "type": "origin",
+            "origin": "https://credentials.example"
+          },
+          "claim_type": "https://claims.example/audience/population-stability",
+          "subject": {
+            "type": "resource",
+            "resource_type": "https://adcontextprotocol.org/claims/subjects/signal",
+            "namespace": "https://signals.meridian.example/adcp",
+            "id": "segment_urban_commuters"
+          },
+          "locator": {
+            "type": "issuer_credential_id",
+            "credential_id": "cred_population_2026_08",
+            "resolver_id": "primary"
+          },
+          "content_digest": "sha256:cee39fac0bff75b76b0dd193c19e259d7bfed089dd9ae4a528a132d32ec7449a"
+        }
+      ]
+    },
+    {
+      "plan_id": "nova-spring-2027",
+      "caller": "https://orchestrator.example.com",
+      "target_agent": "https://seller.example.com",
+      "tool": "create_media_buy",
+      "purchase_type": "media_buy",
+      "budget_period_id": "q1",
+      "proposed_commitment": {
+        "amount": 25000,
+        "currency": "USD"
+      },
+      "payload": {
+        "idempotency_key": "nova-spring-q1-buy-0001",
+        "total_budget": {
+          "amount": 25000,
+          "currency": "USD"
+        },
+        "start_time": "2027-01-15T00:00:00Z",
+        "end_time": "2027-03-15T00:00:00Z"
+      }
+    },
+    {
+      "plan_id": "acme_outdoor_q2_plan",
+      "caller": "https://buyer.pinnacle-agency.com/a2a",
+      "target_agent": "https://seller.streamhaus.example/a2a",
+      "tool": "create_media_buy",
+      "payload": {
+        "brand": {
+          "domain": "acmeoutdoor.com"
+        },
+        "start_time": "2026-04-01T00:00:00Z",
+        "end_time": "2026-06-30T23:59:59Z"
+      }
+    }
+  ]
 }

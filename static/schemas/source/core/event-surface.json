@@ -59,5 +59,13 @@
   "required": [
     "category"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "category": "owned_property",
+      "property_type": "channel",
+      "namespace": "video_platform",
+      "property_id": "channel_123"
+    }
+  ]
 }

@@ -74,5 +74,52 @@
     "signal_agent_segment_id",
     "destinations"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "idempotency_key": "f4a5b6c7-d8e9-4012-f345-012345678901",
+      "signal_agent_segment_id": "meridian_outdoor_rec_25_45",
+      "destinations": [
+        {
+          "type": "platform",
+          "platform": "streamhaus"
+        }
+      ]
+    },
+    {
+      "idempotency_key": "c3d4e5f6-a7b8-4901-c234-901234567890",
+      "signal_agent_segment_id": "shopgrid_new_to_brand",
+      "pricing_option_id": "po_shopgrid_retail_cpm",
+      "destinations": [
+        {
+          "type": "platform",
+          "platform": "streamhaus",
+          "account": "agency-ctv-seat-456"
+        }
+      ]
+    },
+    {
+      "idempotency_key": "d4e5f6a7-b8c9-4012-d345-012345678901",
+      "signal_agent_segment_id": "shopgrid_new_to_brand",
+      "pricing_option_id": "po_shopgrid_retail_cpm",
+      "destinations": [
+        {
+          "type": "agent",
+          "agent_url": "https://wonderstruck.salesagents.example"
+        }
+      ]
+    },
+    {
+      "idempotency_key": "e5f6a7b8-c9d0-4123-e456-123456789012",
+      "signal_agent_segment_id": "meridian_competitor_visitors",
+      "action": "deactivate",
+      "destinations": [
+        {
+          "type": "platform",
+          "platform": "nova-dsp",
+          "account": "agency-display-seat-123"
+        }
+      ]
+    }
+  ]
 }

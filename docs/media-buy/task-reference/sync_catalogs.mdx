@@ -39,9 +39,14 @@ This task sits between format discovery and creative submission in the [account 
 
 Sync a product feed:
 
+{/* schema-example: #/examples/5 */}
 ```json
 {
-  "account": { "account_id": "acct_acmecorp" },
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-catalogs-request.json",
+  "idempotency_key": "6b08a731-0c12-4d3d-9cc7-1ac9932f9919",
+  "account": {
+    "account_id": "acct_acmecorp"
+  },
   "catalogs": [
     {
       "catalog_id": "product-feed",
@@ -151,10 +156,14 @@ eligible item leaves a package unable to deliver, the buyer restores or replaces
 the item or controls the buy; the seller continues normal delivery and
 underdelivery reporting.
 
+{/* schema-example: #/examples/6 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-catalogs-request.json",
   "idempotency_key": "d4a8f1b2-0123-489f-a123-45678901234d",
-  "account": { "account_id": "acct_acmecorp" },
+  "account": {
+    "account_id": "acct_acmecorp"
+  },
   "item_availability_updates": [
     {
       "catalog_id": "product-feed",
@@ -179,10 +188,14 @@ underdelivery reporting.
 
 Read current state before writing (and after any replay whose snapshot may be stale):
 
+{/* schema-example: #/examples/7 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-catalogs-request.json",
   "idempotency_key": "e5b9a2c3-1234-48af-b234-56789012345e",
-  "account": { "account_id": "acct_acmecorp" },
+  "account": {
+    "account_id": "acct_acmecorp"
+  },
   "item_availability_queries": [
     {
       "catalog_id": "product-feed",
@@ -278,6 +291,7 @@ of accessible buyer-managed catalogs. The number of unique item IDs MUST equal
 For example, this result includes
 an approved item and an item still awaiting review:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-catalogs-response.json",
@@ -290,8 +304,14 @@ an approved item and an item still awaiting review:
       "items_approved": 1,
       "items_pending": 1,
       "item_issues": [
-        { "item_id": "SKU-12345", "status": "approved" },
-        { "item_id": "SKU-67890", "status": "pending" }
+        {
+          "item_id": "SKU-12345",
+          "status": "approved"
+        },
+        {
+          "item_id": "SKU-67890",
+          "status": "pending"
+        }
       ]
     }
   ]
@@ -305,11 +325,14 @@ can still contain pending or rejected items, and dry-run results are previews.
 To poll an item still pending review, make a discovery-only call with a fresh
 `idempotency_key` and optionally `catalog_ids` to scope the read:
 
+{/* schema-example: #/examples/8 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-catalogs-request.json",
   "idempotency_key": "f6ca32d4-4567-49ab-8901-234567890abc",
-  "account": { "account_id": "acct_acmecorp" },
+  "account": {
+    "account_id": "acct_acmecorp"
+  },
   "catalog_ids": ["product-feed"]
 }
 ```
@@ -325,8 +348,10 @@ Sellers without the ingestion declaration retain their existing reporting behavi
 
 ### Availability update response
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-catalogs-response.json",
   "status": "completed",
   "catalogs": [],
   "item_availability_updates": [
@@ -358,8 +383,10 @@ Sellers without the ingestion declaration retain their existing reporting behavi
 
 ### Availability state response
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-catalogs-response.json",
   "status": "completed",
   "catalogs": [],
   "item_availability_states": [
@@ -437,9 +464,14 @@ Configure `push_notification_config` on the request to receive webhook notificat
 
 ### Retail media (product + inventory + store)
 
+{/* schema-example: #/examples/9 */}
 ```json
 {
-  "account": { "account_id": "acct_acmecorp" },
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-catalogs-request.json",
+  "idempotency_key": "2ada7ac3-5802-427b-9157-40c0c9db3a8d",
+  "account": {
+    "account_id": "acct_acmecorp"
+  },
   "catalogs": [
     {
       "catalog_id": "product-feed",
@@ -468,9 +500,14 @@ Configure `push_notification_config` on the request to receive webhook notificat
 
 ### Recruitment (inline job offerings)
 
+{/* schema-example: #/examples/10 */}
 ```json
 {
-  "account": { "account_id": "acct_restaurants" },
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-catalogs-request.json",
+  "idempotency_key": "9bbc2f62-5312-41b4-a4a4-85d6f6407e51",
+  "account": {
+    "account_id": "acct_restaurants"
+  },
   "catalogs": [
     {
       "catalog_id": "chef-vacancies",
@@ -493,9 +530,14 @@ Configure `push_notification_config` on the request to receive webhook notificat
 
 ### Dry run validation
 
+{/* schema-example: #/examples/11 */}
 ```json
 {
-  "account": { "account_id": "acct_acmecorp" },
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-catalogs-request.json",
+  "idempotency_key": "f683d961-b72f-410b-88bc-fa1f1e49b084",
+  "account": {
+    "account_id": "acct_acmecorp"
+  },
   "dry_run": true,
   "catalogs": [
     {

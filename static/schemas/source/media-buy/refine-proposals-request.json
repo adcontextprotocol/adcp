@@ -81,5 +81,169 @@
     }
   },
   "required": ["idempotency_key", "refinements"],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "idempotency_key": "typed-negotiation-sam-0001",
+      "refinements": [
+        {
+          "proposal_id": "proposal_streamhaus_001",
+          "action": "revise",
+          "constraints": {
+            "total_budget": {
+              "max": 50000,
+              "currency": "USD"
+            },
+            "cpm": {
+              "max": 18,
+              "currency": "USD"
+            },
+            "flight": {
+              "end_no_earlier_than": "2026-10-31T23:59:59Z"
+            }
+          },
+          "product_changes": {
+            "premium_video_q4": "include",
+            "display_standard_q4": "omit"
+          },
+          "criteria": {
+            "targeting_overlay": {
+              "geo_countries": [
+                "US",
+                "CA"
+              ]
+            }
+          },
+          "alternatives": {
+            "count": 3
+          },
+          "ask": "Use materially different mixes and prioritize reach."
+        }
+      ]
+    },
+    {
+      "idempotency_key": "typed-negotiation-sam-finalize-0001",
+      "refinements": [
+        {
+          "proposal_id": "proposal_streamhaus_002a",
+          "action": "finalize"
+        }
+      ]
+    },
+    {
+      "idempotency_key": "typed-negotiation-sam-amend-0001",
+      "refinements": [
+        {
+          "proposal_id": "proposal_streamhaus_accepted_004",
+          "action": "revise",
+          "change_kind": "amendment",
+          "ask": "Extend the flight by two weeks and preserve the total budget."
+        }
+      ]
+    },
+    {
+      "idempotency_key": "typed-negotiation-sam-cancel-0001",
+      "refinements": [
+        {
+          "proposal_id": "proposal_streamhaus_accepted_004",
+          "action": "revise",
+          "change_kind": "cancellation",
+          "ask": "Campaign objectives were met early; request an agreed wind-down."
+        }
+      ]
+    },
+    {
+      "idempotency_key": "550e8400-e29b-41d4-a716-446655441002",
+      "refinements": [
+        {
+          "proposal_id": "proposal_123",
+          "action": "revise",
+          "constraints": {
+            "total_budget": {
+              "max": 50000,
+              "currency": "USD"
+            },
+            "cpm": {
+              "max": 18,
+              "currency": "USD"
+            },
+            "flight": {
+              "end_no_earlier_than": "2026-10-31T23:59:59Z"
+            }
+          },
+          "product_changes": {
+            "premium_video": "include",
+            "display_ros": "omit"
+          },
+          "alternatives": {
+            "count": 3
+          },
+          "ask": "Use materially different product mixes while preserving reach."
+        },
+        {
+          "proposal_id": "proposal_456",
+          "action": "revise",
+          "criteria": {
+            "targeting_overlay": {
+              "geo_countries": [
+                "US",
+                "CA"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "idempotency_key": "550e8400-e29b-41d4-a716-446655441007",
+      "refinements": [
+        {
+          "proposal_id": "proposal_creators_q4",
+          "action": "revise",
+          "installment_changes": [
+            {
+              "product_id": "creator_juniper_vale",
+              "installment_ref": {
+                "collection_ref": {
+                  "publisher_domain": "availnet.example",
+                  "collection_id": "juniper_vale"
+                },
+                "installment_id": "2026-12-10"
+              },
+              "action": "omit"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "idempotency_key": "550e8400-e29b-41d4-a716-446655441003",
+      "refinements": [
+        {
+          "proposal_id": "proposal_draft_789",
+          "action": "finalize"
+        }
+      ]
+    },
+    {
+      "idempotency_key": "550e8400-e29b-41d4-a716-446655441021",
+      "refinements": [
+        {
+          "proposal_id": "prop_committed_001",
+          "action": "extend_hold"
+        }
+      ]
+    },
+    {
+      "idempotency_key": "550e8400-e29b-41d4-a716-446655441013",
+      "refinements": [
+        {
+          "proposal_id": "proposal_accepted_123",
+          "action": "revise",
+          "change_kind": "amendment",
+          "ask": "Extend the flight by two weeks and add the premium video product."
+        }
+      ]
+    }
+  ]
 }

@@ -224,5 +224,85 @@
       "if_wholesale_feed_version"
     ]
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "signal_spec": "Outdoor recreation enthusiasts near sporting goods retailers, 25-45"
+    },
+    {
+      "signal_spec": "In-market EV buyers with high purchase propensity, near auto dealerships"
+    },
+    {
+      "signal_spec": "Contextual segments for luxury automotive content",
+      "destinations": [
+        {
+          "type": "platform",
+          "platform": "index-exchange",
+          "account": "agency-123-ix"
+        },
+        {
+          "type": "platform",
+          "platform": "openx"
+        },
+        {
+          "type": "platform",
+          "platform": "pubmatic",
+          "account": "brand-456-pm"
+        }
+      ],
+      "countries": [
+        "US"
+      ],
+      "filters": {
+        "data_providers": [
+          "Peer39"
+        ],
+        "catalog_types": [
+          "marketplace"
+        ]
+      }
+    },
+    {
+      "discovery_mode": "wholesale",
+      "account": {
+        "account_id": "acct_123"
+      },
+      "filters": {
+        "catalog_types": [
+          "marketplace",
+          "owned"
+        ],
+        "data_providers": [
+          "acme-data",
+          "nova-insights"
+        ]
+      },
+      "pagination": {
+        "max_results": 50
+      }
+    },
+    {
+      "discovery_mode": "wholesale",
+      "if_wholesale_feed_version": "v2026-05-18T08:00:00Z-acme-rev412"
+    },
+    {
+      "signal_spec": "Same audience but with broader coverage, ideally above 20%",
+      "signal_refs": [
+        {
+          "scope": "data_provider",
+          "data_provider_domain": "experian.com",
+          "signal_id": "luxury_auto_intenders"
+        }
+      ],
+      "destinations": [
+        {
+          "type": "agent",
+          "agent_url": "https://wonderstruck.salesagents.com"
+        }
+      ],
+      "countries": [
+        "US"
+      ]
+    }
+  ]
 }

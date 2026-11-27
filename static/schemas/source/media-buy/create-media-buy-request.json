@@ -446,5 +446,101 @@
       "total_budget"
     ]
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "idempotency_key": "a9f52ca1-346b-40f3-8bad-0b96381470bc",
+      "account": {
+        "account_id": "acct_streamhaus_nova_pinnacle"
+      },
+      "brand": {
+        "domain": "novamotors.example"
+      },
+      "start_time": "2026-09-01T00:00:00Z",
+      "end_time": "2026-09-30T23:59:59Z",
+      "total_budget": {
+        "amount": 50000,
+        "currency": "GBP"
+      },
+      "packages": [
+        {
+          "product_id": "streamhaus-connected-tv",
+          "pricing_option_id": "cpm-standard",
+          "budget": 50000
+        }
+      ]
+    },
+    {
+      "idempotency_key": "e3f4a5b6-c7d8-4901-e234-901234567890",
+      "account": {
+        "brand": {
+          "domain": "acmeoutdoor.com"
+        },
+        "operator": "pinnacle-agency.com"
+      },
+      "brand": {
+        "domain": "acmeoutdoor.com"
+      },
+      "start_time": "2026-04-01T00:00:00Z",
+      "end_time": "2026-06-30T23:59:59Z",
+      "packages": [
+        {
+          "product_id": "streamhaus_sports_ctv_q2",
+          "budget": 35000,
+          "pricing_option_id": "cpm_standard"
+        }
+      ]
+    },
+    {
+      "idempotency_key": "0c491eb7-fdf7-47de-b3c3-7284f2c56a41",
+      "account": {
+        "account_id": "acc_performance_001"
+      },
+      "brand": {
+        "domain": "acmecorp.com"
+      },
+      "total_budget": {
+        "amount": 100000,
+        "currency": "USD"
+      },
+      "budget_allocation": {
+        "mode": "seller_optimized",
+        "optimization_goals": [
+          {
+            "kind": "event",
+            "event_sources": [
+              {
+                "event_source_id": "checkout_events",
+                "event_type": "purchase"
+              }
+            ]
+          }
+        ]
+      },
+      "pacing": "even",
+      "bidding": {
+        "cost_per": {
+          "amount": 25,
+          "strength": "cap"
+        },
+        "max_bid": 8
+      },
+      "packages": [
+        {
+          "product_id": "prospecting",
+          "pricing_option_id": "cpm_auction",
+          "budget": 70000,
+          "min_spend_target": 20000
+        },
+        {
+          "product_id": "retargeting",
+          "pricing_option_id": "cpm_auction",
+          "budget": 60000,
+          "pacing": "front_loaded"
+        }
+      ],
+      "start_time": "2099-08-01T00:00:00Z",
+      "end_time": "2099-08-31T23:59:59Z"
+    }
+  ]
 }

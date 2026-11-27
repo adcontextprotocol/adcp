@@ -27,6 +27,7 @@ Every goal has a `kind` discriminator:
 
 ### Metric goals
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/optimization-goal.json",
@@ -34,7 +35,7 @@ Every goal has a `kind` discriminator:
   "metric": "clicks",
   "target": {
     "kind": "cost_per",
-    "value": 2.50
+    "value": 2.5
   },
   "priority": 1
 }
@@ -54,6 +55,7 @@ Target types:
 
 ### Event goals
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/optimization-goal.json",
@@ -68,11 +70,17 @@ Target types:
   ],
   "target": {
     "kind": "per_ad_spend",
-    "value": 4.0
+    "value": 4
   },
   "attribution_window": {
-    "post_click": { "interval": 7, "unit": "days" },
-    "post_view": { "interval": 1, "unit": "days" }
+    "post_click": {
+      "interval": 7,
+      "unit": "days"
+    },
+    "post_view": {
+      "interval": 1,
+      "unit": "days"
+    }
   },
   "priority": 2
 }
@@ -87,6 +95,7 @@ Event target types:
 
 Reach is a metric goal with additional fields:
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/optimization-goal.json",
@@ -96,7 +105,10 @@ Reach is a metric goal with additional fields:
   "target_frequency": {
     "min": 2,
     "max": 5,
-    "window": { "interval": 7, "unit": "days" }
+    "window": {
+      "interval": 7,
+      "unit": "days"
+    }
   },
   "priority": 1
 }

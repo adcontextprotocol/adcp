@@ -222,5 +222,81 @@
       }
     }
   ],
-  "properties": {}
+  "properties": {},
+  "examples": [
+    {
+      "status": "completed",
+      "rights": [
+        {
+          "rights_id": "janssen_likeness_voice",
+          "brand_id": "daan_janssen",
+          "name": "Daan Janssen",
+          "description": "Dutch Olympic speed skater, 2x gold medalist",
+          "right_type": "talent",
+          "match_score": 0.92,
+          "match_reasons": [
+            "Available for food/restaurant brands in NL",
+            "Within budget at 350 EUR/month",
+            "Athletic brand aligns with Bistro Oranje's quality positioning"
+          ],
+          "available_uses": [
+            "likeness",
+            "voice",
+            "name",
+            "endorsement"
+          ],
+          "countries": [
+            "NL",
+            "BE",
+            "DE"
+          ],
+          "pricing_options": [
+            {
+              "pricing_option_id": "cpm_endorsement",
+              "model": "cpm",
+              "price": 3.5,
+              "currency": "EUR",
+              "uses": [
+                "likeness"
+              ],
+              "description": "Per-impression royalty for AI-generated creatives using likeness"
+            },
+            {
+              "pricing_option_id": "monthly_exclusive",
+              "model": "flat_rate",
+              "price": 350,
+              "currency": "EUR",
+              "period": "monthly",
+              "uses": [
+                "likeness",
+                "voice"
+              ],
+              "impression_cap": 100000,
+              "overage_cpm": 4,
+              "description": "Monthly exclusive license for likeness + voice, up to 100K impressions"
+            }
+          ],
+          "content_restrictions": [
+            "approval_required"
+          ],
+          "preview_assets": [
+            {
+              "url": "https://cdn.lotientertainment.com/janssen/headshot.jpg",
+              "usage": "preview_only"
+            }
+          ]
+        }
+      ],
+      "excluded": [
+        {
+          "brand_id": "pieter_van_dijk",
+          "name": "Pieter van Dijk",
+          "reason": "Dietary lifestyle conflict with steakhouse brand",
+          "suggestions": [
+            "Available for plant-based and health food brands"
+          ]
+        }
+      ]
+    }
+  ]
 }

@@ -147,5 +147,40 @@
     "code",
     "message"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "code": "BUDGET_TOO_LOW",
+      "message": "Package lifetime budget is below the selected pricing option's minimum",
+      "recovery": "correctable",
+      "field": "packages[0].budget",
+      "details": {
+        "minimum_budget": 500,
+        "currency": "GBP",
+        "basis": "lifetime",
+        "constraint": "product_minimum"
+      }
+    },
+    {
+      "code": "BUDGET_TOO_LOW",
+      "message": "The proposed bid requires a daily budget of at least 30 GBP",
+      "recovery": "correctable",
+      "field": "packages[0].bidding.bid_amount",
+      "issues": [
+        {
+          "pointer": "/packages/0/bidding/bid_amount",
+          "message": "The bid exceeds the retained daily budget",
+          "keyword": "maximum"
+        }
+      ],
+      "details": {
+        "minimum_budget": 30,
+        "currency": "GBP",
+        "budget_field": "packages[0].daily_budget_cap",
+        "basis": "daily",
+        "constraint": "effective_bid_floor",
+        "related_field": "packages[0].bidding.bid_amount"
+      }
+    }
+  ]
 }

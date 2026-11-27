@@ -59,5 +59,20 @@
     }
   },
   "required": ["pricing_option_id", "pricing_model", "currency"],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "pricing_option_id": "cpcv_usd_guaranteed",
+      "pricing_model": "cpcv",
+      "fixed_price": 0.15,
+      "currency": "USD"
+    },
+    {
+      "pricing_option_id": "cpcv_usd_guaranteed",
+      "pricing_model": "cpcv",
+      "fixed_price": 0.15,
+      "currency": "USD",
+      "min_spend_per_package": 5000
+    }
+  ]
 }

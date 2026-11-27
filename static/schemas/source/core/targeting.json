@@ -531,5 +531,285 @@
     { "$ref": "/schemas/core/targeting-unknown-age-eligibility-constraint.json" },
     { "$ref": "/schemas/core/targeting-verified-age-basis-constraint.json" }
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "daypart_targets": [
+        {
+          "days": [
+            "monday",
+            "tuesday",
+            "wednesday",
+            "thursday",
+            "friday"
+          ],
+          "start_time": "19:30",
+          "end_time": "23:00",
+          "timezone": "inventory_local",
+          "label": "Prime time"
+        }
+      ]
+    },
+    {
+      "daypart_targets": [
+        {
+          "days": [
+            "friday",
+            "saturday"
+          ],
+          "start_time": "22:00",
+          "end_time": "02:00",
+          "timezone": "Europe/Amsterdam",
+          "label": "Late fringe"
+        }
+      ]
+    },
+    {
+      "demographics": {
+        "age": {
+          "min": 18,
+          "max": 55,
+          "include_unknown": false
+        },
+        "gender": {
+          "values": [
+            "female",
+            "non_binary"
+          ],
+          "include_unknown": true
+        }
+      }
+    },
+    {
+      "age_restriction": {
+        "min": 21,
+        "verification_required": true,
+        "accepted_methods": [
+          "facial_age_estimation",
+          "id_document",
+          "world_id"
+        ]
+      }
+    },
+    {
+      "device_platform": [
+        "ios",
+        "android"
+      ],
+      "device_platform_exclude": [
+        "fire_os"
+      ]
+    },
+    {
+      "device_type": [
+        "mobile",
+        "tablet"
+      ]
+    },
+    {
+      "device_type_exclude": [
+        "dooh"
+      ]
+    },
+    {
+      "language": [
+        "fr-CA",
+        "en"
+      ]
+    },
+    {
+      "frequency_cap": {
+        "suppress": {
+          "interval": 60,
+          "unit": "minutes"
+        }
+      }
+    },
+    {
+      "frequency_cap": {
+        "max_impressions": 5,
+        "per": "households",
+        "window": {
+          "interval": 7,
+          "unit": "days"
+        }
+      }
+    },
+    {
+      "keyword_targets": [
+        {
+          "keyword": "running shoes",
+          "match_type": "broad",
+          "bid_price": 0.45
+        },
+        {
+          "keyword": "trail running shoes womens",
+          "match_type": "phrase",
+          "bid_price": 0.85
+        },
+        {
+          "keyword": "acme cloudrunner 5",
+          "match_type": "exact",
+          "bid_price": 1.2
+        }
+      ]
+    },
+    {
+      "negative_keywords": [
+        {
+          "keyword": "free",
+          "match_type": "broad"
+        },
+        {
+          "keyword": "used running shoes",
+          "match_type": "phrase"
+        }
+      ]
+    },
+    {
+      "geo_proximity": [
+        {
+          "lat": 51.2277,
+          "lng": 6.7735,
+          "label": "Düsseldorf",
+          "travel_time": {
+            "value": 2,
+            "unit": "hr"
+          },
+          "transport_mode": "driving"
+        }
+      ]
+    },
+    {
+      "geo_proximity": [
+        {
+          "lat": 51.47,
+          "lng": -0.4543,
+          "label": "Heathrow Airport",
+          "radius": {
+            "value": 30,
+            "unit": "km"
+          }
+        }
+      ]
+    },
+    {
+      "geo_proximity": [
+        {
+          "label": "2hr drive from Düsseldorf",
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [
+                  5.87,
+                  50.35
+                ],
+                [
+                  8.23,
+                  50.35
+                ],
+                [
+                  8.23,
+                  52.1
+                ],
+                [
+                  5.87,
+                  52.1
+                ],
+                [
+                  5.87,
+                  50.35
+                ]
+              ]
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "geo_metros": [
+        {
+          "system": "nielsen_dma",
+          "values": [
+            "501",
+            "602"
+          ]
+        }
+      ]
+    },
+    {
+      "geo_metros": [
+        {
+          "system": "nielsen_dma",
+          "values": [
+            "501",
+            "602"
+          ]
+        },
+        {
+          "system": "uk_itl2",
+          "values": [
+            "UKC1",
+            "UKD3"
+          ]
+        }
+      ]
+    },
+    {
+      "geo_postal_areas": [
+        {
+          "country": "US",
+          "system": "zip",
+          "values": [
+            "10001",
+            "90210"
+          ]
+        }
+      ]
+    },
+    {
+      "geo_countries": [
+        "US"
+      ],
+      "geo_metros_exclude": [
+        {
+          "system": "nielsen_dma",
+          "values": [
+            "501"
+          ]
+        }
+      ]
+    },
+    {
+      "geo_countries": [
+        "US",
+        "CA"
+      ],
+      "geo_regions": [
+        "US-NY",
+        "US-CA"
+      ],
+      "geo_metros": [
+        {
+          "system": "nielsen_dma",
+          "values": [
+            "501",
+            "803"
+          ]
+        }
+      ],
+      "geo_postal_areas": [
+        {
+          "country": "US",
+          "system": "zip",
+          "values": [
+            "10001",
+            "10002",
+            "90210"
+          ]
+        }
+      ]
+    }
+  ]
 }

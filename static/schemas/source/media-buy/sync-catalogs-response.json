@@ -334,5 +334,74 @@
       "additionalProperties": true
     }
   ],
-  "properties": {}
+  "properties": {},
+  "examples": [
+    {
+      "status": "completed",
+      "catalogs": [
+        {
+          "catalog_id": "product-feed",
+          "action": "updated",
+          "item_count": 2,
+          "items_approved": 1,
+          "items_pending": 1,
+          "item_issues": [
+            {
+              "item_id": "SKU-12345",
+              "status": "approved"
+            },
+            {
+              "item_id": "SKU-67890",
+              "status": "pending"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "catalogs": [],
+      "item_availability_updates": [
+        {
+          "request_index": 0,
+          "catalog_id": "product-feed",
+          "catalog_generation": "catgen_01K2ABCD",
+          "item_id": "SKU-12345",
+          "action": "suppress",
+          "status": "applied",
+          "availability": "suppressed",
+          "overlay_revision": 1,
+          "expires_at": "2027-12-31T23:59:59Z",
+          "applied_at": "2026-08-16T08:30:00Z"
+        },
+        {
+          "request_index": 1,
+          "catalog_id": "product-feed",
+          "catalog_generation": "catgen_01K2ABCD",
+          "item_id": "SKU-67890",
+          "action": "restore",
+          "status": "unchanged",
+          "availability": "active",
+          "overlay_revision": 3
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "catalogs": [],
+      "item_availability_states": [
+        {
+          "request_index": 0,
+          "catalog_id": "product-feed",
+          "catalog_generation": "catgen_01K2ABCD",
+          "item_id": "SKU-12345",
+          "status": "found",
+          "availability": "suppressed",
+          "overlay_revision": 1,
+          "expires_at": "2027-12-31T23:59:59Z",
+          "updated_at": "2026-08-16T08:30:00Z"
+        }
+      ]
+    }
+  ]
 }

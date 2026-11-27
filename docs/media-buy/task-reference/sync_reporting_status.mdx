@@ -90,9 +90,13 @@ about billing acceptance.
 
 ## Example
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
-  "account": { "account_id": "acc_123" },
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-reporting-status-request.json",
+  "account": {
+    "account_id": "acc_123"
+  },
   "idempotency_key": "019db314-4f2a-7c91-bf38-e0df4020bb0b",
   "statuses": [
     {

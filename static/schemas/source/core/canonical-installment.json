@@ -100,5 +100,44 @@
   },
   "required": ["installment_id", "collection_ref"],
   "additionalProperties": true,
-  "not": { "required": ["collection_id"] }
+  "not": {
+    "required": [
+      "collection_id"
+    ]
+  },
+  "examples": [
+    {
+      "installment_id": "juniper_vale_slot_2",
+      "collection_ref": {
+        "publisher_domain": "creatorloop.example",
+        "collection_id": "creatorloop_channel_juniper_vale"
+      },
+      "name": "Juniper Vale Cooks: Meal prep Sunday (sponsored integration)",
+      "status": "scheduled",
+      "scheduled_at": "2026-12-29T17:00:00Z",
+      "duration_seconds": 720,
+      "valid_until": "2026-11-17T17:00:00Z",
+      "deadlines": {
+        "booking_deadline": "2026-11-17T17:00:00Z",
+        "cancellation_deadline": "2026-11-24T17:00:00Z",
+        "material_deadlines": [
+          {
+            "stage": "talking_points",
+            "due_at": "2026-12-01T17:00:00Z",
+            "label": "Talking points and brand guidelines"
+          },
+          {
+            "stage": "script",
+            "due_at": "2026-12-15T17:00:00Z",
+            "label": "Creator script for brand approval"
+          },
+          {
+            "stage": "draft",
+            "due_at": "2026-12-22T17:00:00Z",
+            "label": "Draft cut for final review"
+          }
+        ]
+      }
+    }
+  ]
 }

@@ -86,20 +86,17 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Creative update invalidation",
-      "data": {
-        "idempotency_key": "whk_01K38G8AB52T1V9S4Y7Q0P6X3Z",
-        "notification_id": "chg_01K38G7X8ZGX9T4F1Q5W6Y2M3N",
-        "notification_type": "account.change_recorded",
-        "fired_at": "2026-08-24T11:58:05Z",
-        "subscriber_id": "buyer-primary",
-        "account_id": "acc_luma_shared",
-        "change_id": "chg_01K38G7X8ZGX9T4F1Q5W6Y2M3N",
-        "recorded_at": "2026-08-24T11:58:04Z",
-        "resource": {"type": "creative", "resource_id": "cr_8421"},
-        "action": "updated",
-        "through_cursor": "eyJhY2NvdW50IjoiYWNjX2x1bWFfc2hhcmVkIiwic2VxIjo0M30"
-      }
+      "idempotency_key": "whk_01K38G8AB52T1V9S4Y7Q0P6X3Z",
+      "notification_id": "chg_01K38G7X8ZGX9T4F1Q5W6Y2M3N",
+      "notification_type": "account.change_recorded",
+      "fired_at": "2026-08-24T11:58:05Z",
+      "subscriber_id": "buyer-primary",
+      "account_id": "acc_luma_shared",
+      "change_id": "chg_01K38G7X8ZGX9T4F1Q5W6Y2M3N",
+      "recorded_at": "2026-08-24T11:58:04Z",
+      "resource": {"type": "creative", "resource_id": "cr_8421"},
+      "action": "updated",
+      "through_cursor": "eyJhY2NvdW50IjoiYWNjX2x1bWFfc2hhcmVkIiwic2VxIjo0M30"
     }
   ]
 }

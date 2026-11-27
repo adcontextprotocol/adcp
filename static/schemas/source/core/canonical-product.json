@@ -253,5 +253,200 @@
       { "required": ["vendor_metric_optimization"] }
     ]
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "product_id": "harbor_prime_a2554",
+      "name": "Harbor Prime Access and Prime, Adults 25-54",
+      "description": "Prime-access and prime-time :15 and :30 spots on the Harbor network, guaranteed against adults 25-54 impressions.",
+      "publisher_properties": [
+        {
+          "publisher_domain": "harborbroadcasting.example",
+          "selection_type": "all"
+        }
+      ],
+      "channels": [
+        "linear_tv"
+      ],
+      "delivery_type": "guaranteed",
+      "format_options": [
+        {
+          "format_option_id": "broadcast_tv_15s",
+          "format_kind": "video_hosted",
+          "params": {
+            "duration_ms_exact": 15000,
+            "aspect_ratio": "16:9",
+            "min_width": 1920,
+            "min_height": 1080,
+            "video_codecs": [
+              "mpeg2"
+            ],
+            "audio_codecs": [
+              "pcm"
+            ],
+            "containers": [
+              "mxf"
+            ],
+            "frame_rates": [
+              29.97
+            ],
+            "loudness": {
+              "standard": "atsc_a85",
+              "target_lufs": -24,
+              "tolerance_db": 2,
+              "max_true_peak_dbfs": -2
+            },
+            "slots": [
+              {
+                "asset_group_id": "video_main",
+                "asset_type": "video",
+                "required": true
+              }
+            ]
+          }
+        },
+        {
+          "format_option_id": "broadcast_tv_30s",
+          "format_kind": "video_hosted",
+          "params": {
+            "duration_ms_exact": 30000,
+            "aspect_ratio": "16:9",
+            "min_width": 1920,
+            "min_height": 1080,
+            "video_codecs": [
+              "mpeg2"
+            ],
+            "audio_codecs": [
+              "pcm"
+            ],
+            "containers": [
+              "mxf"
+            ],
+            "frame_rates": [
+              29.97
+            ],
+            "loudness": {
+              "standard": "atsc_a85",
+              "target_lufs": -24,
+              "tolerance_db": 2,
+              "max_true_peak_dbfs": -2
+            },
+            "slots": [
+              {
+                "asset_group_id": "video_main",
+                "asset_type": "video",
+                "required": true
+              }
+            ]
+          }
+        }
+      ],
+      "pricing_options": [
+        {
+          "pricing_option_id": "cpm_usd",
+          "pricing_model": "cpm",
+          "currency": "USD",
+          "fixed_price": 32
+        }
+      ],
+      "measurement_terms": {
+        "billing_measurement": {
+          "vendor": {
+            "domain": "videoamp.com"
+          },
+          "measurement_window": "c7",
+          "max_variance_percent": 5,
+          "finalization_deadline_hours": 360
+        },
+        "makegood_policy": {
+          "available_remedies": [
+            "additional_delivery",
+            "credit"
+          ]
+        }
+      },
+      "forecast": {
+        "method": "guaranteed",
+        "currency": "USD",
+        "demographic_system": "nielsen",
+        "demographic": "A25-54",
+        "measurement_source": "videoamp",
+        "points": [
+          {
+            "budget": 160000,
+            "metrics": {
+              "measured_impressions": {
+                "mid": 5000000
+              }
+            }
+          }
+        ]
+      },
+      "reporting_capabilities": {
+        "available_reporting_frequencies": [
+          "daily"
+        ],
+        "expected_delay_minutes": 2880,
+        "timezone": "America/New_York",
+        "supports_webhooks": false,
+        "available_metrics": [
+          "impressions",
+          "spend"
+        ],
+        "date_range_support": "date_range",
+        "measurement_windows": [
+          {
+            "window_id": "live",
+            "description": "Live viewing on the airing day",
+            "duration_days": 0,
+            "expected_availability_days": 2
+          },
+          {
+            "window_id": "c3",
+            "description": "Live plus 3 days of time-shifted viewing",
+            "duration_days": 3,
+            "expected_availability_days": 8
+          },
+          {
+            "window_id": "c7",
+            "description": "Live plus 7 days of time-shifted viewing",
+            "duration_days": 7,
+            "expected_availability_days": 22,
+            "is_guarantee_basis": true
+          }
+        ],
+        "supports_demographic_breakdown": {
+          "age": {
+            "reporting_modes": [
+              "enumerated_intervals"
+            ],
+            "intervals": [
+              {
+                "age": {
+                  "min": 25,
+                  "max": 54,
+                  "include_unknown": false
+                },
+                "demographic": "A25-54",
+                "demographic_system": "nielsen"
+              }
+            ]
+          },
+          "demographic_systems": [
+            "nielsen"
+          ],
+          "may_suppress_small_cells": false
+        },
+        "supports_spot_breakdown": {
+          "available_metrics": [],
+          "available_statuses": [
+            "scheduled",
+            "preempted",
+            "makegood"
+          ],
+          "supports_break_position": true
+        }
+      }
+    }
+  ]
 }

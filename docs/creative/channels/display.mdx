@@ -78,6 +78,7 @@ Starting in AdCP 3.3, `zip`, `html`, and `display_tag` assets can describe their
 
 Use `width` and `height` together for a fixed size. Both are positive integers in logical entry-canvas pixels, independent of embedded image density. For expandable units, these describe the initial canvas; `sizes` lists alternative entry sizes rather than expanded states. For example, this bundle renders at 300×250:
 
+{/* schema-example: #/examples/4 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/creative-manifest.json",
@@ -95,6 +96,7 @@ Use `width` and `height` together for a fixed size. Both are positive integers i
 
 Use `sizes` for an asset that can render at any one of several discrete sizes. Each entry contains positive integer `width` and `height`, with no additional fields. For example, a third-party tag capable of either size carries:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/assets/display-tag-asset.json",
@@ -102,8 +104,14 @@ Use `sizes` for an asset that can render at any one of several discrete sizes. E
   "delivery_type": "tag_url",
   "url": "https://ads.acme.example/render",
   "sizes": [
-    { "width": 300, "height": 250 },
-    { "width": 728, "height": 90 }
+    {
+      "width": 300,
+      "height": 250
+    },
+    {
+      "width": 728,
+      "height": 90
+    }
   ]
 }
 ```

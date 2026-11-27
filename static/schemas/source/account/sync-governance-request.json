@@ -101,56 +101,75 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Sync the governance agent on an account-id namespace account",
-      "data": {
-        "idempotency_key": "e1b3a6c8-5678-489a-bcde-f01234567891",
-        "accounts": [
-          {
-            "account": {
-              "account_id": "acct-social-001"
-            },
-            "governance_agents": [
-              {
-                "url": "https://governance.pinnacle-media.com",
-                "authentication": {
-                  "schemes": [
-                    "Bearer"
-                  ],
-                  "credentials": "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                }
+      "idempotency_key": "e1b3a6c8-5678-489a-bcde-f01234567891",
+      "accounts": [
+        {
+          "account": {
+            "account_id": "acct-social-001"
+          },
+          "governance_agents": [
+            {
+              "url": "https://governance.pinnacle-media.com",
+              "authentication": {
+                "schemes": [
+                  "Bearer"
+                ],
+                "credentials": "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
               }
-            ]
-          }
-        ]
-      }
+            }
+          ]
+        }
+      ]
     },
     {
-      "description": "Sync the governance agent on a buyer-declared account by natural key",
-      "data": {
-        "idempotency_key": "f2c4b7d9-6789-489b-cdef-012345678902",
-        "accounts": [
-          {
-            "account": {
-              "brand": {
-                "domain": "nova-brands.com",
-                "brand_id": "spark"
-              },
-              "operator": "pinnacle-media.com"
+      "idempotency_key": "f2c4b7d9-6789-489b-cdef-012345678902",
+      "accounts": [
+        {
+          "account": {
+            "brand": {
+              "domain": "nova-brands.com",
+              "brand_id": "spark"
             },
-            "governance_agents": [
-              {
-                "url": "https://governance.pinnacle-media.com",
-                "authentication": {
-                  "schemes": [
-                    "Bearer"
-                  ],
-                  "credentials": "gov-token-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
-                }
+            "operator": "pinnacle-media.com"
+          },
+          "governance_agents": [
+            {
+              "url": "https://governance.pinnacle-media.com",
+              "authentication": {
+                "schemes": [
+                  "Bearer"
+                ],
+                "credentials": "gov-token-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
               }
-            ]
-          }
-        ]
-      }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "idempotency_key": "e5b9f2c3-1234-48a0-1234-56789012345e",
+      "accounts": [
+        {
+          "account": {
+            "brand": {
+              "domain": "nova-brands.com",
+              "brand_id": "spark"
+            },
+            "operator": "pinnacle-media.com"
+          },
+          "governance_agents": [
+            {
+              "url": "https://governance.pinnacle-media.com",
+              "authentication": {
+                "schemes": [
+                  "Bearer"
+                ],
+                "credentials": "gov-token-yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+              }
+            }
+          ]
+        }
+      ]
     }
   ]
 }

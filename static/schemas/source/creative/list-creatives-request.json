@@ -166,75 +166,124 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "List all approved creatives",
-      "data": {
-        "filters": {
-          "statuses": [
-            "approved"
-          ]
-        }
+      "filters": {
+        "statuses": [
+          "approved"
+        ]
       }
     },
     {
-      "description": "List creatives in a specific concept matching a format",
-      "data": {
-        "filters": {
-          "concept_ids": [
-            "concept_holiday_2026"
-          ],
-          "format_kinds": ["image"]
-        },
-        "include_variables": true
-      }
-    },
-    {
-      "description": "Find DCO creatives for dynamic campaigns",
-      "data": {
-        "filters": {
-          "has_variables": true,
-          "statuses": [
-            "approved"
-          ]
-        },
-        "include_variables": true
-      }
-    },
-    {
-      "description": "Lightweight list with minimal fields",
-      "data": {
-        "fields": [
-          "creative_id",
-          "name",
-          "status"
+      "filters": {
+        "concept_ids": [
+          "concept_holiday_2026"
         ],
-        "include_assignments": false
+        "format_kinds": ["image"]
+      },
+      "include_variables": true
+    },
+    {
+      "filters": {
+        "has_variables": true,
+        "statuses": [
+          "approved"
+        ]
+      },
+      "include_variables": true
+    },
+    {
+      "fields": [
+        "creative_id",
+        "name",
+        "status"
+      ],
+      "include_assignments": false
+    },
+    {
+      "account": {
+        "account_id": "acct_acme_creative"
+      },
+      "include_pricing": true,
+      "filters": {
+        "statuses": [
+          "approved"
+        ]
       }
     },
     {
-      "description": "List creatives with account-specific pricing",
-      "data": {
-        "account": {
-          "account_id": "acct_acme_creative"
-        },
-        "include_pricing": true,
-        "filters": {
-          "statuses": [
-            "approved"
-          ]
-        }
+      "filters": {
+        "statuses": [
+          "approved"
+        ]
+      },
+      "include_purged": true,
+      "include_webhook_activity": true,
+      "webhook_activity_limit": 25
+    },
+    {
+      "include_assignments": true,
+      "filters": {
+        "indicator_types": [
+          "creative_fatigue"
+        ]
+      },
+      "fields": [
+        "creative_id",
+        "assignments"
+      ],
+      "assignment_projection": "matching",
+      "assignment_limit": 50,
+      "pagination": {
+        "max_results": 100
       }
     },
     {
-      "description": "List approved creatives plus recent webhook activity, including purged tombstones",
-      "data": {
-        "filters": {
-          "statuses": [
-            "approved"
-          ]
-        },
-        "include_purged": true,
-        "include_webhook_activity": true,
-        "webhook_activity_limit": 25
+      "filters": {
+        "concept_ids": [
+          "concept_holiday_2026"
+        ],
+        "statuses": [
+          "approved"
+        ]
+      },
+      "include_variables": true,
+      "sort": {
+        "field": "created_date",
+        "direction": "desc"
+      }
+    },
+    {
+      "fields": [
+        "creative_id",
+        "name",
+        "format_kind",
+        "status"
+      ],
+      "include_assignments": false,
+      "filters": {
+        "statuses": [
+          "approved"
+        ]
+      },
+      "sort": {
+        "field": "name",
+        "direction": "asc"
+      }
+    },
+    {
+      "filters": {
+        "media_buy_ids": [
+          "mb_summer_2026",
+          "mb_spring_2026"
+        ],
+        "statuses": [
+          "approved"
+        ]
+      },
+      "include_assignments": true,
+      "include_snapshot": true,
+      "sort": {
+        "field": "updated_date",
+        "direction": "desc"
       }
     }
   ]

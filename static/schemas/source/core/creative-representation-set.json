@@ -52,5 +52,103 @@
     }
   },
   "required": ["creative_id", "revision_id", "revision_content_digest", "name", "representations"],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "creative_id": "cr_launch_mrec",
+      "revision_id": "rev_2026_08_22_1",
+      "revision_content_digest": "sha256:dfab7f7290bba72f6826ee10186f7618d6b53b3037290f72b094294bceaf6835",
+      "name": "Launch medium rectangle",
+      "representations": [
+        {
+          "representation_id": "source-inline",
+          "format_kind": "display_tag",
+          "assets": {
+            "serving_tag": {
+              "asset_type": "display_tag",
+              "delivery_type": "inline_markup",
+              "markup_type": "iframe_javascript",
+              "markup": "<iframe src=\"https://ads.acme-example.com/render\"></iframe>"
+            }
+          },
+          "source": {
+            "system": "acme_ad_server",
+            "source_representation": "iframe/JavaScript"
+          }
+        },
+        {
+          "representation_id": "source-paired",
+          "format_kind": "display_tag",
+          "assets": {
+            "serving_tag": {
+              "asset_type": "display_tag",
+              "delivery_type": "paired_redirect",
+              "ad_request_url": "https://ads.acme-example.com/ad?slot=42",
+              "clickthrough_url": "https://click.acme-example.com/redirect"
+            }
+          },
+          "source": {
+            "system": "acme_ad_server",
+            "source_representation": "Internal Redirect"
+          }
+        }
+      ]
+    },
+    {
+      "creative_id": "cr_launch_video",
+      "revision_id": "rev_7",
+      "revision_content_digest": "sha256:67d087e0a6e84185fc9b28d5854b1f9d90958ac902a3d569422af3ba69951154",
+      "name": "Launch pre-roll",
+      "representations": [
+        {
+          "representation_id": "source-vast-2",
+          "format_kind": "video_vast",
+          "assets": {
+            "vast_tag": {
+              "asset_type": "vast",
+              "delivery_type": "url",
+              "url": "https://video.acme-example.com/vast/2",
+              "vast_version": "2.0"
+            }
+          },
+          "source": {
+            "system": "acme_ad_server",
+            "source_representation": "VAST 2.0 pre-fetch"
+          }
+        },
+        {
+          "representation_id": "source-vast-3",
+          "format_kind": "video_vast",
+          "assets": {
+            "vast_tag": {
+              "asset_type": "vast",
+              "delivery_type": "url",
+              "url": "https://video.acme-example.com/vast/3",
+              "vast_version": "3.0"
+            }
+          },
+          "source": {
+            "system": "acme_ad_server",
+            "source_representation": "VAST 3.0 pre-fetch"
+          }
+        },
+        {
+          "representation_id": "source-vast-4",
+          "format_kind": "video_vast",
+          "assets": {
+            "vast_tag": {
+              "asset_type": "vast",
+              "delivery_type": "url",
+              "url": "https://video.acme-example.com/vast/4",
+              "vast_version": "4.0"
+            }
+          },
+          "source": {
+            "system": "acme_ad_server",
+            "source_representation": "VAST 4.0 pre-fetch"
+          }
+        }
+      ]
+    }
+  ]
 }

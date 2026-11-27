@@ -108,6 +108,7 @@ Create a new collection list on a governance agent.
 
 **Request:**
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/collection/create-collection-list-request.json",
@@ -118,8 +119,14 @@ Create a new collection list on a governance agent.
     {
       "selection_type": "distribution_ids",
       "identifiers": [
-        { "type": "imdb_id", "value": "tt9999901" },
-        { "type": "imdb_id", "value": "tt9999902" }
+        {
+          "type": "imdb_id",
+          "value": "tt9999901"
+        },
+        {
+          "type": "imdb_id",
+          "value": "tt9999902"
+        }
       ]
     },
     {
@@ -131,19 +138,28 @@ Create a new collection list on a governance agent.
   ],
   "filters": {
     "content_ratings_exclude": [
-      { "system": "tv_parental", "rating": "TV-MA" },
-      { "system": "bbfc", "rating": "18" }
+      {
+        "system": "tv_parental",
+        "rating": "TV-MA"
+      },
+      {
+        "system": "bbfc",
+        "rating": "18"
+      }
     ],
     "genres_exclude": ["news"],
     "genre_taxonomy": "iab_content_3.0",
     "kinds": ["series"]
   },
-  "brand": { "domain": "novamotors.com" }
+  "brand": {
+    "domain": "novamotors.com"
+  }
 }
 ```
 
 **Response:**
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/collection/create-collection-list-response.json",
@@ -173,6 +189,7 @@ host identifier is a `platform_channel_id`.
 
 **Request:**
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/collection/get-collection-list-request.json",
@@ -186,6 +203,7 @@ host identifier is a `platform_channel_id`.
 
 **Response:**
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/collection/get-collection-list-response.json",
@@ -202,20 +220,31 @@ host identifier is a `platform_channel_id`.
       "collection_id": "danger_zone",
       "name": "Danger Zone",
       "distribution_ids": [
-        { "type": "imdb_id", "value": "tt9999901" }
+        {
+          "type": "imdb_id",
+          "value": "tt9999901"
+        }
       ],
-      "content_rating": { "system": "tv_parental", "rating": "TV-MA" },
+      "content_rating": {
+        "system": "tv_parental",
+        "rating": "TV-MA"
+      },
       "genre": ["comedy", "animation"],
       "genre_taxonomy": "iab_content_3.0",
       "kind": "series"
     }
   ],
-  "pagination": { "has_more": false },
+  "pagination": {
+    "has_more": false
+  },
   "resolved_at": "2026-04-07T14:00:00Z",
   "cache_valid_until": "2026-04-14T14:00:00Z",
   "coverage_gaps": {
     "genre": [
-      { "type": "imdb_id", "value": "tt9999905" }
+      {
+        "type": "imdb_id",
+        "value": "tt9999905"
+      }
     ]
   }
 }
@@ -229,6 +258,7 @@ host identifier is a `platform_channel_id`.
 
 Modify an existing collection list. `base_collections` and `filters` are complete replacements, not patches.
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/collection/update-collection-list-request.json",
@@ -238,15 +268,27 @@ Modify an existing collection list. `base_collections` and `filters` are complet
     {
       "selection_type": "distribution_ids",
       "identifiers": [
-        { "type": "imdb_id", "value": "tt9999901" },
-        { "type": "imdb_id", "value": "tt9999902" },
-        { "type": "imdb_id", "value": "tt9999903" }
+        {
+          "type": "imdb_id",
+          "value": "tt9999901"
+        },
+        {
+          "type": "imdb_id",
+          "value": "tt9999902"
+        },
+        {
+          "type": "imdb_id",
+          "value": "tt9999903"
+        }
       ]
     }
   ],
   "filters": {
     "content_ratings_exclude": [
-      { "system": "tv_parental", "rating": "TV-MA" }
+      {
+        "system": "tv_parental",
+        "rating": "TV-MA"
+      }
     ]
   },
   "webhook_url": "https://governance.pinnacleagency.com/webhooks/collection-lists"
@@ -257,11 +299,19 @@ Modify an existing collection list. `base_collections` and `filters` are complet
 
 List collection lists for an account. Returns metadata only, not resolved collections.
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/collection/list-collection-lists-request.json",
-  "account": { "brand": { "domain": "novamotors.com" }, "operator": "pinnacleagency.com" },
-  "pagination": { "max_results": 50 }
+  "account": {
+    "brand": {
+      "domain": "novamotors.com"
+    },
+    "operator": "pinnacleagency.com"
+  },
+  "pagination": {
+    "max_results": 50
+  }
 }
 ```
 
@@ -269,6 +319,7 @@ List collection lists for an account. Returns metadata only, not resolved collec
 
 Remove a collection list. Sellers with cached copies will stop receiving webhook updates.
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/collection/delete-collection-list-request.json",
@@ -304,6 +355,7 @@ Webhooks contain a summary only — recipients must call [`get_collection_list`]
 
 Live sports is one of the largest CTV brand safety concerns. Collection lists handle it through the `event_series` kind:
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/collection/create-collection-list-request.json",
@@ -313,8 +365,14 @@ Live sports is one of the largest CTV brand safety concerns. Collection lists ha
     {
       "selection_type": "distribution_ids",
       "identifiers": [
-        { "type": "gracenote_id", "value": "SP000001" },
-        { "type": "gracenote_id", "value": "SP000002" }
+        {
+          "type": "gracenote_id",
+          "value": "SP000001"
+        },
+        {
+          "type": "gracenote_id",
+          "value": "SP000002"
+        }
       ]
     }
   ],
@@ -323,7 +381,9 @@ Live sports is one of the largest CTV brand safety concerns. Collection lists ha
     "genres_exclude": ["combat_sports"],
     "genre_taxonomy": "gracenote"
   },
-  "brand": { "domain": "acmeoutdoor.com" }
+  "brand": {
+    "domain": "acmeoutdoor.com"
+  }
 }
 ```
 

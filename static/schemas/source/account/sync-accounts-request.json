@@ -227,205 +227,346 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Agency syncing multiple advertisers with different billing",
-      "data": {
-        "idempotency_key": "a7f9c2e4-1234-4567-89ab-cdef01234567",
-          "accounts": [
-            {
-              "brand": {
-                "domain": "nova-brands.com",
-                "brand_id": "spark",
-                "countries": ["DE", "NL"]
-              },
-              "operator": "pinnacle-media.com",
-              "operator_unit": {
-                "id": "seat_emea_01",
-                "name": "EMEA"
-              },
-              "currency": "EUR",
-              "billing": "operator"
-            },
-          {
-            "brand": {
-              "domain": "nova-brands.com",
-              "brand_id": "glow"
-            },
-            "operator": "pinnacle-media.com",
-            "billing": "agent"
-          }
-        ]
-      }
-    },
-    {
-      "description": "Brand buying direct with payment terms",
-      "data": {
-        "idempotency_key": "b8e0d3f5-2345-4678-9abc-def012345678",
-        "accounts": [
-          {
-            "brand": {
-              "domain": "acme-corp.com"
-            },
-            "operator": "acme-corp.com",
-            "billing": "operator",
-            "payment_terms": "net_30"
-          }
-        ]
-      }
-    },
-    {
-      "description": "Agent consolidating billing with net-60 terms",
-      "data": {
-        "idempotency_key": "c9f1e4a6-3456-4789-abcd-ef0123456789",
+      "idempotency_key": "a7f9c2e4-1234-4567-89ab-cdef01234567",
         "accounts": [
           {
             "brand": {
               "domain": "nova-brands.com",
-              "brand_id": "spark"
+              "brand_id": "spark",
+              "countries": ["DE", "NL"]
             },
             "operator": "pinnacle-media.com",
-            "billing": "agent",
-            "payment_terms": "net_60"
+            "operator_unit": {
+              "id": "seat_emea_01",
+              "name": "EMEA"
+            },
+            "currency": "EUR",
+            "billing": "operator"
           },
-          {
-            "brand": {
-              "domain": "nova-brands.com",
-              "brand_id": "glow"
-            },
-            "operator": "pinnacle-media.com",
-            "billing": "agent",
-            "payment_terms": "net_60"
-          }
-        ]
-      }
+        {
+          "brand": {
+            "domain": "nova-brands.com",
+            "brand_id": "glow"
+          },
+          "operator": "pinnacle-media.com",
+          "billing": "agent"
+        }
+      ]
     },
     {
-      "description": "Advertiser billed directly with structured billing entity (DACH B2B)",
-      "data": {
-        "idempotency_key": "d0a2f5b7-4567-489a-bcde-f01234567890",
-        "accounts": [
-          {
-            "brand": {
-              "domain": "acme-corp.com"
+      "idempotency_key": "b8e0d3f5-2345-4678-9abc-def012345678",
+      "accounts": [
+        {
+          "brand": {
+            "domain": "acme-corp.com"
+          },
+          "operator": "acme-corp.com",
+          "billing": "operator",
+          "payment_terms": "net_30"
+        }
+      ]
+    },
+    {
+      "idempotency_key": "c9f1e4a6-3456-4789-abcd-ef0123456789",
+      "accounts": [
+        {
+          "brand": {
+            "domain": "nova-brands.com",
+            "brand_id": "spark"
+          },
+          "operator": "pinnacle-media.com",
+          "billing": "agent",
+          "payment_terms": "net_60"
+        },
+        {
+          "brand": {
+            "domain": "nova-brands.com",
+            "brand_id": "glow"
+          },
+          "operator": "pinnacle-media.com",
+          "billing": "agent",
+          "payment_terms": "net_60"
+        }
+      ]
+    },
+    {
+      "idempotency_key": "d0a2f5b7-4567-489a-bcde-f01234567890",
+      "accounts": [
+        {
+          "brand": {
+            "domain": "acme-corp.com"
+          },
+          "operator": "pinnacle-media.com",
+          "billing": "advertiser",
+          "billing_entity": {
+            "legal_name": "Acme Corporation GmbH",
+            "vat_id": "DE987654321",
+            "registration_number": "HRB 67890",
+            "address": {
+              "street": "Hauptstrasse 42",
+              "city": "Munich",
+              "postal_code": "80331",
+              "country": "DE"
             },
-            "operator": "pinnacle-media.com",
-            "billing": "advertiser",
-            "billing_entity": {
-              "legal_name": "Acme Corporation GmbH",
-              "vat_id": "DE987654321",
-              "registration_number": "HRB 67890",
-              "address": {
-                "street": "Hauptstrasse 42",
-                "city": "Munich",
-                "postal_code": "80331",
-                "country": "DE"
-              },
-              "contacts": [
-                {
-                  "role": "billing",
-                  "name": "AP Department",
-                  "email": "billing@acme-corp.com"
-                }
+            "contacts": [
+              {
+                "role": "billing",
+                "name": "AP Department",
+                "email": "billing@acme-corp.com"
+              }
+            ],
+            "bank": {
+              "account_holder": "Acme Corporation GmbH",
+              "iban": "DE75512108001245126199",
+              "bic": "SOLADEST600"
+            }
+          },
+          "payment_terms": "net_30"
+        }
+      ]
+    },
+    {
+      "idempotency_key": "e1b3a6c8-5678-49ab-cdef-1234567890ab",
+      "accounts": [
+        {
+          "brand": {
+            "domain": "acme-corp.com"
+          },
+          "operator": "acme-corp.com",
+          "billing": "operator",
+          "notification_configs": [
+            {
+              "subscriber_id": "buyer-primary",
+              "url": "https://buyer.example/webhooks/adcp/creative",
+              "event_types": [
+                "creative.status_changed",
+                "creative.purged"
               ],
-              "bank": {
-                "account_holder": "Acme Corporation GmbH",
-                "iban": "DE75512108001245126199",
-                "bic": "SOLADEST600"
-              }
-            },
-            "payment_terms": "net_30"
-          }
-        ]
-      }
+              "active": true
+            }
+          ]
+        }
+      ]
     },
     {
-      "description": "Provisioning mode — register a creative-lifecycle webhook subscription alongside account provisioning",
-      "data": {
-        "idempotency_key": "e1b3a6c8-5678-49ab-cdef-1234567890ab",
-        "accounts": [
-          {
-            "brand": {
-              "domain": "acme-corp.com"
+      "idempotency_key": "f2c4b7d9-6789-49bc-defa-2345678901bc",
+      "accounts": [
+        {
+          "account": {
+            "account_id": "acc_acme_pinnacle"
+          },
+          "notification_configs": [
+            {
+              "subscriber_id": "buyer-primary",
+              "url": "https://buyer.example/webhooks/adcp/creative",
+              "event_types": [
+                "creative.status_changed",
+                "creative.purged"
+              ],
+              "active": true
             },
-            "operator": "acme-corp.com",
-            "billing": "operator",
-            "notification_configs": [
-              {
-                "subscriber_id": "buyer-primary",
-                "url": "https://buyer.example/webhooks/adcp/creative",
-                "event_types": [
-                  "creative.status_changed",
-                  "creative.purged"
-                ],
-                "active": true
-              }
-            ]
-          }
-        ]
-      }
+            {
+              "subscriber_id": "audit-bus",
+              "url": "https://audit.buyer.example/adcp/ingest",
+              "event_types": [
+                "creative.status_changed",
+                "creative.purged"
+              ],
+              "active": true
+            }
+          ]
+        }
+      ]
     },
     {
-      "description": "Settings-update mode — register webhook subscribers on an existing account-id namespace account",
-      "data": {
-        "idempotency_key": "f2c4b7d9-6789-49bc-defa-2345678901bc",
-        "accounts": [
-          {
-            "account": {
-              "account_id": "acc_acme_pinnacle"
-            },
-            "notification_configs": [
-              {
-                "subscriber_id": "buyer-primary",
-                "url": "https://buyer.example/webhooks/adcp/creative",
-                "event_types": [
-                  "creative.status_changed",
-                  "creative.purged"
-                ],
-                "active": true
+      "idempotency_key": "a8af8cf1-89bd-41f3-b27d-7ee7e9f8d2e4",
+      "accounts": [
+        {
+          "account": {
+            "account_id": "acc_acme_pinnacle"
+          },
+          "notification_configs": [
+            {
+              "subscriber_id": "wholesale-feed-sync",
+              "url": "https://buyer.example/webhooks/adcp/wholesale-feed",
+              "event_types": [
+                "product.created",
+                "product.updated",
+                "product.priced",
+                "product.removed",
+                "signal.created",
+                "signal.updated",
+                "signal.priced",
+                "signal.removed",
+                "wholesale_feed.bulk_change"
+              ],
+              "active": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "idempotency_key": "e7a40a15-2d54-4a4b-8d0b-3f7a1c9b6d52",
+      "accounts": [
+        {
+          "brand": {
+            "domain": "novamotors.example"
+          },
+          "operator": "pinnacle-agency.example",
+          "billing": "advertiser",
+          "reporting_delivery_configs": [
+            {
+              "delivery_config_id": "pinnacle-pacing",
+              "delivery_config_version": 1,
+              "offering_id": "pacing-hourly",
+              "active": true,
+              "feed_purpose": "pacing",
+              "report_definition_id": "streamhaus_delivery_summary_v1",
+              "reporting_profile": "streamhaus_delivery_summary_v1",
+              "scope": {
+                "all_media_buys": true
               },
+              "coverage_requirement": "full",
+              "required_finality": "snapshot",
+              "reconciliation_mode": "delivery_only",
+              "schedule": {
+                "period_duration": "PT1H",
+                "alignment": "utc",
+                "delivery_sla": "PT1H"
+              },
+              "method": {
+                "pattern": "file_transfer",
+                "transport": "s3",
+                "orchestration": "producer_managed",
+                "format": "parquet",
+                "destination": {
+                  "mode": "existing",
+                  "destination_ref": "dest_01K4C6T6Q0A9E6Y3N1FQ1T8YKV"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "idempotency_key": "2fc44b7a-6c1c-4cb9-83da-bdcce1b6c0f8",
+      "accounts": [
+        {
+          "brand": {
+            "domain": "novamotors.example"
+          },
+          "operator": "pinnacle-agency.example",
+          "timezone": "Europe/London",
+          "billing": "advertiser",
+          "billing_entity": {
+            "legal_name": "Nova Motors Ltd.",
+            "registration_number": "NM-2026-1042",
+            "address": {
+              "street": "12 Aurora Road",
+              "city": "London",
+              "postal_code": "SW1A 1AA",
+              "country": "GB"
+            },
+            "contacts": [
               {
-                "subscriber_id": "audit-bus",
-                "url": "https://audit.buyer.example/adcp/ingest",
-                "event_types": [
-                  "creative.status_changed",
-                  "creative.purged"
-                ],
-                "active": true
+                "role": "billing",
+                "name": "Tomoko",
+                "email": "accounts-payable@novamotors.example"
               }
             ]
-          }
-        ]
+          },
+          "payment_terms": "net_30",
+          "notification_configs": [
+            {
+              "subscriber_id": "account-lifecycle",
+              "url": "https://buyer.pinnacle-agency.example/webhooks/adcp/accounts",
+              "event_types": [
+                "account.status_changed"
+              ],
+              "active": true
+            }
+          ]
+        }
+      ],
+      "push_notification_config": {
+        "url": "https://buyer.pinnacle-agency.example/webhooks/adcp/tasks",
+        "operation_id": "provision-nova-streamhaus-2026-08-12"
       }
     },
     {
-      "description": "Settings-update mode — register a wholesale feed mirror webhook subscriber for wholesale product and signal changes",
-      "data": {
-        "idempotency_key": "a8af8cf1-89bd-41f3-b27d-7ee7e9f8d2e4",
-        "accounts": [
-          {
-            "account": {
-              "account_id": "acc_acme_pinnacle"
-            },
-            "notification_configs": [
-              {
-                "subscriber_id": "wholesale-feed-sync",
-                "url": "https://buyer.example/webhooks/adcp/wholesale-feed",
-                "event_types": [
-                  "product.created",
-                  "product.updated",
-                  "product.priced",
-                  "product.removed",
-                  "signal.created",
-                  "signal.updated",
-                  "signal.priced",
-                  "signal.removed",
-                  "wholesale_feed.bulk_change"
-                ],
-                "active": true
-              }
+      "idempotency_key": "attribute-update-018f24c0-65d1-7c3a",
+      "accounts": [
+        {
+          "account": {
+            "account_id": "acc_nova_pinnacle"
+          },
+          "revision": 7,
+          "brand": {
+            "domain": "nova-athletics.example",
+            "countries": [
+              "BE",
+              "DE",
+              "NL"
             ]
           }
-        ]
-      }
+        }
+      ]
+    },
+    {
+      "idempotency_key": "ee1343bb-7449-4d33-a2c1-c9cc0c75d0f4",
+      "accounts": [
+        {
+          "account": {
+            "account_id": "acc_acme_pinnacle"
+          },
+          "notification_configs": [
+            {
+              "subscriber_id": "account-lifecycle",
+              "url": "https://buyer.example/webhooks/adcp/accounts",
+              "event_types": [
+                "account.status_changed"
+              ],
+              "active": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "idempotency_key": "f6c0a3d4-2345-48b1-2345-6789012345ab",
+      "accounts": [
+        {
+          "brand": {
+            "domain": "acmeoutdoor.com"
+          },
+          "operator": "pinnacle-agency.com",
+          "billing": "operator"
+        }
+      ]
+    },
+    {
+      "idempotency_key": "9b1e6f2c-4d8a-4c51-9f0e-3a7d2c8b6e41",
+      "accounts": [
+        {
+          "account": {
+            "account_id": "acct_nova_agency"
+          },
+          "notification_configs": [
+            {
+              "subscriber_id": "card-mirror",
+              "url": "https://buyer.example/hooks/collection-cards",
+              "event_types": [
+                "collection_card.updated",
+                "collection_card.removed",
+                "collection_catalog.bulk_change"
+              ],
+              "active": true
+            }
+          ]
+        }
+      ]
     }
   ]
 }

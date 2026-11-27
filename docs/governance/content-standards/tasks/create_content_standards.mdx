@@ -29,6 +29,7 @@ Implementors MUST apply a brand safety floor regardless of what policy is define
 
 ### Example Request
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "/schemas/content-standards/create-content-standards-request.json",
@@ -67,12 +68,28 @@ Implementors MUST apply a brand safety floor regardless of what policy is define
   ],
   "calibration_exemplars": {
     "pass": [
-      { "type": "url", "value": "https://espn.com/nba/story/_/id/12345/lakers-championship", "language": "en" },
-      { "type": "url", "value": "https://healthline.com/fitness/cardio-workout", "language": "en" }
+      {
+        "type": "url",
+        "value": "https://espn.com/nba/story/_/id/12345/lakers-championship",
+        "language": "en"
+      },
+      {
+        "type": "url",
+        "value": "https://healthline.com/fitness/cardio-workout",
+        "language": "en"
+      }
     ],
     "fail": [
-      { "type": "url", "value": "https://tabloid.example.com/celebrity-scandal", "language": "en" },
-      { "type": "url", "value": "https://news.example.com/controversial-politics-article", "language": "en" }
+      {
+        "type": "url",
+        "value": "https://tabloid.example.com/celebrity-scandal",
+        "language": "en"
+      },
+      {
+        "type": "url",
+        "value": "https://news.example.com/controversial-politics-article",
+        "language": "en"
+      }
     ]
   }
 }
@@ -84,6 +101,7 @@ Implementors MUST apply a brand safety floor regardless of what policy is define
 
 ### Success Response
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "/schemas/content-standards/create-content-standards-response.json",

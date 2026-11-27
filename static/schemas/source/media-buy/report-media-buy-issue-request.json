@@ -95,5 +95,18 @@
     {
       "$ref": "/schemas/core/version-envelope.json"
     }
+  ],
+  "examples": [
+    {
+      "idempotency_key": "critical-tracker-20270111-001",
+      "account": {
+        "account_id": "account_123"
+      },
+      "media_buy_id": "media_buy_789",
+      "package_id": "package_video",
+      "severity": "critical",
+      "category": "tracking",
+      "description": "An unapproved tracker is firing on the package. Please disable it at the seller ad server."
+    }
   ]
 }

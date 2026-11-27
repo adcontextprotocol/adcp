@@ -73,5 +73,17 @@
       "then": { "not": { "required": ["weight"] } }
     }
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "creative_id": "creative_1"
+    },
+    {
+      "creative_id": "hero_video",
+      "weight": 60,
+      "placement_ids": [
+        "homepage_hero"
+      ]
+    }
+  ]
 }

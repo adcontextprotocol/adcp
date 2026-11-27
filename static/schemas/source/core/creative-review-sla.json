@@ -51,5 +51,12 @@
       "calendar_reference": "A business_calendar_id resolves to exactly one immutable get_adcp_capabilities.business_calendars declaration whose coverage includes receipt and the computed deadline. Invalid or unresolved calendars never fall back to elapsed time.",
       "request_snapshot": "Pending reviews retain the SLA and calendar resolved at receipt. Maxima are independent upper bounds; a completion maximum shorter than the response maximum does not invalidate either commitment."
     }
-  }
+  },
+  "examples": [
+    {
+      "clock": "business",
+      "business_calendar_id": "review_team_2027_q1",
+      "completion_max": "P1D"
+    }
+  ]
 }

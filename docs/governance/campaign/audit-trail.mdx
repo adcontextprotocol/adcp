@@ -106,6 +106,7 @@ The protocol does not define a regulator API. Counterparty rules govern the disc
 
 A plan with $500K authorized for an OLV/display campaign. The orchestrator runs an intent check on `get_products`, then an execution check on `create_media_buy` for $150K, then reports the outcome. The full internal audit response:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "/schemas/governance/get-plan-audit-logs-response.json",
@@ -133,7 +134,11 @@ A plan with $500K authorized for an OLV/display campaign. The orchestrator runs 
       "summary": {
         "checks_performed": 2,
         "outcomes_reported": 1,
-        "statuses": { "approved": 2, "denied": 0, "conditions": 0 },
+        "statuses": {
+          "approved": 2,
+          "denied": 0,
+          "conditions": 0
+        },
         "findings_count": 0
       },
       "entries": [
@@ -178,6 +183,7 @@ Findings are how the audit trail communicates risk. Two patterns worth knowing:
 
 The plan declares `approved_sellers: ["https://ads.seller-approved.example"]`. A different seller calls `check_governance` with an execution check and gets denied:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "/schemas/governance/check-governance-response.json",
@@ -204,6 +210,7 @@ The corresponding plan summary records `statuses.denied: 1` and `findings_count:
 
 A plan with `policy_categories: ["fair_lending"]` (mortgage, consumer credit, etc.) auto-flips `human_review_required: true`. If the brand profile doesn't expose a contestation contact, the check fails closed with an actionable explanation:
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "/schemas/governance/check-governance-response.json",
@@ -233,6 +240,7 @@ The denial is also a coaching moment — the operator sees exactly what to fix. 
 
 **`mode: "enforce"`** — the buy is blocked at the governance layer:
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "/schemas/governance/check-governance-response.json",
@@ -256,6 +264,7 @@ The denial is also a coaching moment — the operator sees exactly what to fix. 
 
 **`mode: "advisory"`** — the buy proceeds; the operator gets a critical finding to act on post-hoc:
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
   "$schema": "/schemas/governance/check-governance-response.json",
@@ -281,6 +290,7 @@ The denial is also a coaching moment — the operator sees exactly what to fix. 
 
 **`mode: "audit"`** — the buy proceeds silently; the finding is in the log for retrospective analysis:
 
+{/* schema-example: #/examples/4 */}
 ```json
 {
   "$schema": "/schemas/governance/check-governance-response.json",

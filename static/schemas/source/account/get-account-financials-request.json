@@ -32,38 +32,29 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Query by account ID for current billing cycle",
-      "data": {
-        "account": {
-          "account_id": "acc_acme_001"
-        }
+      "account": {
+        "account_id": "acc_acme_001"
       }
     },
     {
-      "description": "Query by natural key for a specific period",
-      "data": {
-        "account": {
-          "brand": {
-            "domain": "acme-corp.com"
-          },
-          "operator": "acme-corp.com"
+      "account": {
+        "brand": {
+          "domain": "acme-corp.com"
         },
-        "period": {
-          "start": "2026-01-01",
-          "end": "2026-01-31"
-        }
+        "operator": "acme-corp.com"
+      },
+      "period": {
+        "start": "2026-01-01",
+        "end": "2026-01-31"
       }
     },
     {
-      "description": "Agency querying financials for a client account",
-      "data": {
-        "account": {
-          "brand": {
-            "domain": "nova-brands.com",
-            "brand_id": "spark"
-          },
-          "operator": "pinnacle-media.com"
-        }
+      "account": {
+        "brand": {
+          "domain": "nova-brands.com",
+          "brand_id": "spark"
+        },
+        "operator": "pinnacle-media.com"
       }
     }
   ]

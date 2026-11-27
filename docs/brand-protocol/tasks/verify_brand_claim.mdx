@@ -85,8 +85,10 @@ The `details` field on the response varies by `claim_type`. Below: the request p
 
 House-side: a consumer detects `converse.com` claiming `house_domain: nikeinc.com`. Asks Nike's agent:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand/verify-brand-claim-request.json",
   "claim_type": "subsidiary",
   "claim": {
     "subsidiary_domain": "converse.com",
@@ -136,8 +138,10 @@ Applicable statuses: `owned`, `pending_review`, `transferring`, `disputed`, `not
 
 Leaf-side: a consumer wants the leaf's authoritative answer about its parent. Asks Converse's agent:
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand/verify-brand-claim-request.json",
   "claim_type": "parent",
   "claim": {
     "parent_domain": "nikeinc.com",
@@ -187,8 +191,10 @@ When both `verify_brand_claim` with `claim_type: "subsidiary"` (on the house) AN
 
 The request asks about one property; the response describes the brand's relationship with that property, including all regions where the relationship applies (which may exceed the one named in the query).
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand/verify-brand-claim-request.json",
   "claim_type": "property",
   "claim": {
     "property": {
@@ -272,8 +278,10 @@ Applicable statuses: `owned`, `transferring`, `disputed`, `not_ours`, `archived`
 
 ### `claim_type: "trademark"`
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand/verify-brand-claim-request.json",
   "claim_type": "trademark",
   "claim": {
     "mark": "AIR JORDAN",

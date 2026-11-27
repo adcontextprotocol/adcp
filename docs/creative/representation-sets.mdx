@@ -23,6 +23,7 @@ Selection chooses a `representation_id`. It never chooses or creates one of the 
 
 The set always means “choose exactly one compatible representation.” Arrays inside a manifest asset slot still mean repeatable cardinality; they do not mean representation alternatives.
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/3.2.1/core/creative-representation-set.json",
@@ -101,6 +102,7 @@ Equivalence is a buyer assertion, not something the set digest proves. The diges
 
 Pass a representation set to the destination seller's `build_creative` route with the product contract and an advertised strategy:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/build-creative-request.json",
@@ -122,7 +124,10 @@ Pass a representation set to the destination seller's `build_creative` route wit
             "clickthrough_url": "https://click.acme-example.com/redirect"
           }
         },
-        "source": { "system": "acme_ad_server", "source_representation": "Internal Redirect" }
+        "source": {
+          "system": "acme_ad_server",
+          "source_representation": "Internal Redirect"
+        }
       }
     ]
   },
@@ -145,6 +150,7 @@ This is a deterministic, single-output mode. It cannot be combined with generati
 
 The output is the normal seller-bound manifest. `representation_selection` carries complete-revision lineage through `sync_creatives` and readback:
 
+{/* schema-example: #/examples/7 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/creative-manifest.json",
@@ -270,6 +276,7 @@ When no candidate works, return `CREATIVE_REPRESENTATION_UNRESOLVED`. `error.det
 
 One VAST asset declares one exact `vast_version`; a product option and seller declare accepted sets.
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/3.2.1/core/creative-representation-set.json",
@@ -289,7 +296,10 @@ One VAST asset declares one exact `vast_version`; a product option and seller de
           "vast_version": "2.0"
         }
       },
-      "source": { "system": "acme_ad_server", "source_representation": "VAST 2.0 pre-fetch" }
+      "source": {
+        "system": "acme_ad_server",
+        "source_representation": "VAST 2.0 pre-fetch"
+      }
     },
     {
       "representation_id": "source-vast-3",
@@ -302,7 +312,10 @@ One VAST asset declares one exact `vast_version`; a product option and seller de
           "vast_version": "3.0"
         }
       },
-      "source": { "system": "acme_ad_server", "source_representation": "VAST 3.0 pre-fetch" }
+      "source": {
+        "system": "acme_ad_server",
+        "source_representation": "VAST 3.0 pre-fetch"
+      }
     },
     {
       "representation_id": "source-vast-4",
@@ -315,7 +328,10 @@ One VAST asset declares one exact `vast_version`; a product option and seller de
           "vast_version": "4.0"
         }
       },
-      "source": { "system": "acme_ad_server", "source_representation": "VAST 4.0 pre-fetch" }
+      "source": {
+        "system": "acme_ad_server",
+        "source_representation": "VAST 4.0 pre-fetch"
+      }
     }
   ]
 }

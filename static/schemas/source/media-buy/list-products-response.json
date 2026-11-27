@@ -117,5 +117,23 @@
       { "required": ["unchanged"] }
     ]
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "status": "completed",
+      "outcome": "listed",
+      "products": [],
+      "next_cursor": "page_2",
+      "feed_version": "feed_2026_08_10_1",
+      "pricing_version": "pricing_42",
+      "cache_scope": "account"
+    },
+    {
+      "status": "completed",
+      "outcome": "unchanged",
+      "feed_version": "feed_2026_08_10_1",
+      "pricing_version": "pricing_42",
+      "cache_scope": "account"
+    }
+  ]
 }

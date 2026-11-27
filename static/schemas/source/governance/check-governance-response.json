@@ -339,5 +339,304 @@
     "verdict",
     "explanation"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "status": "completed",
+      "check_id": "chk_0ac8d7de",
+      "check_type": "execution",
+      "verdict": "denied",
+      "explanation": "Denied: Caller https://ads.seller-rogue.example is not in the plan's approved sellers list.",
+      "categories_evaluated": [
+        "delegation_authority",
+        "seller_compliance"
+      ],
+      "policies_evaluated": [],
+      "findings": [
+        {
+          "category_id": "seller_compliance",
+          "severity": "critical",
+          "explanation": "Caller https://ads.seller-rogue.example is not in the plan's approved sellers list."
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "check_id": "chk_8360a36d",
+      "check_type": "intent",
+      "plan_id": "plan_2027_nova_mortgage",
+      "verdict": "denied",
+      "explanation": "Denied: Plan requires human review (Annex III / Art 22) but brand does not expose data_subject_contestation. Art 22(3) requires a discoverable contact point for the data subject to request human intervention, express their view, and contest the decision. Set brand.data_subject_contestation in brand.json.",
+      "categories_evaluated": [
+        "data_subject_contestation",
+        "delegation_authority"
+      ],
+      "policies_evaluated": [],
+      "findings": [
+        {
+          "category_id": "data_subject_contestation",
+          "severity": "critical",
+          "explanation": "Plan requires human review (Annex III / Art 22) but brand does not expose data_subject_contestation. Set brand.data_subject_contestation in brand.json."
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "check_id": "chk_enforce_001",
+      "check_type": "intent",
+      "plan_id": "plan_mode_enforce",
+      "verdict": "denied",
+      "explanation": "Denied: Requested budget $150000 exceeds plan total $100000.",
+      "categories_evaluated": [
+        "delegation_authority",
+        "budget_authority"
+      ],
+      "policies_evaluated": [],
+      "findings": [
+        {
+          "category_id": "budget_authority",
+          "severity": "critical",
+          "explanation": "Requested budget $150000 exceeds plan total $100000."
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "check_id": "chk_advisory_001",
+      "check_type": "intent",
+      "plan_id": "plan_mode_advisory",
+      "verdict": "approved",
+      "explanation": "Approved with 1 advisory finding(s).",
+      "expires_at": "2027-01-15T15:32:41Z",
+      "governance_context": "eyJhbGciOiJFZERTQSJ9.advisory.signature",
+      "categories_evaluated": [
+        "delegation_authority",
+        "budget_authority"
+      ],
+      "policies_evaluated": [],
+      "findings": [
+        {
+          "category_id": "budget_authority",
+          "severity": "critical",
+          "explanation": "Requested budget $150000 exceeds plan total $100000."
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "check_id": "chk_audit_001",
+      "check_type": "intent",
+      "plan_id": "plan_mode_audit",
+      "verdict": "approved",
+      "explanation": "All governance checks passed.",
+      "expires_at": "2027-01-15T15:32:41Z",
+      "governance_context": "eyJhbGciOiJFZERTQSJ9.audit.signature",
+      "categories_evaluated": [
+        "delegation_authority",
+        "budget_authority"
+      ],
+      "policies_evaluated": [],
+      "findings": [
+        {
+          "category_id": "budget_authority",
+          "severity": "critical",
+          "explanation": "Requested budget $150000 exceeds plan total $100000."
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "check_id": "chk_period_001",
+      "check_type": "intent",
+      "verdict": "approved",
+      "plan_id": "nova-spring-2027",
+      "budget_period_id": "q1",
+      "explanation": "Flight sits inside budget period q1. Commitment: $25,000 of q1's $60,000.",
+      "categories_evaluated": [
+        "budget_authority",
+        "flight_compliance",
+        "budget_period"
+      ],
+      "expires_at": "2027-01-14T01:00:00Z",
+      "governance_context": "eyJhbGciOiJFZERTQSIsInR5cCI6ImFkY3AtZ292K2p3cyJ9.intent.signature"
+    },
+    {
+      "status": "completed",
+      "check_id": "chk_period_002",
+      "check_type": "intent",
+      "verdict": "denied",
+      "plan_id": "nova-spring-2027",
+      "explanation": "Flight 2027-03-15T00:00:00Z to 2027-04-15T00:00:00Z straddles budget periods q1 and q2; split it into one buy per period.",
+      "findings": [
+        {
+          "category_id": "budget_period",
+          "severity": "critical",
+          "explanation": "Flight 2027-03-15T00:00:00Z to 2027-04-15T00:00:00Z straddles budget periods q1 and q2; split it into one buy per period."
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "check_id": "chk_001",
+      "check_type": "intent",
+      "verdict": "approved",
+      "plan_id": "plan_q1_2026_launch",
+      "explanation": "Proposed create_media_buy is within plan parameters. Budget: $150,000 of $500,000 plan total. Geo: US (within plan). Channel: OLV (within 40-70% target range).",
+      "categories_evaluated": [
+        "budget_authority",
+        "geo_compliance",
+        "channel_compliance",
+        "flight_compliance",
+        "delegation_authority"
+      ],
+      "policies_evaluated": [
+        "us_coppa",
+        "alcohol_advertising"
+      ],
+      "expires_at": "2026-03-15T01:00:00Z",
+      "governance_context": "eyJhbGciOiJFZERTQSIsInR5cCI6ImFkY3AtZ292K2p3cyJ9.intent.signature"
+    },
+    {
+      "status": "completed",
+      "check_id": "chk_002",
+      "check_type": "execution",
+      "verdict": "approved",
+      "explanation": "Planned delivery is within plan parameters. Budget: $150,000 of $500,000 plan total. Geo: US (within plan). Channel: OLV (within 40-70% target range).",
+      "mode": "enforce",
+      "expires_at": "2026-03-15T01:00:00Z",
+      "governance_context": "eyJhbGciOiJFZERTQSIsInR5cCI6ImFkY3AtZ292K2p3cyJ9.purchase.signature",
+      "next_check": "2026-03-22T00:00:00Z"
+    },
+    {
+      "status": "completed",
+      "check_id": "chk_003",
+      "check_type": "execution",
+      "verdict": "approved",
+      "explanation": "Delivery on track. Week 1 spend: $12,500 of $150,000 (8.3%). Pacing is on target for 13-week flight. Geo and channel distribution match plan parameters.",
+      "delivery_statement": {
+        "statement_id": "stmt_mb_seller_456_0001",
+        "statement_digest": "sha256:4b55f1157094ed8df2635250f71568701d294cb0da57845eba886a62e5434633",
+        "sequence": 1,
+        "issued_at": "2026-03-22T01:00:00Z",
+        "seller_reference": "mb_seller_456",
+        "reporting_period": {
+          "start": "2026-03-15T00:00:00Z",
+          "end": "2026-03-22T00:00:00Z"
+        },
+        "cumulative_spend": 12500,
+        "currency": "USD",
+        "canonical_payload": {
+          "seller_reference": "mb_seller_456",
+          "delivery_metrics": {
+            "statement_id": "stmt_mb_seller_456_0001",
+            "statement_digest": "sha256:4b55f1157094ed8df2635250f71568701d294cb0da57845eba886a62e5434633",
+            "sequence": 1,
+            "issued_at": "2026-03-22T01:00:00Z",
+            "reporting_period": {
+              "start": "2026-03-15T00:00:00Z",
+              "end": "2026-03-22T00:00:00Z"
+            },
+            "spend": 12500,
+            "cumulative_spend": 12500,
+            "currency": "USD",
+            "impressions": 850000,
+            "cumulative_impressions": 850000,
+            "geo_distribution": {
+              "US": 100
+            },
+            "channel_distribution": {
+              "olv": 100
+            },
+            "pacing": "on_track",
+            "audience_distribution": {
+              "baseline": "platform",
+              "indices": {
+                "age:18-24": 0.8,
+                "age:25-34": 1.4,
+                "age:35-44": 1.3,
+                "age:45-54": 1.1,
+                "gender:female": 1.05,
+                "gender:male": 0.95
+              },
+              "cumulative_indices": {
+                "age:18-24": 0.85,
+                "age:25-34": 1.35,
+                "age:35-44": 1.25,
+                "age:45-54": 1.1,
+                "gender:female": 1.03,
+                "gender:male": 0.97
+              }
+            }
+          }
+        }
+      },
+      "expires_at": "2026-03-29T00:00:00Z",
+      "governance_context": "eyJhbGciOiJFZERTQSIsInR5cCI6ImFkY3AtZ292K2p3cyJ9.delivery.signature",
+      "next_check": "2026-03-29T00:00:00Z"
+    },
+    {
+      "status": "completed",
+      "check_id": "chk_004",
+      "check_type": "intent",
+      "verdict": "denied",
+      "plan_id": "plan_q1_2026_launch",
+      "explanation": "Proposed media buy targets CA (Canada) which is not within the plan's geography.",
+      "findings": [
+        {
+          "category_id": "geo_compliance",
+          "severity": "critical",
+          "explanation": "Geo targeting includes CA but plan only covers US.",
+          "details": {
+            "plan_countries": [
+              "US"
+            ],
+            "payload_countries": [
+              "US",
+              "CA"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "check_id": "chk_004b",
+      "check_type": "intent",
+      "verdict": "conditions",
+      "plan_id": "plan_q1_2026_launch",
+      "explanation": "Reduce the proposed budget before re-checking.",
+      "consultation_context": "consult_01K1W8Q4X5Y6Z7",
+      "conditions": [
+        {
+          "field": "payload.total_budget.amount",
+          "required_value": 100000,
+          "reason": "The proposed amount exceeds delegated authority."
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "check_id": "chk_005",
+      "check_type": "execution",
+      "verdict": "denied",
+      "explanation": "Delivery has drifted outside plan parameters. 12% of impressions delivered in CA (Canada) which is not within the plan's geography.",
+      "findings": [
+        {
+          "category_id": "geo_compliance",
+          "severity": "critical",
+          "confidence": 0.98,
+          "explanation": "Geo distribution shows 12% delivery in CA, but plan only covers US.",
+          "details": {
+            "plan_countries": [
+              "US"
+            ],
+            "actual_distribution": {
+              "US": 88,
+              "CA": 12
+            }
+          }
+        }
+      ]
+    }
+  ]
 }

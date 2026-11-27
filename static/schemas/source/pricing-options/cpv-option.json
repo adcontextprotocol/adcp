@@ -90,5 +90,16 @@
     }
   },
   "required": ["pricing_option_id", "pricing_model", "currency", "parameters"],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "pricing_option_id": "cpv_usd_50pct",
+      "pricing_model": "cpv",
+      "fixed_price": 0.08,
+      "currency": "USD",
+      "parameters": {
+        "view_threshold": 0.5
+      }
+    }
+  ]
 }

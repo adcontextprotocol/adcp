@@ -83,5 +83,206 @@
       }
     }
   ],
-  "properties": {}
+  "properties": {},
+  "examples": [
+    {
+      "status": "completed",
+      "deployments": [
+        {
+          "type": "agent",
+          "agent_url": "https://wonderstruck.salesagents.com",
+          "is_live": false,
+          "delivery_status": "awaiting_read",
+          "delivery": {
+            "kind": "platform_segment",
+            "vendor": {
+              "domain": "activation-hub.example"
+            },
+            "segment_ref": "seg_88213"
+          },
+          "estimated_activation_duration_minutes": 2880
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "deployments": [
+        {
+          "type": "agent",
+          "agent_url": "https://wonderstruck.salesagents.com",
+          "is_live": true,
+          "delivery_status": "delivered",
+          "delivery": {
+            "kind": "platform_segment",
+            "vendor": {
+              "domain": "activation-hub.example"
+            },
+            "segment_ref": "seg_88213"
+          },
+          "match_status": "ready",
+          "matched_count": 412000,
+          "effective_match_rate": 0.58,
+          "activation_key": {
+            "type": "key_value",
+            "key": "audience_segment",
+            "value": "luxury_auto_intenders_v2"
+          },
+          "deployed_at": "2026-10-07T09:14:00Z"
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "deployments": [
+        {
+          "type": "agent",
+          "agent_url": "https://wonderstruck.salesagents.com",
+          "is_live": false,
+          "delivery_status": "failed",
+          "delivery_error": {
+            "code": "UNSUPPORTED_FEATURE",
+            "message": "Destination declares no delivery rail in common with this signal agent.",
+            "field": "destinations[0]"
+          }
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "message": "Signal successfully activated on Wonderstruck sales agent",
+      "context_id": "ctx-signals-123",
+      "deployments": [
+        {
+          "type": "agent",
+          "agent_url": "https://wonderstruck.salesagents.com",
+          "is_live": true,
+          "activation_key": {
+            "type": "key_value",
+            "key": "audience_segment",
+            "value": "luxury_auto_intenders_v2"
+          },
+          "deployed_at": "2025-01-15T14:30:00Z"
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "message": "Initiating activation of 'Luxury Auto Intenders' on The Trade Desk",
+      "context_id": "ctx-signals-123",
+      "deployments": [
+        {
+          "type": "platform",
+          "platform": "the-trade-desk",
+          "account": "agency-123-ttd",
+          "is_live": false,
+          "estimated_activation_duration_minutes": 30
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "message": "Signal successfully activated on The Trade Desk",
+      "context_id": "ctx-signals-123",
+      "deployments": [
+        {
+          "type": "platform",
+          "platform": "the-trade-desk",
+          "account": "agency-123-ttd",
+          "is_live": true,
+          "activation_key": {
+            "type": "segment_id",
+            "segment_id": "ttd_agency123_lux_auto"
+          },
+          "deployed_at": "2025-01-15T14:30:00Z"
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "message": "I've initiated activation of 'Luxury Automotive Context' on PubMatic for account brand-456-pm. This typically takes about 60 minutes. I'll monitor the progress and notify you when it's ready to use.",
+      "context_id": "ctx-signals-def456",
+      "deployments": [
+        {
+          "type": "platform",
+          "platform": "pubmatic",
+          "account": "brand-456-pm",
+          "is_live": false,
+          "estimated_activation_duration_minutes": 60
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "message": "Excellent! The 'Luxury Automotive Context' signal is now live on PubMatic. You can start using it immediately with the activation key provided. The activation completed faster than expected - just 52 minutes.",
+      "context_id": "ctx-signals-def456",
+      "deployments": [
+        {
+          "type": "platform",
+          "platform": "pubmatic",
+          "account": "brand-456-pm",
+          "is_live": true,
+          "activation_key": {
+            "type": "segment_id",
+            "segment_id": "pm_brand456_peer39_lux_auto"
+          },
+          "deployed_at": "2025-01-15T14:30:00Z"
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "message": "Signal successfully activated on Wonderstruck sales agent. Use the key-value pair in your targeting configuration.",
+      "context_id": "ctx-signals-ghi789",
+      "deployments": [
+        {
+          "type": "agent",
+          "agent_url": "https://wonderstruck.salesagents.com",
+          "is_live": true,
+          "activation_key": {
+            "type": "key_value",
+            "key": "audience_segment",
+            "value": "luxury_auto_context_v2"
+          },
+          "deployed_at": "2025-01-15T14:31:00Z"
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "message": "Successfully activated 'Luxury Automotive Context' on PubMatic, but noted some configuration issues. The signal is live and ready to use, though performance may be sub-optimal until the account settings are updated.",
+      "context_id": "ctx-signals-def456",
+      "deployments": [
+        {
+          "type": "platform",
+          "platform": "pubmatic",
+          "account": "brand-456-pm",
+          "is_live": true,
+          "activation_key": {
+            "type": "segment_id",
+            "segment_id": "pm_brand456_peer39_lux_auto"
+          },
+          "deployed_at": "2025-01-15T14:30:00Z"
+        }
+      ]
+    },
+    {
+      "status": "failed",
+      "message": "I couldn't activate the signal on PubMatic. Your account 'brand-456-pm' doesn't have permission to use Peer39 data. Please contact your PubMatic account manager to enable Peer39 access, then we can try again.",
+      "context_id": "ctx-signals-def456",
+      "errors": [
+        {
+          "code": "DEPLOYMENT_UNAUTHORIZED",
+          "message": "Account brand-456-pm not authorized for Peer39 data on PubMatic",
+          "field": "deployment.account",
+          "suggestion": "Contact your PubMatic account manager to enable Peer39 data access for your account",
+          "details": {
+            "account_id": "brand-456-pm",
+            "deployment_url": "https://pubmatic.com",
+            "data_provider": "peer39",
+            "required_permission": "third_party_data_access"
+          }
+        }
+      ]
+    }
+  ]
 }

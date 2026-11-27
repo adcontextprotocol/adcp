@@ -64,6 +64,7 @@ The protocol supports Keller's brand architecture models:
 
 A house domain with multiple brands:
 
+{/* schema-example: #/examples/25 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
@@ -76,21 +77,49 @@ A house domain with multiple brands:
   "brands": [
     {
       "id": "nike",
-      "names": [{"en": "Nike"}, {"zh": "耐克"}],
+      "names": [
+        {
+          "en": "Nike"
+        },
+        {
+          "zh": "耐克"
+        }
+      ],
       "keller_type": "master",
       "properties": [
-        {"type": "website", "identifier": "nike.com", "primary": true},
-        {"type": "mobile_app", "store": "apple", "identifier": "com.nike.omega"}
+        {
+          "type": "website",
+          "identifier": "nike.com",
+          "primary": true
+        },
+        {
+          "type": "mobile_app",
+          "store": "apple",
+          "identifier": "com.nike.omega"
+        }
       ]
     },
     {
       "id": "air_jordan",
-      "names": [{"en": "Air Jordan"}, {"en": "Jordan"}],
+      "names": [
+        {
+          "en": "Air Jordan"
+        },
+        {
+          "en": "Jordan"
+        }
+      ],
       "keller_type": "endorsed",
       "parent_brand": "nike",
       "properties": [
-        {"type": "website", "identifier": "jordan.com"},
-        {"type": "website", "identifier": "jumpman23.com"}
+        {
+          "type": "website",
+          "identifier": "jordan.com"
+        },
+        {
+          "type": "website",
+          "identifier": "jumpman23.com"
+        }
       ]
     }
   ]
@@ -105,6 +134,7 @@ Properties can also represent inventory you sell but don't own. Use `relationshi
 
 A brand with an MCP agent that provides brand information:
 
+{/* schema-example: #/examples/13 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
@@ -125,6 +155,7 @@ The agent provides brand identity data (logos, colors, tone) on behalf of the br
 
 A brand domain pointing to its house:
 
+{/* schema-example: #/examples/26 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",

@@ -50,13 +50,18 @@ The result is a verifiable supply path. The operator publicly says "I sell this 
 
 A publisher with its own sales agent publishes `brand.json` at `https://streamhaus.example/.well-known/brand.json`:
 
+{/* schema-example: #/examples/29 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
   "version": "1.0",
   "id": "streamhaus",
   "url": "https://streamhaus.example",
-  "names": [{ "en_US": "StreamHaus" }],
+  "names": [
+    {
+      "en_US": "StreamHaus"
+    }
+  ],
   "industries": ["media"],
   "properties": [
     {
@@ -78,6 +83,7 @@ A publisher with its own sales agent publishes `brand.json` at `https://streamha
 
 The same publisher publishes `adagents.json` at `https://streamhaus.example/.well-known/adagents.json`:
 
+{/* schema-example: #/examples/7 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
@@ -92,7 +98,12 @@ The same publisher publishes `adagents.json` at `https://streamhaus.example/.wel
       "property_type": "ctv_app",
       "name": "StreamHaus CTV App",
       "publisher_domain": "streamhaus.example",
-      "identifiers": [{ "type": "bundle_id", "value": "com.streamhaus.ctv" }]
+      "identifiers": [
+        {
+          "type": "bundle_id",
+          "value": "com.streamhaus.ctv"
+        }
+      ]
     }
   ],
   "authorized_agents": [
@@ -122,13 +133,18 @@ The buyer verifies that `agents[].url` in `brand.json` matches `authorized_agent
 
 When a network sells another publisher's inventory, the network publishes its own `brand.json`:
 
+{/* schema-example: #/examples/30 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
   "version": "1.0",
   "id": "northwind_media",
   "url": "https://northwind.example",
-  "names": [{ "en_US": "Northwind Media" }],
+  "names": [
+    {
+      "en_US": "Northwind Media"
+    }
+  ],
   "industries": ["advertising"],
   "properties": [
     {
@@ -150,6 +166,7 @@ When a network sells another publisher's inventory, the network publishes its ow
 
 StreamHaus confirms the relationship in `https://streamhaus.example/.well-known/adagents.json`:
 
+{/* schema-example: #/examples/8 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
@@ -164,7 +181,12 @@ StreamHaus confirms the relationship in `https://streamhaus.example/.well-known/
       "property_type": "website",
       "name": "StreamHaus",
       "publisher_domain": "streamhaus.example",
-      "identifiers": [{ "type": "domain", "value": "streamhaus.example" }]
+      "identifiers": [
+        {
+          "type": "domain",
+          "value": "streamhaus.example"
+        }
+      ]
     }
   ],
   "authorized_agents": [
@@ -195,6 +217,7 @@ Northwind's `brand.json` alone is not authorization. Any operator can claim a pr
 
 Operators that host one sales-agent deployment for many publisher tenants MAY publish one `agents[]` entry per tenant or property-scoped endpoint, even when every entry has `type: "sales"`. Each entry is selected by its concrete `url`, not by `type`, so a path-routed deployment can publish per-tenant JWKS shards. The tenant or property scope is carried by the concrete agent URL being authenticated, such as `/mcp/{tenant}`; it is not selected from a tenant identifier inside the signed request body. Agent URLs MUST be unique within the `agents[]` array.
 
+{/* schema-example: #/examples/31 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",

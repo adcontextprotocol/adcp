@@ -84,8 +84,10 @@ One caller's replacement MUST NOT delete, pause, or mutate subscribers registere
 
 When the seller's advertised capability document materially changes, it publishes the new [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) snapshot first, then fires `capabilities.changed` to active subscribers:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/capabilities-changed-webhook.json",
   "idempotency_key": "whk_01J1T3K6YZR7V5P9Q2M4N6B8CD",
   "notification_id": "capchg_20260702_0001",
   "notification_type": "capabilities.changed",
@@ -103,8 +105,10 @@ The webhook does not carry the full capability document. The `capabilities_versi
 
 ## Example
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/sync-agent-notification-configs-request.json",
   "idempotency_key": "b6aa9428-9d5f-4d16-a6d2-1a27db67ef5b",
   "notification_configs": [
     {
@@ -119,8 +123,10 @@ The webhook does not carry the full capability document. The `capabilities_versi
 
 Response:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/sync-agent-notification-configs-response.json",
   "status": "completed",
   "action": "updated",
   "notification_configs": [

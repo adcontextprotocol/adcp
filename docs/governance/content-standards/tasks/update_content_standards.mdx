@@ -23,6 +23,7 @@ Update an existing content standards configuration. Creates a new version.
 
 ### Example Request
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "/schemas/content-standards/update-content-standards-request.json",
@@ -56,13 +57,33 @@ Update an existing content standards configuration. Creates a new version.
   ],
   "calibration_exemplars": {
     "pass": [
-      { "type": "url", "value": "https://espn.com/nba/story/_/id/12345/lakers-win", "language": "en" },
-      { "type": "url", "value": "https://healthline.com/fitness/cardio-workout", "language": "en" },
-      { "type": "url", "value": "https://runnersworld.com/training/marathon-tips", "language": "en" }
+      {
+        "type": "url",
+        "value": "https://espn.com/nba/story/_/id/12345/lakers-win",
+        "language": "en"
+      },
+      {
+        "type": "url",
+        "value": "https://healthline.com/fitness/cardio-workout",
+        "language": "en"
+      },
+      {
+        "type": "url",
+        "value": "https://runnersworld.com/training/marathon-tips",
+        "language": "en"
+      }
     ],
     "fail": [
-      { "type": "url", "value": "https://tabloid.example.com/celebrity-scandal", "language": "en" },
-      { "type": "url", "value": "https://gambling.example.com/betting-guide", "language": "en" }
+      {
+        "type": "url",
+        "value": "https://tabloid.example.com/celebrity-scandal",
+        "language": "en"
+      },
+      {
+        "type": "url",
+        "value": "https://gambling.example.com/betting-guide",
+        "language": "en"
+      }
     ]
   }
 }
@@ -74,6 +95,7 @@ Update an existing content standards configuration. Creates a new version.
 
 ### Success Response
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "/schemas/content-standards/update-content-standards-response.json",
@@ -85,6 +107,7 @@ Update an existing content standards configuration. Creates a new version.
 
 ### Error Response
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "/schemas/content-standards/update-content-standards-response.json",

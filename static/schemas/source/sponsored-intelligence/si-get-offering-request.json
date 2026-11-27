@@ -42,5 +42,16 @@
   "required": [
     "offering_id"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "offering_id": "nike-summer-sale"
+    },
+    {
+      "offering_id": "nike-summer-sale",
+      "intent": "mens size 14 running shoes near Cincinnati",
+      "include_products": true,
+      "product_limit": 3
+    }
+  ]
 }

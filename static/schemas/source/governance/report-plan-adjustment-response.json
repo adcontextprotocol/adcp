@@ -55,5 +55,29 @@
     "ext": { "$ref": "/schemas/core/ext.json" }
   },
   "required": ["adjustment_id", "adjustment_state", "adjustment_type", "amount", "headroom_restored", "plan_summary"],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "status": "completed",
+      "adjustment_id": "adj_5d92a018",
+      "adjustment_state": "verified",
+      "adjustment_type": "decommitment",
+      "amount": {
+        "amount": 40000,
+        "currency": "USD"
+      },
+      "headroom_restored": 40000,
+      "plan_summary": {
+        "accounting_mode": "gross_commitment",
+        "gross_committed": 150000,
+        "adjustments_reported": 40000,
+        "adjustments_verified": 40000,
+        "net_cost": 110000,
+        "headroom_restored": 40000,
+        "ledger_committed": 110000,
+        "net_committed": 110000,
+        "budget_remaining": 90000
+      }
+    }
+  ]
 }

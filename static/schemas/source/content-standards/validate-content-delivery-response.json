@@ -126,5 +126,38 @@
       ]
     }
   ],
-  "properties": {}
+  "properties": {},
+  "examples": [
+    {
+      "status": "completed",
+      "summary": {
+        "total_records": 1000,
+        "passed_records": 950,
+        "failed_records": 50
+      },
+      "results": [
+        {
+          "record_id": "imp_12345",
+          "verdict": "pass",
+          "features": [
+            {
+              "feature_id": "brand_safety",
+              "status": "passed"
+            }
+          ]
+        },
+        {
+          "record_id": "imp_12346",
+          "verdict": "fail",
+          "features": [
+            {
+              "feature_id": "brand_safety",
+              "status": "failed",
+              "explanation": "Content contains violence"
+            }
+          ]
+        }
+      ]
+    }
+  ]
 }

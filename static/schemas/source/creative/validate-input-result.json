@@ -117,34 +117,25 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Manifest fails a fictional vertical-video product narrowing because its duration exceeds the [3000, 90000] range",
-      "data": {
-        "target": { "kind": "product", "id": "streamhaus_vertical_video_us" },
-        "result_kind": "validated_fail",
-        "violations": [
-          {
-            "rule": "duration_ms_range",
-            "expected": "3000-90000",
-            "predicted": 95000,
-            "field": "assets.video_main.duration_ms",
-            "retry_with": { "trim_ms_from_end": 5000 }
-          }
-        ]
-      }
+      "target": { "kind": "product", "id": "streamhaus_vertical_video_us" },
+      "result_kind": "validated_fail",
+      "violations": [
+        {
+          "rule": "duration_ms_range",
+          "expected": "3000-90000",
+          "predicted": 95000,
+          "field": "assets.video_main.duration_ms",
+          "retry_with": { "trim_ms_from_end": 5000 }
+        }
+      ]
     },
     {
-      "description": "Manifest passes canonical video_hosted (canonical doesn't constrain duration; products narrow)",
-      "data": {
-        "target": { "kind": "canonical", "id": "video_hosted" },
-        "result_kind": "validated_pass"
-      }
+      "target": { "kind": "canonical", "id": "video_hosted" },
+      "result_kind": "validated_pass"
     },
     {
-      "description": "Nondeterministic generative-video product is unvalidatable up-front; buyer plans for the QA-loop semantics on build_creative",
-      "data": {
-        "target": { "kind": "product", "id": "nondeterministic_video_vertical_15s" },
-        "result_kind": "unvalidatable_nondeterministic"
-      }
+      "target": { "kind": "product", "id": "nondeterministic_video_vertical_15s" },
+      "result_kind": "unvalidatable_nondeterministic"
     }
   ]
 }

@@ -42,31 +42,22 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Check task status",
-      "data": {
-        "task_id": "task_456",
-        "account": {
-          "brand": {
-            "domain": "acme-corp.example"
-          },
-          "operator": "acme-corp.example",
-          "sandbox": true
-        }
+      "task_id": "task_456",
+      "account": {
+        "brand": {
+          "domain": "acme-corp.example"
+        },
+        "operator": "acme-corp.example",
+        "sandbox": true
       }
     },
     {
-      "description": "Get task with full conversation history",
-      "data": {
-        "task_id": "task_123",
-        "include_history": true
-      }
+      "task_id": "task_123",
+      "include_history": true
     },
     {
-      "description": "Poll for task completion including result payload",
-      "data": {
-        "task_id": "task_456",
-        "include_result": true
-      }
+      "task_id": "task_456",
+      "include_result": true
     }
   ]
 }

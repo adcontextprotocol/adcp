@@ -41,13 +41,17 @@ Sales agents SHOULD support MCP as the preferred transport.
 
 Sales agents MUST declare Media Buy Protocol support via `get_adcp_capabilities`:
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-response.json",
   "status": "completed",
   "adcp": {
     "major_versions": [2],
-    "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
+    "idempotency": {
+      "supported": true,
+      "replay_ttl_seconds": 86400
+    }
   },
   "supported_protocols": ["media_buy"],
   "account": {

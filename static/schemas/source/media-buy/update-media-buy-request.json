@@ -262,5 +262,64 @@
     "account",
     "media_buy_id"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "idempotency_key": "3e66e49f-7e8a-47c5-978a-cfe20fe0f00b",
+      "account": {
+        "account_id": "acc_acme_001"
+      },
+      "media_buy_id": "mb_12345",
+      "canceled": true,
+      "cancellation_reason": "Campaign strategy changed"
+    },
+    {
+      "idempotency_key": "87b872e1-fdbf-4b78-9d2a-fb0c15229e58",
+      "account": {
+        "account_id": "acc_acme_001"
+      },
+      "media_buy_id": "mb_12345",
+      "packages": [
+        {
+          "package_id": "pkg_67890",
+          "canceled": true,
+          "cancellation_reason": "Underperforming — reallocating budget"
+        }
+      ]
+    },
+    {
+      "idempotency_key": "fdc41275-0f84-45ed-ae79-197abb77af0c",
+      "account": {
+        "account_id": "acc_acme_001"
+      },
+      "media_buy_id": "mb_12345",
+      "packages": [
+        {
+          "package_id": "pkg_001",
+          "budget": 50000
+        }
+      ]
+    },
+    {
+      "idempotency_key": "08b1a997-2eb2-4f78-b195-840270eb75e6",
+      "account": {
+        "account_id": "acc_acme_001"
+      },
+      "media_buy_id": "mb_12345",
+      "packages": [
+        {
+          "package_id": "pkg_001",
+          "creative_assignments": [
+            {
+              "creative_id": "creative_video_v2"
+            },
+            {
+              "creative_id": "creative_display_v2",
+              "weight": 60
+            }
+          ]
+        }
+      ]
+    }
+  ]
 }

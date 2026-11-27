@@ -2336,6 +2336,670 @@
       ],
       "tagline": "We're in business to save our home planet.",
       "last_updated": "2026-01-15T10:00:00Z"
+    },
+    {
+      "authoritative_location": "https://adcontextprotocol.org/brand/abc123/brand.json"
+    },
+    {
+      "house": "nikeinc.com",
+      "note": "Regional site - see house for brand portfolio"
+    },
+    {
+      "house": "wpp.com",
+      "redirect_reason": "acquisition",
+      "redirect_effective_at": "2026-04-15T00:00:00Z",
+      "note": "Acquired by WPP April 2026"
+    },
+    {
+      "version": "1.0",
+      "agents": [
+        {
+          "type": "brand",
+          "url": "https://agent.acme.com/mcp",
+          "id": "acme_brand_agent"
+        }
+      ]
+    },
+    {
+      "version": "1.0",
+      "house": {
+        "domain": "nikeinc.com",
+        "name": "Nike, Inc.",
+        "architecture": "hybrid"
+      },
+      "brands": [
+        {
+          "id": "nike",
+          "names": [
+            {
+              "en": "Nike"
+            }
+          ],
+          "keller_type": "master",
+          "properties": [
+            {
+              "type": "website",
+              "identifier": "nike.com",
+              "primary": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.0",
+      "house": {
+        "domain": "nikeinc.com",
+        "name": "Nike, Inc.",
+        "architecture": "hybrid"
+      },
+      "brands": [
+        {
+          "id": "nike_sb",
+          "names": [
+            {
+              "en_US": "Nike SB"
+            }
+          ],
+          "keller_type": "sub_brand"
+        }
+      ],
+      "brand_refs": [
+        {
+          "domain": "converse.com",
+          "brand_id": "converse"
+        },
+        {
+          "domain": "jordan.com",
+          "brand_id": "jordan"
+        }
+      ]
+    },
+    {
+      "version": "1.0",
+      "house": {
+        "domain": "wpp.com",
+        "name": "WPP plc"
+      },
+      "brand_refs": [
+        {
+          "domain": "bbh-sport.com",
+          "brand_id": "bbh_sport",
+          "managed_by": "bbh.com"
+        },
+        {
+          "domain": "ogilvy-toyota.com",
+          "brand_id": "ogilvy_toyota",
+          "managed_by": "ogilvy.com"
+        },
+        {
+          "domain": "wpp-direct.com",
+          "brand_id": "wpp_direct"
+        }
+      ]
+    },
+    {
+      "version": "1.0",
+      "id": "converse",
+      "names": [
+        {
+          "en_US": "Converse"
+        }
+      ],
+      "keller_type": "sub_brand",
+      "house_domain": "nikeinc.com",
+      "logos": [
+        {
+          "url": "https://converse.com/logo.svg",
+          "variant": "primary"
+        }
+      ],
+      "tagline": "Sneaker for the streets"
+    },
+    {
+      "version": "1.0",
+      "id": "patagonia",
+      "names": [
+        {
+          "en_US": "Patagonia"
+        }
+      ],
+      "keller_type": "independent",
+      "logos": [
+        {
+          "url": "https://patagonia.com/logo.svg",
+          "variant": "primary"
+        }
+      ],
+      "tagline": "We're in business to save our home planet."
+    },
+    {
+      "version": "1.0",
+      "house": {
+        "domain": "bobsburgers.com",
+        "name": "Bob's Burgers LLC"
+      },
+      "brands": [
+        {
+          "id": "bobs_burgers",
+          "names": [
+            {
+              "en": "Bob's Burgers"
+            }
+          ],
+          "keller_type": "master",
+          "properties": [
+            {
+              "type": "website",
+              "identifier": "bobsburgers.com",
+              "primary": true
+            }
+          ],
+          "logos": [
+            {
+              "url": "https://bobsburgers.com/logo.svg",
+              "tags": [
+                "icon"
+              ]
+            }
+          ],
+          "colors": {
+            "primary": "#FF6B35"
+          }
+        }
+      ]
+    },
+    {
+      "version": "1.0",
+      "agents": [
+        {
+          "type": "brand",
+          "url": "https://brand-agent.enterprise.com/mcp",
+          "id": "enterprise_brand_agent"
+        }
+      ],
+      "contact": {
+        "name": "Enterprise Brand Team",
+        "email": "brand@enterprise.com"
+      }
+    },
+    {
+      "version": "1.0",
+      "house": {
+        "domain": "nikeinc.com",
+        "name": "Nike, Inc.",
+        "architecture": "hybrid"
+      },
+      "brands": [
+        {
+          "id": "nike",
+          "names": [
+            {
+              "en": "Nike"
+            },
+            {
+              "zh": "耐克"
+            },
+            {
+              "ja": "ナイキ"
+            }
+          ],
+          "keller_type": "master",
+          "properties": [
+            {
+              "type": "website",
+              "identifier": "nike.com",
+              "primary": true
+            },
+            {
+              "type": "website",
+              "identifier": "nike.cn",
+              "region": "CN"
+            },
+            {
+              "type": "mobile_app",
+              "store": "apple",
+              "identifier": "com.nike.omega"
+            }
+          ]
+        },
+        {
+          "id": "air_jordan",
+          "names": [
+            {
+              "en": "Air Jordan"
+            },
+            {
+              "en": "Jordan"
+            },
+            {
+              "en": "Jumpman"
+            }
+          ],
+          "keller_type": "endorsed",
+          "parent_brand": "nike",
+          "properties": [
+            {
+              "type": "website",
+              "identifier": "jordan.com",
+              "primary": true
+            },
+            {
+              "type": "website",
+              "identifier": "jumpman23.com"
+            },
+            {
+              "type": "mobile_app",
+              "store": "apple",
+              "identifier": "com.nike.snkrs"
+            }
+          ]
+        },
+        {
+          "id": "converse",
+          "names": [
+            {
+              "en": "Converse"
+            }
+          ],
+          "keller_type": "independent",
+          "properties": [
+            {
+              "type": "website",
+              "identifier": "converse.com",
+              "primary": true
+            }
+          ]
+        }
+      ],
+      "contact": {
+        "name": "Nike Brand Team",
+        "email": "brand@nike.com"
+      }
+    },
+    {
+      "version": "1.0",
+      "house": {
+        "domain": "lotientertainment.com",
+        "name": "Loti Entertainment",
+        "architecture": "house_of_brands"
+      },
+      "brands": [
+        {
+          "id": "daan_janssen",
+          "names": [
+            {
+              "en": "Daan Janssen"
+            }
+          ],
+          "description": "Dutch Olympic speed skater, 2x gold medalist",
+          "industries": [
+            "sports"
+          ],
+          "logos": [
+            {
+              "url": "https://cdn.lotientertainment.com/janssen/headshot.jpg",
+              "variant": "primary"
+            }
+          ],
+          "agents": [
+            {
+              "type": "rights",
+              "url": "https://rights.lotientertainment.com/mcp",
+              "id": "loti_entertainment",
+              "jwks_uri": "https://rights.lotientertainment.com/.well-known/jwks.json",
+              "available_uses": [
+                "likeness",
+                "voice",
+                "endorsement"
+              ],
+              "right_types": [
+                "talent"
+              ],
+              "countries": [
+                "NL",
+                "BE",
+                "DE"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "house": "nikeinc.com",
+      "region": "CN"
+    },
+    {
+      "version": "1.0",
+      "house": {
+        "domain": "novabrands.com",
+        "name": "Nova Brands"
+      },
+      "brands": [
+        {
+          "id": "nova",
+          "names": [
+            {
+              "en": "Nova Brands"
+            }
+          ],
+          "logos": [
+            {
+              "url": "https://novabrands.com/logo.svg"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.0",
+      "house": {
+        "domain": "nikeinc.com",
+        "name": "Nike, Inc.",
+        "architecture": "hybrid"
+      },
+      "brands": [
+        {
+          "id": "nike",
+          "names": [
+            {
+              "en": "Nike"
+            },
+            {
+              "zh": "耐克"
+            }
+          ],
+          "keller_type": "master",
+          "properties": [
+            {
+              "type": "website",
+              "identifier": "nike.com",
+              "primary": true
+            },
+            {
+              "type": "mobile_app",
+              "store": "apple",
+              "identifier": "com.nike.omega"
+            }
+          ]
+        },
+        {
+          "id": "air_jordan",
+          "names": [
+            {
+              "en": "Air Jordan"
+            },
+            {
+              "en": "Jordan"
+            }
+          ],
+          "keller_type": "endorsed",
+          "parent_brand": "nike",
+          "properties": [
+            {
+              "type": "website",
+              "identifier": "jordan.com"
+            },
+            {
+              "type": "website",
+              "identifier": "jumpman23.com"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "house": "nikeinc.com"
+    },
+    {
+      "id": "nova_motors",
+      "names": [
+        {
+          "en": "Nova Motors"
+        }
+      ],
+      "house_domain": "nova-brands.example"
+    },
+    {
+      "house": {
+        "domain": "nova-brands.example",
+        "name": "Nova Brands"
+      },
+      "brand_refs": [
+        {
+          "domain": "nova-motors.example",
+          "brand_id": "nova_motors"
+        }
+      ]
+    },
+    {
+      "version": "1.0",
+      "id": "streamhaus",
+      "url": "https://streamhaus.example",
+      "names": [
+        {
+          "en_US": "StreamHaus"
+        }
+      ],
+      "industries": [
+        "media"
+      ],
+      "properties": [
+        {
+          "type": "ctv_app",
+          "identifier": "com.streamhaus.ctv",
+          "relationship": "owned"
+        }
+      ],
+      "agents": [
+        {
+          "type": "sales",
+          "id": "streamhaus_sales",
+          "url": "https://ads.streamhaus.example/mcp",
+          "jwks_uri": "https://ads.streamhaus.example/.well-known/jwks.json"
+        }
+      ]
+    },
+    {
+      "version": "1.0",
+      "id": "northwind_media",
+      "url": "https://northwind.example",
+      "names": [
+        {
+          "en_US": "Northwind Media"
+        }
+      ],
+      "industries": [
+        "advertising"
+      ],
+      "properties": [
+        {
+          "type": "website",
+          "identifier": "streamhaus.example",
+          "relationship": "delegated"
+        }
+      ],
+      "agents": [
+        {
+          "type": "sales",
+          "id": "northwind_sales",
+          "url": "https://northwind.example/mcp",
+          "jwks_uri": "https://northwind.example/.well-known/jwks.json"
+        }
+      ]
+    },
+    {
+      "version": "1.0",
+      "agents": [
+        {
+          "type": "sales",
+          "id": "sales_streamhaus",
+          "url": "https://northwind.example/mcp/streamhaus",
+          "jwks_uri": "https://northwind.example/.well-known/jwks/streamhaus.json"
+        },
+        {
+          "type": "sales",
+          "id": "sales_pinnacle_news",
+          "url": "https://northwind.example/mcp/pinnacle_news",
+          "jwks_uri": "https://northwind.example/.well-known/jwks/pinnacle_news.json"
+        }
+      ]
+    },
+    {
+      "version": "1.0",
+      "house": {
+        "domain": "lotientertainment.com",
+        "name": "Loti Entertainment",
+        "architecture": "house_of_brands"
+      },
+      "brands": [
+        {
+          "id": "daan_janssen",
+          "names": [
+            {
+              "en": "Daan Janssen"
+            }
+          ],
+          "description": "Dutch Olympic speed skater, 2x gold medalist",
+          "industries": [
+            "sports_fitness"
+          ],
+          "agents": [
+            {
+              "type": "rights",
+              "url": "https://rights.lotientertainment.com/mcp",
+              "id": "loti_entertainment",
+              "available_uses": [
+                "likeness",
+                "voice",
+                "endorsement"
+              ],
+              "right_types": [
+                "talent"
+              ],
+              "countries": [
+                "NL",
+                "BE",
+                "DE"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.0",
+      "id": "example_publisher",
+      "url": "https://publisher.example.com",
+      "names": [
+        {
+          "en_US": "Example Publisher"
+        }
+      ],
+      "properties": [
+        {
+          "type": "website",
+          "identifier": "publisher.example.com",
+          "relationship": "owned"
+        }
+      ],
+      "agents": [
+        {
+          "type": "sales",
+          "url": "https://ads.publisher.example.com",
+          "id": "publisher_sales",
+          "jwks_uri": "https://ads.publisher.example.com/.well-known/jwks.json"
+        }
+      ]
+    },
+    {
+      "house": {
+        "domain": "novamotors.com",
+        "name": "Nova Motors"
+      },
+      "brands": [
+        {
+          "id": "acme_outdoor",
+          "names": [
+            {
+              "en": "Acme Outdoor"
+            }
+          ],
+          "agents": [
+            {
+              "type": "brand",
+              "url": "https://brand.novamotors.com/mcp",
+              "id": "nova_brand_agent"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.0",
+      "id": "northwind_media",
+      "names": [
+        {
+          "en_US": "Northwind Media"
+        }
+      ],
+      "url": "https://northwind.example",
+      "keller_type": "master",
+      "industries": [
+        "advertising"
+      ],
+      "properties": [
+        {
+          "type": "ctv_app",
+          "identifier": "12345",
+          "store": "roku",
+          "relationship": "delegated"
+        }
+      ],
+      "agents": [
+        {
+          "type": "sales",
+          "id": "northwind_sales",
+          "url": "https://northwind.example/mcp",
+          "jwks_uri": "https://northwind.example/.well-known/jwks.json"
+        }
+      ]
+    },
+    {
+      "version": "1.0",
+      "id": "streamhaus",
+      "names": [
+        {
+          "en_US": "StreamHaus"
+        }
+      ],
+      "url": "https://streamhaus.example",
+      "house_domain": "sportshaus-holdings.example",
+      "keller_type": "endorsed",
+      "industries": [
+        "media",
+        "broadcasting"
+      ]
+    },
+    {
+      "version": "1.0",
+      "house": {
+        "domain": "sportshaus-holdings.example",
+        "name": "Sportshaus Holdings",
+        "architecture": "branded_house"
+      },
+      "brand_refs": [
+        {
+          "domain": "streamhaus.example",
+          "brand_id": "streamhaus",
+          "effective_at": "2025-01-01T00:00:00Z"
+        },
+        {
+          "domain": "courtsidehq.example",
+          "brand_id": "courtsidehq"
+        }
+      ]
     }
   ]
 }

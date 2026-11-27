@@ -107,5 +107,42 @@
     }
   },
   "required": ["installment_id"],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "installment_id": "s1e03_the_wall",
+      "collection_id": "pinnacle_challenge",
+      "name": "The Wall",
+      "season": "1",
+      "installment_number": "3",
+      "scheduled_at": "2026-04-07T20:00:00Z",
+      "status": "scheduled",
+      "duration_seconds": 3600,
+      "valid_until": "2026-04-06T20:00:00Z",
+      "content_rating": {
+        "system": "tv_parental",
+        "rating": "TV-14"
+      },
+      "topics": [
+        "IAB17-18"
+      ],
+      "guest_talent": [
+        {
+          "role": "guest",
+          "name": "Samira Okafor",
+          "brand_url": "https://samiraokafor.example.com/brand.json"
+        }
+      ],
+      "ad_inventory": {
+        "expected_breaks": 4,
+        "total_ad_seconds": 480,
+        "max_ad_duration_seconds": 120,
+        "unplanned_breaks": false,
+        "supported_formats": [
+          "video",
+          "audio"
+        ]
+      }
+    }
+  ]
 }

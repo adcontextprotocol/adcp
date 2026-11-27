@@ -40,5 +40,31 @@
       },
       "then": { "not": { "required": ["publication"] } }
     }
+  ],
+  "examples": [
+    {
+      "installment_ref": {
+        "collection_ref": {
+          "publisher_domain": "northstar.example.com",
+          "collection_id": "northstar_weekly"
+        },
+        "installment_id": "2026-10-12"
+      },
+      "installment_name": "Issue of October 12, 2026",
+      "measurement_source": "ivw",
+      "scheduled_at": "2026-10-12T09:00:00Z",
+      "impressions": 0,
+      "spend": 4200,
+      "print_metrics": {
+        "page_delivered": 7,
+        "position_delivered": "right_hand",
+        "circulation_delivered": 42000,
+        "circulation_basis": "audited",
+        "evidence": {
+          "url": "https://northstar.example.com/tearsheets/2026-10-12/p7.pdf",
+          "captured_at": "2026-10-13T08:30:00Z"
+        }
+      }
+    }
   ]
 }

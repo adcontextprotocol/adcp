@@ -70,5 +70,23 @@
       "additionalProperties": true
     }
   ],
-  "properties": {}
+  "properties": {},
+  "examples": [
+    {
+      "status": "completed",
+      "success": true,
+      "standards_id": "nike_emea_safety"
+    },
+    {
+      "status": "completed",
+      "success": false,
+      "errors": [
+        {
+          "code": "REFERENCE_NOT_FOUND",
+          "field": "standards_id",
+          "message": "Referenced resource does not exist or is not accessible"
+        }
+      ]
+    }
+  ]
 }

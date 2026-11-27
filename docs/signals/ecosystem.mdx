@@ -110,6 +110,7 @@ Every company that owns targetable data can publish **signal definitions** via `
 
 **Example published signal definitions**:
 
+{/* schema-example: #/examples/22 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
@@ -137,7 +138,10 @@ Every company that owns targetable data can publish **signal definitions** via `
       "id": "visit_frequency",
       "name": "Location Visit Frequency",
       "value_type": "numeric",
-      "range": { "min": 0, "max": 30 },
+      "range": {
+        "min": 0,
+        "max": 30
+      },
       "description": "Monthly visit count to a specified location category (QSR, grocery, gym, auto dealer)",
       "tags": ["geo", "frequency"]
     },
@@ -145,7 +149,11 @@ Every company that owns targetable data can publish **signal definitions** via `
       "id": "dwell_time",
       "name": "Average Dwell Time",
       "value_type": "numeric",
-      "range": { "min": 0, "max": 120, "unit": "minutes" },
+      "range": {
+        "min": 0,
+        "max": 120,
+        "unit": "minutes"
+      },
       "description": "Average minutes spent on-site, distinguishing drive-bys from intentional visits",
       "tags": ["geo", "behavioral", "dwell"]
     },
@@ -221,6 +229,7 @@ Your first-party purchase data (category buyers, loyalty tiers, basket value, ne
 
 **Combined adagents.json** (properties for inventory + signals for data):
 
+{/* schema-example: #/examples/23 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
@@ -235,7 +244,10 @@ Your first-party purchase data (category buyers, loyalty tiers, basket value, ne
       "property_type": "website",
       "name": "Acme Marketplace",
       "identifiers": [
-        {"type": "domain", "value": "acme-marketplace.example"}
+        {
+          "type": "domain",
+          "value": "acme-marketplace.example"
+        }
       ],
       "supported_channels": ["retail_media", "display"]
     }

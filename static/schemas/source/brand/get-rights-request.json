@@ -65,5 +65,18 @@
     "query",
     "uses"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "query": "Dutch athlete for restaurant brand in Amsterdam, budget 400 EUR/month",
+      "uses": [
+        "likeness",
+        "voice"
+      ],
+      "buyer_brand": {
+        "domain": "bistro-oranje.nl"
+      },
+      "include_excluded": true
+    }
+  ]
 }

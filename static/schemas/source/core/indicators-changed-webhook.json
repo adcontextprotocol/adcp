@@ -152,24 +152,21 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Creative fatigue changed for one assignment",
-      "data": {
-        "idempotency_key": "whk_01K2INDICATOR4EXAMPLE8Q7M5",
-        "notification_id": "indchg_mb_a_pkg_social_cr_video_17",
-        "notification_type": "indicators.changed",
-        "fired_at": "2026-08-04T12:01:00Z",
-        "subscriber_id": "buyer-primary",
-        "account_id": "acc_example",
-        "relationship_kind": "creative_assignment",
-        "media_buy_id": "mb_a",
-        "package_id": "pkg_social",
-        "creative_id": "cr_summer_video",
-        "change_kind": "asserted",
-        "changed_indicator_types": [
-          "creative_fatigue"
-        ],
-        "observed_at": "2026-08-04T12:00:00Z"
-      }
+      "idempotency_key": "whk_01K2INDICATOR4EXAMPLE8Q7M5",
+      "notification_id": "indchg_mb_a_pkg_social_cr_video_17",
+      "notification_type": "indicators.changed",
+      "fired_at": "2026-08-04T12:01:00Z",
+      "subscriber_id": "buyer-primary",
+      "account_id": "acc_example",
+      "relationship_kind": "creative_assignment",
+      "media_buy_id": "mb_a",
+      "package_id": "pkg_social",
+      "creative_id": "cr_summer_video",
+      "change_kind": "asserted",
+      "changed_indicator_types": [
+        "creative_fatigue"
+      ],
+      "observed_at": "2026-08-04T12:00:00Z"
     }
   ]
 }

@@ -49,9 +49,6 @@
     "read_only": "This task MUST NOT mutate state, create a principal record, issue durable identifiers, send endpoint proof challenges, or advance configuration_version. Seller-side setup-state transitions observed here (for example validating to ready) do not advance the version; only successful configuration mutations do."
   },
   "examples": [
-    {
-      "description": "Read current principal configuration",
-      "data": {}
-    }
+    {}
   ]
 }

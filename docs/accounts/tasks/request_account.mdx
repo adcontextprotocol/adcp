@@ -60,15 +60,22 @@ Call it only when [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities
 
 Send either `account_id` (to change or select), or `brand` and `operator` (to open). A request with `account_id` and `operator`, or with neither, fails with [`INVALID_REQUEST`](/docs/building/verification/compliance-catalog#error-code-invalid-request).
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/latest/account/request-account-request.json",
   "adcp_version": "3.3",
   "idempotency_key": "3f1d2a8c-6b0e-4c7a-9d51-8e2f4a6b9c10",
-  "brand": { "domain": "renault.fr", "countries": ["FR"] },
+  "brand": {
+    "domain": "renault.fr",
+    "countries": ["FR"]
+  },
   "operator": "wppmedia.fr",
   "currency": "EUR",
   "billing": "operator",
-  "billing_entity": { "legal_name": "WPP Media France SAS" }
+  "billing_entity": {
+    "legal_name": "WPP Media France SAS"
+  }
 }
 ```
 
@@ -76,13 +83,18 @@ Send either `account_id` (to change or select), or `brand` and `operator` (to op
 
 Send the `account_id` and only the attributes to change. The seller lists the attributes it changes in `account.requests.changeable_attributes`, from the brand's `countries`, `operator_unit`, `billing`, `billing_entity`, `payment_terms`, `currency`, and `timezone`. `currency` and `timezone` are set when the account opens and change only on a seller that lists them; anywhere else the change is refused with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature). A timezone change is a reporting cutover: account-timezone periods switch at the first old-timezone boundary at or after it, as [reporting subscriptions](/docs/protocol/sync_principal#reporting-subscriptions) describe. `sandbox` never changes. Set `allow_separate_account: true` if you would accept the change on a separate new account when the seller can't make it on this one; it defaults to `false`.
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/latest/account/request-account-request.json",
   "adcp_version": "3.3",
   "idempotency_key": "9d4e1b7a-2c6f-4a83-b5e0-7f1a3c8d2b64",
   "account_id": "acc_nova_pinnacle",
   "revision": 7,
-  "brand": { "domain": "nova-athletics.example", "countries": ["BE", "DE", "NL"] }
+  "brand": {
+    "domain": "nova-athletics.example",
+    "countries": ["BE", "DE", "NL"]
+  }
 }
 ```
 
@@ -109,14 +121,19 @@ When a change is applied, the account keeps its `account_id`, media buys, and re
 
 A completed response always carries the request, whatever its state. `in_review` and `rejected` are normal outcomes, not task failures; `status: "failed"` is reserved for calls the seller couldn't process.
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/latest/account/request-account-response.json",
   "status": "completed",
   "request": {
     "request_id": "areq_01K4F8M2Q7",
     "state": "in_review",
     "requested": {
-      "brand": { "domain": "renault.fr", "countries": ["FR"] },
+      "brand": {
+        "domain": "renault.fr",
+        "countries": ["FR"]
+      },
       "operator": "wppmedia.fr",
       "currency": "EUR",
       "billing": "operator"

@@ -64,5 +64,14 @@
     {
       "$ref": "/schemas/core/version-envelope.json"
     }
+  ],
+  "examples": [
+    {
+      "account": {
+        "account_id": "account_123"
+      },
+      "media_buy_id": "media_buy_789",
+      "issue_id": "issue_123"
+    }
   ]
 }

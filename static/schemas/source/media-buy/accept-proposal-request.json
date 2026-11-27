@@ -154,5 +154,24 @@
       { "required": ["creatives"] },
       { "required": ["creative_assignments"] }
     ]
-  }
+  },
+  "examples": [
+    {
+      "idempotency_key": "typed-negotiation-sam-accept-0001",
+      "account": {
+        "account_id": "account_pinnacle_acme"
+      },
+      "proposal_id": "proposal_streamhaus_committed_003",
+      "proposal_terms_digest": "sha256:Fy6Bo7wUa_FmXGJssc37kGyHNjzBiBZLB9rtVNz8I-E"
+    },
+    {
+      "idempotency_key": "550e8400-e29b-41d4-a716-446655441011",
+      "account": {
+        "account_id": "account_123"
+      },
+      "proposal_id": "proposal_committed_456",
+      "proposal_terms_digest": "sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "name": "Acme summer launch"
+    }
+  ]
 }

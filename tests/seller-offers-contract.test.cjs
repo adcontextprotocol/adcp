@@ -237,7 +237,7 @@ describe("seller offers (media_buy.seller_offers)", () => {
       assert.ok(validateWebhook(webhook()), JSON.stringify(validateWebhook.errors));
       const schema = readSchema("/schemas/core/proposal-offered-webhook.json");
       for (const example of schema.examples) {
-        assert.ok(validateWebhook(example.data), JSON.stringify(validateWebhook.errors));
+        assert.ok(validateWebhook(example), JSON.stringify(validateWebhook.errors));
       }
     });
 

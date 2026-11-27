@@ -30,23 +30,34 @@ Fields that didn't change: `geo_countries`, `geo_countries_exclude`, `geo_region
 ```
 
 **v3** — codes grouped by system:
+{/* schema-example: #/examples/15 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/targeting.json",
   "geo_metros": [
-    { "system": "nielsen_dma", "values": ["501", "602"] }
+    {
+      "system": "nielsen_dma",
+      "values": ["501", "602"]
+    }
   ]
 }
 ```
 
 Each entry specifies a system and the codes within that system. Multiple systems can coexist:
 
+{/* schema-example: #/examples/16 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/targeting.json",
   "geo_metros": [
-    { "system": "nielsen_dma", "values": ["501", "602"] },
-    { "system": "uk_itl2", "values": ["UKC1", "UKD3"] }
+    {
+      "system": "nielsen_dma",
+      "values": ["501", "602"]
+    },
+    {
+      "system": "uk_itl2",
+      "values": ["UKC1", "UKD3"]
+    }
   ]
 }
 ```
@@ -75,11 +86,16 @@ Registered metro systems are `nielsen_dma`, `uk_itl1`, `uk_itl2`, `eurostat_nuts
 ```
 
 **v3** — renamed to `geo_postal_areas`, codes grouped by country-local system:
+{/* schema-example: #/examples/17 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/targeting.json",
   "geo_postal_areas": [
-    { "country": "US", "system": "zip", "values": ["10001", "90210"] }
+    {
+      "country": "US",
+      "system": "zip",
+      "values": ["10001", "90210"]
+    }
   ]
 }
 ```
@@ -107,12 +123,16 @@ Registered country/system pairings are defined in `postal-country-system.json`; 
 
 v3 adds `_exclude` variants for metro and postal targeting:
 
+{/* schema-example: #/examples/18 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/targeting.json",
   "geo_countries": ["US"],
   "geo_metros_exclude": [
-    { "system": "nielsen_dma", "values": ["501"] }
+    {
+      "system": "nielsen_dma",
+      "values": ["501"]
+    }
   ]
 }
 ```
@@ -123,13 +143,17 @@ This targets the entire US except the New York DMA.
 
 Before sending geo targeting, buyers should verify the seller supports the requested systems. Use `get_adcp_capabilities`:
 
+{/* schema-example: #/examples/10 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-response.json",
   "status": "completed",
   "adcp": {
     "major_versions": [3],
-    "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
+    "idempotency": {
+      "supported": true,
+      "replay_ttl_seconds": 86400
+    }
   },
   "supported_protocols": ["media_buy"],
   "account": {
@@ -162,16 +186,24 @@ The `geo_metros` object uses boolean properties to indicate which metro systems 
 
 A v3 targeting overlay combining geo restrictions:
 
+{/* schema-example: #/examples/19 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/targeting.json",
   "geo_countries": ["US", "CA"],
   "geo_regions": ["US-NY", "US-CA"],
   "geo_metros": [
-    { "system": "nielsen_dma", "values": ["501", "803"] }
+    {
+      "system": "nielsen_dma",
+      "values": ["501", "803"]
+    }
   ],
   "geo_postal_areas": [
-    { "country": "US", "system": "zip", "values": ["10001", "10002", "90210"] }
+    {
+      "country": "US",
+      "system": "zip",
+      "values": ["10001", "10002", "90210"]
+    }
   ]
 }
 ```

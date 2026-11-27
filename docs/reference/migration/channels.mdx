@@ -102,13 +102,17 @@ Simple rename from `retail` to `retail_media`.
 
 v3 products declare an array of channels, so a single product can span multiple channels. Here's a capabilities response showing a seller that supports multiple channels:
 
+{/* schema-example: #/examples/9 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-response.json",
   "status": "completed",
   "adcp": {
     "major_versions": [3],
-    "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
+    "idempotency": {
+      "supported": true,
+      "replay_ttl_seconds": 86400
+    }
   },
   "supported_protocols": ["media_buy"],
   "account": {

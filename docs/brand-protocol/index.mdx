@@ -53,16 +53,30 @@ Brands exist in hierarchies — a holding company, its brands, their sub-brands 
 
 The smallest useful `brand.json` is just a name and a logo:
 
+{/* schema-example: #/examples/24 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
   "version": "1.0",
-  "house": { "domain": "novabrands.com", "name": "Nova Brands" },
-  "brands": [{
-    "id": "nova",
-    "names": [{"en": "Nova Brands"}],
-    "logos": [{"url": "https://novabrands.com/logo.svg"}]
-  }]
+  "house": {
+    "domain": "novabrands.com",
+    "name": "Nova Brands"
+  },
+  "brands": [
+    {
+      "id": "nova",
+      "names": [
+        {
+          "en": "Nova Brands"
+        }
+      ],
+      "logos": [
+        {
+          "url": "https://novabrands.com/logo.svg"
+        }
+      ]
+    }
+  ]
 }
 ```
 

@@ -111,41 +111,40 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "iOS casual game targeting new installs",
-      "data": {
-        "app_id": "puzzlequest-ios",
-        "name": "Puzzle Quest: Match 3",
-        "platform": "ios",
-        "bundle_id": "com.acmegames.puzzlequest",
-        "apple_id": "1234567890",
-        "category": "games",
-        "genre": "puzzle",
-        "icon_url": "https://assets.acmegames.com/puzzlequest/icon-1024.png",
-        "store_url": "https://apps.apple.com/app/puzzle-quest-match-3/id1234567890",
-        "price": { "amount": 0, "currency": "USD" },
-        "rating": 4.7,
-        "rating_count": 82000,
-        "content_rating": "4+",
-        "tags": ["casual", "offline"]
-      }
+      "app_id": "puzzlequest-ios",
+      "name": "Puzzle Quest: Match 3",
+      "platform": "ios",
+      "bundle_id": "com.acmegames.puzzlequest",
+      "apple_id": "1234567890",
+      "category": "games",
+      "genre": "puzzle",
+      "icon_url": "https://assets.acmegames.com/puzzlequest/icon-1024.png",
+      "store_url": "https://apps.apple.com/app/puzzle-quest-match-3/id1234567890",
+      "price": { "amount": 0, "currency": "USD" },
+      "rating": 4.7,
+      "rating_count": 82000,
+      "content_rating": "4+",
+      "tags": ["casual", "offline"]
     },
     {
-      "description": "Android app with re-engagement deep links",
-      "data": {
-        "app_id": "acmebank-android",
-        "name": "Acme Banking",
-        "platform": "android",
-        "bundle_id": "com.acmefinancial.banking",
-        "category": "finance",
-        "icon_url": "https://assets.acmefinancial.com/app/icon.png",
-        "store_url": "https://play.google.com/store/apps/details?id=com.acmefinancial.banking",
-        "deep_link_url": "https://app.acmefinancial.com/offers",
-        "price": { "amount": 0, "currency": "USD" },
-        "rating": 4.4,
-        "rating_count": 31500,
-        "content_rating": "Everyone",
-        "tags": ["finance", "banking"]
-      }
+      "app_id": "acmebank-android",
+      "name": "Acme Banking",
+      "platform": "android",
+      "bundle_id": "com.acmefinancial.banking",
+      "category": "finance",
+      "icon_url": "https://assets.acmefinancial.com/app/icon.png",
+      "store_url": "https://play.google.com/store/apps/details?id=com.acmefinancial.banking",
+      "deep_link_url": "https://app.acmefinancial.com/offers",
+      "price": { "amount": 0, "currency": "USD" },
+      "rating": 4.4,
+      "rating_count": 31500,
+      "content_rating": "Everyone",
+      "tags": ["finance", "banking"]
+    },
+    {
+      "app_id": "puzzlequest-ios",
+      "name": "Puzzle Quest: Match 3",
+      "platform": "ios"
     }
   ]
 }

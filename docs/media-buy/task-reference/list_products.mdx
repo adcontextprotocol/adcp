@@ -13,9 +13,13 @@ Wholesale support is optional. A seller that omits `list_products` from `media_b
     Update to the correct version alias after the next release. */}
 **Request schema:** [`/schemas/3.2.1/media-buy/list-products-request.json`](https://adcontextprotocol.org/schemas/3.2.1/media-buy/list-products-request.json)
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
-  "brand": { "domain": "acmeoutdoor.example" },
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/list-products-request.json",
+  "brand": {
+    "domain": "acmeoutdoor.example"
+  },
   "criteria": {
     "offer_filters": {
       "channels": ["olv"],
@@ -25,7 +29,9 @@ Wholesale support is optional. A seller that omits `list_products` from `media_b
       "geo_countries": ["US"]
     },
     "required_overlay_support": {
-      "geo_metros": { "systems": ["nielsen_dma"] }
+      "geo_metros": {
+        "systems": ["nielsen_dma"]
+      }
     }
   },
   "max_results": 25
@@ -77,8 +83,10 @@ Every response has an explicit `outcome`:
 
 A product page can include continuation and cache state:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/list-products-response.json",
   "status": "completed",
   "outcome": "listed",
   "products": [],
@@ -91,9 +99,13 @@ A product page can include continuation and cache state:
 
 To check whether the same selection has changed, repeat the request with `if_feed_version`. Include `if_pricing_version` only when `if_feed_version` is also present:
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
-  "brand": { "domain": "acmeoutdoor.example" },
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/list-products-request.json",
+  "brand": {
+    "domain": "acmeoutdoor.example"
+  },
   "criteria": {
     "offer_filters": {
       "channels": ["olv"],
@@ -110,8 +122,10 @@ To check whether the same selection has changed, repeat the request with `if_fee
 
 If the selected feed and pricing layer still match, the seller can omit `products`:
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/list-products-response.json",
   "status": "completed",
   "outcome": "unchanged",
   "feed_version": "feed_2026_08_10_1",

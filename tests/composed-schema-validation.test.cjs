@@ -2722,8 +2722,8 @@ async function runTests() {
       fs.readFileSync(path.join(SCHEMA_BASE_DIR, 'creative/list-creatives-response.json'), 'utf8')
     );
     const listExample = listSchema.examples.find((example) =>
-      example.description.includes('webhook_activity')
-    ).data;
+      (example.creatives || []).some((creative) => creative.webhook_activity)
+    );
     const activitiesByType = new Map(
       listExample.creatives.flatMap((creative) => creative.webhook_activity || [])
         .map((activity) => [activity.notification_type, activity])
@@ -2736,7 +2736,7 @@ async function runTests() {
       const webhookSchema = JSON.parse(
         fs.readFileSync(path.join(SCHEMA_BASE_DIR, relativePath), 'utf8')
       );
-      const payload = webhookSchema.examples[0].data;
+      const payload = webhookSchema.examples[0];
       const activity = activitiesByType.get(payload.notification_type);
       return activity &&
         activity.idempotency_key === payload.idempotency_key &&

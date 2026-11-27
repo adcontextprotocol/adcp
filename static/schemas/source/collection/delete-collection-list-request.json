@@ -38,5 +38,11 @@
     "idempotency_key",
     "list_id"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "idempotency_key": "e7f8a9b0-c1d2-4345-e678-345678901234",
+      "list_id": "cl_novamotors_dna_2026"
+    }
+  ]
 }

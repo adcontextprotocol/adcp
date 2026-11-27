@@ -395,181 +395,214 @@
   ],
   "examples": [
     {
-      "description": "Mixed results — one active, one pending approval",
-      "data": {
-        "status": "completed",
-        "accounts": [
-          {
-            "account_id": "acc_spark_001",
-            "brand": {
-              "domain": "nova-brands.com",
-              "brand_id": "spark",
-              "countries": ["DE", "NL"]
-            },
-            "operator": "pinnacle-media.com",
-            "operator_unit": {
-              "id": "seat_emea_01",
-              "name": "EMEA"
-            },
-            "currency": "EUR",
-            "name": "Spark (via EMEA)",
-            "action": "created",
-            "status": "active",
-            "billing": "operator",
-            "account_scope": "operator_brand"
+      "status": "completed",
+      "accounts": [
+        {
+          "account_id": "acc_spark_001",
+          "brand": {
+            "domain": "nova-brands.com",
+            "brand_id": "spark",
+            "countries": ["DE", "NL"]
           },
-          {
-            "account_id": "acc_glow_pending",
-            "brand": {
-              "domain": "nova-brands.com",
-              "brand_id": "glow"
-            },
-            "operator": "pinnacle-media.com",
-            "name": "Glow",
-            "action": "created",
-            "status": "pending_approval",
-            "billing": "operator",
-            "account_scope": "operator_brand",
-            "setup": {
-              "url": "https://seller.example.com/advertiser-onboard",
-              "message": "Complete advertiser registration and credit application",
-              "expires_at": "2026-03-10T00:00:00Z"
+          "operator": "pinnacle-media.com",
+          "operator_unit": {
+            "id": "seat_emea_01",
+            "name": "EMEA"
+          },
+          "currency": "EUR",
+          "name": "Spark (via EMEA)",
+          "action": "created",
+          "status": "active",
+          "billing": "operator",
+          "account_scope": "operator_brand"
+        },
+        {
+          "account_id": "acc_glow_pending",
+          "brand": {
+            "domain": "nova-brands.com",
+            "brand_id": "glow"
+          },
+          "operator": "pinnacle-media.com",
+          "name": "Glow",
+          "action": "created",
+          "status": "pending_approval",
+          "billing": "operator",
+          "account_scope": "operator_brand",
+          "setup": {
+            "url": "https://seller.example.com/advertiser-onboard",
+            "message": "Complete advertiser registration and credit application",
+            "expires_at": "2026-03-10T00:00:00Z"
+          }
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "accounts": [
+        {
+          "brand": {
+            "domain": "acme-corp.com",
+            "brand_id": "clearance"
+          },
+          "operator": "acme-corp.com",
+          "action": "created",
+          "status": "rejected",
+          "warnings": [
+            "Account request declined: advertiser category not accepted on this platform."
+          ]
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "accounts": [
+        {
+          "brand": {
+            "domain": "acme-corp.com"
+          },
+          "operator": "acme-corp.com",
+          "action": "failed",
+          "status": "rejected",
+          "errors": [
+            {
+              "code": "BILLING_NOT_SUPPORTED",
+              "message": "Operator billing is not supported. This seller only accepts agent billing."
             }
-          }
-        ]
-      }
+          ]
+        }
+      ]
     },
     {
-      "description": "Rejected account — no account_id assigned",
-      "data": {
-        "status": "completed",
-        "accounts": [
-          {
-            "brand": {
-              "domain": "acme-corp.com",
-              "brand_id": "clearance"
-            },
-            "operator": "acme-corp.com",
-            "action": "created",
-            "status": "rejected",
-            "warnings": [
-              "Account request declined: advertiser category not accepted on this platform."
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "description": "Unsupported billing — seller rejects the request",
-      "data": {
-        "status": "completed",
-        "accounts": [
-          {
-            "brand": {
-              "domain": "acme-corp.com"
-            },
-            "operator": "acme-corp.com",
-            "action": "failed",
-            "status": "rejected",
-            "errors": [
-              {
-                "code": "BILLING_NOT_SUPPORTED",
-                "message": "Operator billing is not supported. This seller only accepts agent billing."
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "description": "Advertiser billed directly with billing entity (bank details omitted in response)",
-      "data": {
-        "status": "completed",
-        "accounts": [
-          {
-            "account_id": "acc_acme_direct_bill",
-            "brand": {
-              "domain": "acme-corp.com"
-            },
-            "operator": "pinnacle-media.com",
-            "name": "Acme Corp (billed direct)",
-            "action": "created",
-            "status": "active",
-            "billing": "advertiser",
-            "billing_entity": {
-              "legal_name": "Acme Corporation GmbH",
-              "vat_id": "DE987654321",
-              "registration_number": "HRB 67890",
-              "address": {
-                "street": "Hauptstrasse 42",
-                "city": "Munich",
-                "postal_code": "80331",
-                "country": "DE"
-              },
-              "contacts": [
-                {
-                  "role": "billing",
-                  "name": "AP Department",
-                  "email": "billing@acme-corp.com"
-                }
-              ]
-            },
-            "account_scope": "operator_brand",
-            "payment_terms": "net_30"
-          }
-        ]
-      }
-    },
-    {
-      "description": "Unsupported payment terms — seller rejects the request",
-      "data": {
-        "status": "completed",
-        "accounts": [
-          {
-            "brand": {
-              "domain": "acme-corp.com"
-            },
-            "operator": "acme-corp.com",
-            "action": "failed",
-            "status": "rejected",
-            "errors": [
-              {
-                "code": "PAYMENT_TERMS_NOT_SUPPORTED",
-                "message": "Net-60 payment terms are not available. Omit payment_terms to accept this seller's default terms (net_30)."
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "description": "Settings-update mode — an account-id-namespace seller (e.g. an upstream-managed social ad account) with no buyer-declared brand/operator tuple updates settable state and echoes the account reference instead",
-      "data": {
-        "status": "completed",
-        "accounts": [
-          {
-            "account": {
-              "account_id": "acct-social-001"
-            },
-            "revision": 4,
-            "name": "Acme — Social",
-            "action": "updated",
-            "status": "active"
+      "status": "completed",
+      "accounts": [
+        {
+          "account_id": "acc_acme_direct_bill",
+          "brand": {
+            "domain": "acme-corp.com"
           },
-          {
-            "account": {
-              "account_id": "acct-social-unreachable"
+          "operator": "pinnacle-media.com",
+          "name": "Acme Corp (billed direct)",
+          "action": "created",
+          "status": "active",
+          "billing": "advertiser",
+          "billing_entity": {
+            "legal_name": "Acme Corporation GmbH",
+            "vat_id": "DE987654321",
+            "registration_number": "HRB 67890",
+            "address": {
+              "street": "Hauptstrasse 42",
+              "city": "Munich",
+              "postal_code": "80331",
+              "country": "DE"
             },
-            "action": "failed",
-            "errors": [
+            "contacts": [
               {
-                "code": "ACCOUNT_NOT_FOUND",
-                "message": "Account 'acct-social-unreachable' does not exist or is not accessible to the authenticated agent — no brand/operator tuple can be resolved for it."
+                "role": "billing",
+                "name": "AP Department",
+                "email": "billing@acme-corp.com"
               }
             ]
-          }
-        ]
-      }
+          },
+          "account_scope": "operator_brand",
+          "payment_terms": "net_30"
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "accounts": [
+        {
+          "brand": {
+            "domain": "acme-corp.com"
+          },
+          "operator": "acme-corp.com",
+          "action": "failed",
+          "status": "rejected",
+          "errors": [
+            {
+              "code": "PAYMENT_TERMS_NOT_SUPPORTED",
+              "message": "Net-60 payment terms are not available. Omit payment_terms to accept this seller's default terms (net_30)."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "accounts": [
+        {
+          "account": {
+            "account_id": "acct-social-001"
+          },
+          "revision": 4,
+          "name": "Acme — Social",
+          "action": "updated",
+          "status": "active"
+        },
+        {
+          "account": {
+            "account_id": "acct-social-unreachable"
+          },
+          "action": "failed",
+          "errors": [
+            {
+              "code": "ACCOUNT_NOT_FOUND",
+              "message": "Account 'acct-social-unreachable' does not exist or is not accessible to the authenticated agent — no brand/operator tuple can be resolved for it."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "accounts": [
+        {
+          "account_id": "acct_streamhaus_nova_pinnacle",
+          "name": "Nova Motors c/o Pinnacle Agency",
+          "brand": {
+            "domain": "novamotors.example"
+          },
+          "operator": "pinnacle-agency.example",
+          "timezone": "Europe/London",
+          "action": "created",
+          "status": "pending_approval",
+          "billing": "advertiser",
+          "billing_entity": {
+            "legal_name": "Nova Motors Ltd.",
+            "registration_number": "NM-2026-1042",
+            "address": {
+              "street": "12 Aurora Road",
+              "city": "London",
+              "postal_code": "SW1A 1AA",
+              "country": "GB"
+            },
+            "contacts": [
+              {
+                "role": "billing",
+                "name": "Tomoko",
+                "email": "accounts-payable@novamotors.example"
+              }
+            ]
+          },
+          "payment_terms": "net_30",
+          "account_scope": "operator_brand",
+          "setup": {
+            "url": "https://onboarding.streamhaus.example/accounts/acct_streamhaus_nova_pinnacle",
+            "message": "Complete the StreamHaus credit application and media terms.",
+            "expires_at": "2026-08-19T17:00:00Z"
+          },
+          "notification_configs": [
+            {
+              "subscriber_id": "account-lifecycle",
+              "url": "https://buyer.pinnacle-agency.example/webhooks/adcp/accounts",
+              "event_types": [
+                "account.status_changed"
+              ],
+              "active": true
+            }
+          ]
+        }
+      ]
     }
   ],
   "properties": {}

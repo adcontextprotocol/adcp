@@ -64,5 +64,50 @@
     "intent",
     "identity"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "idempotency_key": "f6a7b8c9-d0e1-4234-f567-234567890123",
+      "intent": "User wants to fly to Boston next Tuesday morning on flight 632 at 6 AM.",
+      "media_buy_id": "delta_q1_premium_upgrade",
+      "placement": "chatgpt_search",
+      "offering_id": "delta_chatgpt_3313",
+      "identity": {
+        "consent_granted": true,
+        "consent_timestamp": "2026-01-18T10:30:00Z",
+        "consent_scope": [
+          "name",
+          "email"
+        ],
+        "privacy_policy_acknowledged": {
+          "brand_policy_url": "https://delta.com/privacy",
+          "brand_policy_version": "2026-01"
+        },
+        "user": {
+          "email": "jane@example.com",
+          "name": "Jane Smith",
+          "locale": "en-US"
+        }
+      },
+      "supported_capabilities": {
+        "modalities": {
+          "conversational": true,
+          "voice": true
+        },
+        "components": {
+          "standard": [
+            "text",
+            "link",
+            "image",
+            "product_card",
+            "carousel",
+            "action_button"
+          ]
+        },
+        "commerce": {
+          "acp_checkout": true
+        }
+      }
+    }
+  ]
 }

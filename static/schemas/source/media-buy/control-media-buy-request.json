@@ -182,5 +182,32 @@
       { "required": ["end_time"] },
       { "required": ["invoice_recipient"] }
     ]
-  }
+  },
+  "examples": [
+    {
+      "idempotency_key": "550e8400-e29b-41d4-a716-446655441012",
+      "account": {
+        "account_id": "account_123"
+      },
+      "media_buy_id": "media_buy_789",
+      "revision": 4,
+      "daily_budget_cap": 5000,
+      "frequency_cap": {
+        "max_impressions": 3,
+        "per": "individuals",
+        "window": {
+          "interval": 7,
+          "unit": "days"
+        }
+      },
+      "pacing": "even",
+      "packages": [
+        {
+          "package_id": "package_video",
+          "daily_budget_cap": 3000,
+          "paused": true
+        }
+      ]
+    }
+  ]
 }

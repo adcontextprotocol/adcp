@@ -105,6 +105,44 @@ function findDuplicateAgentUrls(manifest) {
   return [...duplicates];
 }
 
+const SUBSCHEMA_MAPS = ['properties', 'patternProperties', 'definitions', '$defs', 'dependencies'];
+const SUBSCHEMA_SINGLES = ['additionalProperties', 'additionalItems', 'items', 'contains', 'propertyNames', 'not', 'if', 'then', 'else'];
+const SUBSCHEMA_LISTS = ['allOf', 'anyOf', 'oneOf', 'items'];
+
+// Every schema position that carries an `examples` array, as a JSON pointer.
+function findExampleSites(node, pointer = '', sites = []) {
+  if (!node || typeof node !== 'object' || Array.isArray(node)) return sites;
+  if (Array.isArray(node.examples)) sites.push({ pointer, node });
+  const escape = (key) => key.replace(/~/g, '~0').replace(/\//g, '~1');
+  for (const keyword of SUBSCHEMA_MAPS) {
+    if (node[keyword] && typeof node[keyword] === 'object') {
+      for (const [key, child] of Object.entries(node[keyword])) {
+        findExampleSites(child, `${pointer}/${keyword}/${escape(key)}`, sites);
+      }
+    }
+  }
+  for (const keyword of SUBSCHEMA_SINGLES) {
+    if (node[keyword] && typeof node[keyword] === 'object' && !Array.isArray(node[keyword])) {
+      findExampleSites(node[keyword], `${pointer}/${keyword}`, sites);
+    }
+  }
+  for (const keyword of SUBSCHEMA_LISTS) {
+    if (Array.isArray(node[keyword])) {
+      node[keyword].forEach((child, i) => findExampleSites(child, `${pointer}/${keyword}/${i}`, sites));
+    }
+  }
+  return sites;
+}
+
+// A `{description, data}` object in `examples` of a schema that declares
+// neither property is a labelled wrapper, not an instance.
+function isExampleWrapper(example, schema) {
+  if (!example || typeof example !== 'object' || Array.isArray(example)) return false;
+  if (Object.keys(example).sort().join(',') !== 'data,description') return false;
+  const declared = schema.properties || {};
+  return !('data' in declared) && !('description' in declared);
+}
+
 function findAllSchemas(dir) {
   const schemas = [];
   
@@ -3142,53 +3180,51 @@ async function runTests() {
     return true;
   });
 
-  // Test 13: Validate schema examples against their schemas
+  // Test 13: Every `examples` value is an instance of the schema that declares it.
+  // Draft-07 `examples` holds instances, so each one is validated as written,
+  // at the root and at every nested schema position, against the published
+  // composition. A `{description, data}` wrapper is not an instance.
   await test('Schema examples validate against their own schemas', async () => {
-    // Skip schemas that require format-aware validation (creative manifests need format context)
-    const FORMAT_AWARE_SCHEMAS = ['sync-creatives-request.json', 'list-creatives-response.json'];
-
-    const schemasWithExamples = schemas.filter(([schemaPath, schema]) => {
-      if (!schema.examples || schema.examples.length === 0) return false;
-      const filename = path.basename(schemaPath);
-      return !FORMAT_AWARE_SCHEMAS.includes(filename);
+    const exampleAjv = new Ajv({
+      allErrors: true,
+      strict: false,
+      discriminator: true,
+      loadSchema: loadExternalSchema
     });
+    addFormats(exampleAjv);
 
-    for (const [schemaPath, schema] of schemasWithExamples) {
-      const filename = path.basename(schemaPath);
+    const failures = [];
+    let checked = 0;
+    for (const [schemaPath] of schemas) {
+      const built = readBuiltSchema(schemaPath);
+      const sites = findExampleSites(built);
+      if (sites.length === 0) continue;
+      const relative = path.relative(SCHEMA_BASE_DIR, schemaPath);
 
-      // Compile the schema
-      const testAjv = new Ajv({
-        allErrors: true,
-        verbose: true,
-        strict: false,
-        discriminator: true,
-        loadSchema: loadExternalSchema
-      });
-      addFormats(testAjv);
-
-      let validate;
+      let root;
       try {
-        // Examples are wire payloads: validate them against the published composition.
-        validate = await testAjv.compileAsync(readBuiltSchema(schemaPath));
+        root = exampleAjv.getSchema(built.$id) || await exampleAjv.compileAsync(built);
       } catch (error) {
-        return `${filename}: Failed to compile schema for example validation: ${error.message}`;
+        failures.push(`${relative}: failed to compile for example validation: ${error.message}`);
+        continue;
       }
 
-      // Validate each example
-      for (let i = 0; i < schema.examples.length; i++) {
-        const example = schema.examples[i];
-        const exampleData = example.data || example;
-
-        const valid = validate(exampleData);
-        if (!valid) {
-          const errors = validate.errors.map(err =>
-            `${err.instancePath} ${err.message}`
-          ).join('; ');
-          return `${filename}: Example ${i + 1} ${example.description ? `"${example.description}" ` : ''}failed validation: ${errors}`;
-        }
+      for (const { pointer, node } of sites) {
+        const validate = pointer === '' ? root : exampleAjv.getSchema(`${built.$id}#${pointer}`);
+        node.examples.forEach((example, i) => {
+          checked++;
+          const location = `${relative}#${pointer}/examples/${i}`;
+          if (isExampleWrapper(example, node)) {
+            failures.push(`${location}: is a {description, data} wrapper; write the instance itself`);
+          } else if (!validate(example)) {
+            const errors = validate.errors.map(err => `${err.instancePath || '/'} ${err.message}`).join('; ');
+            failures.push(`${location}: ${errors}`);
+          }
+        });
       }
     }
-    return true;
+    if (checked === 0) return 'no schema examples found';
+    return failures.length === 0 || `${failures.length} of ${checked} examples fail:\n  ${failures.join('\n  ')}`;
   });
 
   // Print results

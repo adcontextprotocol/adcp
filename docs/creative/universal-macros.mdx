@@ -45,6 +45,7 @@ Translation and value resolution are different operations. `translate_to_native`
 
 The first contract permits one translation hop followed by value resolution; `translation_target.next_operation` is therefore fixed to `resolve_value`, which prevents cycles and unbounded chains. On the sales execution path, a translation is compatible only when both seller-wide and selected-product sets contain the source translation tuple and an exact target resolution tuple. On `build_creative`, `preview_creative`, and `validate_input`, the selected `creative.supported_formats[]` route is the authoritative capability set and build-time operations use `performed_by: creative_agent`; no seller authority is borrowed. The emitted target declaration keeps the source `declaration_id`, `location`, `required`, and `unavailable_behavior`, and replaces token, dialect identity, operation, actor, and encoding from `translation_target`.
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/3.2.1/core/assets/display-tag-asset.json",
@@ -63,8 +64,15 @@ The first contract permits one translation hop followed by value resolution; `tr
       "universal_semantic": "CACHEBUSTER",
       "operation": "resolve_value",
       "performed_by": "request_executor",
-      "location": { "field": "url", "occurrence": 0, "context": "url_query_value" },
-      "encoding": { "kind": "iab_vast_uri", "depth": 1 },
+      "location": {
+        "field": "url",
+        "occurrence": 0,
+        "context": "url_query_value"
+      },
+      "encoding": {
+        "kind": "iab_vast_uri",
+        "depth": 1
+      },
       "required": true,
       "unavailable_behavior": "reject"
     },
@@ -79,8 +87,15 @@ The first contract permits one translation hop followed by value resolution; `tr
       "universal_semantic": "CLICK_URL",
       "operation": "resolve_value",
       "performed_by": "seller",
-      "location": { "field": "url", "occurrence": 0, "context": "url_query_value" },
-      "encoding": { "kind": "rfc3986", "depth": 2 },
+      "location": {
+        "field": "url",
+        "occurrence": 0,
+        "context": "url_query_value"
+      },
+      "encoding": {
+        "kind": "rfc3986",
+        "depth": 2
+      },
       "required": true,
       "unavailable_behavior": "reject"
     },
@@ -93,8 +108,15 @@ The first contract permits one translation hop followed by value resolution; `tr
       "universal_semantic": "GDPR",
       "operation": "resolve_value",
       "performed_by": "seller",
-      "location": { "field": "url", "occurrence": 0, "context": "url_query_value" },
-      "encoding": { "kind": "none", "depth": 0 },
+      "location": {
+        "field": "url",
+        "occurrence": 0,
+        "context": "url_query_value"
+      },
+      "encoding": {
+        "kind": "none",
+        "depth": 0
+      },
       "required": true,
       "unavailable_behavior": "reject"
     },
@@ -107,8 +129,15 @@ The first contract permits one translation hop followed by value resolution; `tr
       "universal_semantic": "GDPR_CONSENT",
       "operation": "resolve_value",
       "performed_by": "seller",
-      "location": { "field": "url", "occurrence": 0, "context": "url_query_value" },
-      "encoding": { "kind": "rfc3986", "depth": 1 },
+      "location": {
+        "field": "url",
+        "occurrence": 0,
+        "context": "url_query_value"
+      },
+      "encoding": {
+        "kind": "rfc3986",
+        "depth": 1
+      },
       "required": false,
       "unavailable_behavior": "omit_parameter"
     },
@@ -121,8 +150,15 @@ The first contract permits one translation hop followed by value resolution; `tr
       "universal_semantic": "GPP_STRING",
       "operation": "resolve_value",
       "performed_by": "seller",
-      "location": { "field": "url", "occurrence": 0, "context": "url_query_value" },
-      "encoding": { "kind": "rfc3986", "depth": 1 },
+      "location": {
+        "field": "url",
+        "occurrence": 0,
+        "context": "url_query_value"
+      },
+      "encoding": {
+        "kind": "rfc3986",
+        "depth": 1
+      },
       "required": false,
       "unavailable_behavior": "omit_parameter"
     },
@@ -136,8 +172,15 @@ The first contract permits one translation hop followed by value resolution; `tr
       "mapping_status": "dialect_defined",
       "operation": "resolve_value",
       "performed_by": "request_executor",
-      "location": { "field": "url", "occurrence": 0, "context": "url_query_value" },
-      "encoding": { "kind": "iab_vast_uri", "depth": 1 },
+      "location": {
+        "field": "url",
+        "occurrence": 0,
+        "context": "url_query_value"
+      },
+      "encoding": {
+        "kind": "iab_vast_uri",
+        "depth": 1
+      },
       "required": false,
       "unavailable_behavior": "dialect_sentinel"
     },
@@ -148,8 +191,15 @@ The first contract permits one translation hop followed by value resolution; `tr
       "dialect_semantic": "unresolved",
       "mapping_status": "unresolved",
       "operation": "preserve",
-      "location": { "field": "url", "occurrence": 0, "context": "opaque" },
-      "encoding": { "kind": "none", "depth": 0 },
+      "location": {
+        "field": "url",
+        "occurrence": 0,
+        "context": "opaque"
+      },
+      "encoding": {
+        "kind": "none",
+        "depth": 0
+      },
       "required": false,
       "unavailable_behavior": "preserve"
     }

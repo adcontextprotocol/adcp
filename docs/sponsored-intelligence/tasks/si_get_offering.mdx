@@ -125,6 +125,7 @@ Use `context_use: "comparison_set"` when `matching_products` are a sponsored can
 
 ### Basic Offering Lookup
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "/schemas/sponsored-intelligence/si-get-offering-request.json",
@@ -134,6 +135,7 @@ Use `context_use: "comparison_set"` when `matching_products` are a sponsored can
 
 ### Response
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "/schemas/sponsored-intelligence/si-get-offering-response.json",
@@ -154,6 +156,7 @@ Use `context_use: "comparison_set"` when `matching_products` are a sponsored can
 
 ### With Product Context
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "/schemas/sponsored-intelligence/si-get-offering-request.json",
@@ -166,6 +169,7 @@ Use `context_use: "comparison_set"` when `matching_products` are a sponsored can
 
 ### Response with Products
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "/schemas/sponsored-intelligence/si-get-offering-response.json",
@@ -207,6 +211,7 @@ This enables the host to show:
 
 ### Response with Sponsored Context
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "/schemas/sponsored-intelligence/si-get-offering-response.json",
@@ -223,7 +228,9 @@ This enables the host to show:
   ],
   "sponsored_context": {
     "paying_principal": {
-      "brand": { "domain": "acme-running.example" },
+      "brand": {
+        "domain": "acme-running.example"
+      },
       "display_name": "Acme Running"
     },
     "context_use": "comparison_set",
@@ -245,6 +252,7 @@ This enables the host to show:
 
 ### Unavailable Response
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
   "$schema": "/schemas/sponsored-intelligence/si-get-offering-response.json",
@@ -252,10 +260,7 @@ This enables the host to show:
   "available": false,
   "checked_at": "2025-01-19T10:00:00Z",
   "unavailable_reason": "expired",
-  "alternative_offering_ids": [
-    "nike-fall-collection",
-    "nike-clearance"
-  ]
+  "alternative_offering_ids": ["nike-fall-collection", "nike-clearance"]
 }
 ```
 

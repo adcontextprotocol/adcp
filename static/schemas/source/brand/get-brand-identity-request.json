@@ -52,5 +52,25 @@
   "required": [
     "brand_id"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "brand_id": "daan_janssen",
+      "fields": [
+        "logos",
+        "tone",
+        "voice_synthesis"
+      ],
+      "use_case": "endorsement"
+    },
+    {
+      "brand_id": "daan_janssen",
+      "fields": [
+        "colors",
+        "fonts",
+        "visual_guidelines"
+      ],
+      "use_case": "creative_production"
+    }
+  ]
 }

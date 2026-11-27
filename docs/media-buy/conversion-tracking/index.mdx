@@ -66,11 +66,14 @@ Configure event sources with [`sync_event_sources`](/docs/media-buy/task-referen
 
 To discover all sources on an account (including seller-managed), call `sync_event_sources` without an `event_sources` array:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-event-sources-request.json",
   "idempotency_key": "c9f3d6a7-5678-48e4-5678-9012345abcde",
-  "account": { "account_id": "acct_12345" }
+  "account": {
+    "account_id": "acct_12345"
+  }
 }
 ```
 
@@ -80,6 +83,7 @@ An event represents a user action — a purchase, lead submission, page view, ap
 
 Send events with [`log_event`](/docs/media-buy/task-reference/log_event):
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/event.json",
@@ -152,6 +156,7 @@ Send multiple identifier types when available. The seller uses the best availabl
 
 Event-specific data for attribution and reporting. Sources used for canonical ROAS declare `value_currencies`; monetary records from those sources require `currency` from that list. Legacy sources without the contract remain valid for non-ROAS use.
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/event-custom-data.json",
@@ -161,8 +166,18 @@ Event-specific data for attribution and reporting. Sources used for canonical RO
   "content_ids": ["SKU-1234", "SKU-5678"],
   "num_items": 3,
   "contents": [
-    { "id": "SKU-1234", "quantity": 2, "price": 49.99, "brand": "Acme" },
-    { "id": "SKU-5678", "quantity": 1, "price": 50.01, "brand": "Nova" }
+    {
+      "id": "SKU-1234",
+      "quantity": 2,
+      "price": 49.99,
+      "brand": "Acme"
+    },
+    {
+      "id": "SKU-5678",
+      "quantity": 1,
+      "price": 50.01,
+      "brand": "Nova"
+    }
   ]
 }
 ```
@@ -242,6 +257,7 @@ Where the conversion event originated:
 
 `action_source` stays intentionally flat for compatibility. Use `surface` when the optimization-relevant source needs more structure, especially for creator and content engagement on owned platform properties.
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/event-surface.json",

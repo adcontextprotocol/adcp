@@ -206,5 +206,21 @@
         "gender"
       ]
     }
+  ],
+  "examples": [
+    {
+      "gender": {
+        "execution_modes": [
+          "native",
+          "signals"
+        ],
+        "values": [
+          "female",
+          "male",
+          "non_binary"
+        ],
+        "unknown_handling": "selectable"
+      }
+    }
   ]
 }

@@ -17,6 +17,7 @@ Evaluates a creative manifest and returns feature values from a creative governa
 
 ## Request
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "/schemas/creative/get-creative-features-request.json",
@@ -69,68 +70,116 @@ When this call was initiated by [`build_creative`](/docs/creative/task-reference
 ## Response
 
 <CodeGroup>
+{/* schema-example: #/examples/0 */}
 ```json Security scanner (clean)
 {
   "$schema": "/schemas/creative/get-creative-features-response.json",
   "status": "completed",
   "evaluation_id": "eval_clean_abc123",
   "results": [
-    { "feature_id": "auto_redirect", "value": false },
-    { "feature_id": "credential_harvest", "value": false },
-    { "feature_id": "cloaking", "value": false }
+    {
+      "feature_id": "auto_redirect",
+      "value": false
+    },
+    {
+      "feature_id": "credential_harvest",
+      "value": false
+    },
+    {
+      "feature_id": "cloaking",
+      "value": false
+    }
   ],
   "detail_url": "https://scanner.example.com/reports/ctx_abc123"
 }
 ```
 
+{/* schema-example: #/examples/1 */}
 ```json Security scanner (threat detected)
 {
   "$schema": "/schemas/creative/get-creative-features-response.json",
   "status": "completed",
   "evaluation_id": "eval_threat_def456",
   "results": [
-    { "feature_id": "auto_redirect", "value": true, "confidence": 0.97 },
-    { "feature_id": "credential_harvest", "value": true, "confidence": 0.91 },
-    { "feature_id": "cloaking", "value": false }
+    {
+      "feature_id": "auto_redirect",
+      "value": true,
+      "confidence": 0.97
+    },
+    {
+      "feature_id": "credential_harvest",
+      "value": true,
+      "confidence": 0.91
+    },
+    {
+      "feature_id": "cloaking",
+      "value": false
+    }
   ],
   "detail_url": "https://scanner.example.com/reports/ctx_def456"
 }
 ```
 
+{/* schema-example: #/examples/2 */}
 ```json Creative quality platform
 {
   "$schema": "/schemas/creative/get-creative-features-response.json",
   "status": "completed",
   "evaluation_id": "eval_quality_ghi789",
   "results": [
-    { "feature_id": "brand_consistency", "value": 87, "unit": "percentage" },
-    { "feature_id": "platform_optimized", "value": true },
-    { "feature_id": "creative_quality_score", "value": 92, "unit": "score" }
+    {
+      "feature_id": "brand_consistency",
+      "value": 87,
+      "unit": "percentage"
+    },
+    {
+      "feature_id": "platform_optimized",
+      "value": true
+    },
+    {
+      "feature_id": "creative_quality_score",
+      "value": 92,
+      "unit": "score"
+    }
   ],
   "detail_url": "https://quality.example.com/reports/ctx_ghi789"
 }
 ```
 
+{/* schema-example: #/examples/3 */}
 ```json Content categorizer
 {
   "$schema": "/schemas/creative/get-creative-features-response.json",
   "status": "completed",
   "evaluation_id": "eval_category_jkl012",
   "results": [
-    { "feature_id": "iab_casinos_gambling", "value": true, "confidence": 0.95 },
-    { "feature_id": "iab_automotive", "value": false, "confidence": 0.12 }
+    {
+      "feature_id": "iab_casinos_gambling",
+      "value": true,
+      "confidence": 0.95
+    },
+    {
+      "feature_id": "iab_automotive",
+      "value": false,
+      "confidence": 0.12
+    }
   ],
   "detail_url": "https://categorizer.example.com/reports/ctx_jkl012"
 }
 ```
 
+{/* schema-example: #/examples/4 */}
 ```json Provenance audit observation
 {
   "$schema": "/schemas/creative/get-creative-features-response.json",
   "status": "completed",
   "evaluation_id": "eval_provenance_mno345",
   "results": [
-    { "feature_id": "ai_generated", "value": true, "confidence": 0.94 }
+    {
+      "feature_id": "ai_generated",
+      "value": true,
+      "confidence": 0.94
+    }
   ],
   "audit_observations": [
     {
@@ -154,6 +203,7 @@ When this call was initiated by [`build_creative`](/docs/creative/task-reference
 }
 ```
 
+{/* schema-example: #/examples/5 */}
 ```json Submitted evaluation
 {
   "$schema": "/schemas/creative/get-creative-features-response.json",

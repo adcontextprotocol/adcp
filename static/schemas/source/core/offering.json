@@ -128,76 +128,64 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Time-limited promotional offer with checkout",
-      "data": {
-        "offering_id": "q1-2025-trial",
-        "name": "Free 30-day trial",
-        "description": "Try our carbon measurement platform free for 30 days",
-        "tagline": "Start measuring your digital carbon footprint today",
-        "valid_from": "2025-01-01T00:00:00Z",
-        "valid_to": "2025-03-31T23:59:59Z",
-        "checkout_url": "https://vendor.example.com/signup",
-        "keywords": ["carbon", "sustainability", "measurement", "emissions"],
-        "categories": ["measurement", "sustainability"]
+      "offering_id": "q1-2025-trial",
+      "name": "Free 30-day trial",
+      "description": "Try our carbon measurement platform free for 30 days",
+      "tagline": "Start measuring your digital carbon footprint today",
+      "valid_from": "2025-01-01T00:00:00Z",
+      "valid_to": "2025-03-31T23:59:59Z",
+      "checkout_url": "https://vendor.example.com/signup",
+      "keywords": ["carbon", "sustainability", "measurement", "emissions"],
+      "categories": ["measurement", "sustainability"]
+    },
+    {
+      "offering_id": "enterprise-dsp",
+      "name": "Enterprise DSP Platform",
+      "description": "Full-featured demand-side platform for enterprise advertisers",
+      "landing_url": "https://thetradedesk.com/enterprise",
+      "keywords": ["dsp", "programmatic", "rtb", "ctv"],
+      "categories": ["programmatic", "dsp"]
+    },
+    {
+      "offering_id": "vacancy-amsterdam-chef-42",
+      "name": "Head Chef — Amsterdam",
+      "description": "Full-time head chef position at our Amsterdam location",
+      "landing_url": "https://careers.acme.com/vacancies/42",
+      "geo_targets": {
+        "countries": ["NL"],
+        "regions": ["NL-NH"]
       }
     },
     {
-      "description": "Product offering with landing page",
-      "data": {
-        "offering_id": "enterprise-dsp",
-        "name": "Enterprise DSP Platform",
-        "description": "Full-featured demand-side platform for enterprise advertisers",
-        "landing_url": "https://thetradedesk.com/enterprise",
-        "keywords": ["dsp", "programmatic", "rtb", "ctv"],
-        "categories": ["programmatic", "dsp"]
-      }
-    },
-    {
-      "description": "Location-specific offering with geo targets",
-      "data": {
-        "offering_id": "vacancy-amsterdam-chef-42",
-        "name": "Head Chef — Amsterdam",
-        "description": "Full-time head chef position at our Amsterdam location",
-        "landing_url": "https://careers.acme.com/vacancies/42",
-        "geo_targets": {
-          "countries": ["NL"],
-          "regions": ["NL-NH"]
+      "offering_id": "summer-sale",
+      "name": "Summer Sale",
+      "description": "Up to 50% off summer collection",
+      "landing_url": "https://acme.com/summer",
+      "assets": [
+        {
+          "asset_group_id": "headlines",
+          "asset_type": "text",
+          "items": [
+            {"asset_type": "text", "content": "Shop the Summer Sale"},
+            {"asset_type": "text", "content": "50% Off Everything"},
+            {"asset_type": "text", "content": "Summer Savings Event"}
+          ]
+        },
+        {
+          "asset_group_id": "images_landscape",
+          "asset_type": "image",
+          "items": [
+            {"asset_type": "image", "url": "https://cdn.acme.com/hero.jpg", "width": 1200, "height": 628}
+          ]
+        },
+        {
+          "asset_group_id": "images_square",
+          "asset_type": "image",
+          "items": [
+            {"asset_type": "image", "url": "https://cdn.acme.com/sq.jpg", "width": 600, "height": 600}
+          ]
         }
-      }
-    },
-    {
-      "description": "Offering with structured asset groups",
-      "data": {
-        "offering_id": "summer-sale",
-        "name": "Summer Sale",
-        "description": "Up to 50% off summer collection",
-        "landing_url": "https://acme.com/summer",
-        "assets": [
-          {
-            "asset_group_id": "headlines",
-            "asset_type": "text",
-            "items": [
-              {"asset_type": "text", "content": "Shop the Summer Sale"},
-              {"asset_type": "text", "content": "50% Off Everything"},
-              {"asset_type": "text", "content": "Summer Savings Event"}
-            ]
-          },
-          {
-            "asset_group_id": "images_landscape",
-            "asset_type": "image",
-            "items": [
-              {"asset_type": "image", "url": "https://cdn.acme.com/hero.jpg", "width": 1200, "height": 628}
-            ]
-          },
-          {
-            "asset_group_id": "images_square",
-            "asset_type": "image",
-            "items": [
-              {"asset_type": "image", "url": "https://cdn.acme.com/sq.jpg", "width": 600, "height": 600}
-            ]
-          }
-        ]
-      }
+      ]
     }
   ]
 }

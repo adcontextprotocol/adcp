@@ -283,5 +283,76 @@
   "required": [
     "request_type"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "request_type": "variant",
+      "variant_id": "gen_mobile_morning"
+    },
+    {
+      "request_type": "single",
+      "quality": "draft",
+      "creative_manifest": {
+        "format_kind": "agent_placement",
+        "assets": {
+          "brief": {
+            "asset_type": "brief",
+            "name": "Sustainability story",
+            "objective": "awareness",
+            "messaging": {
+              "key_messages": [
+                "Highlight our sustainability story. Match tone to editorial context."
+              ]
+            }
+          }
+        }
+      },
+      "inputs": [
+        {
+          "name": "Tech article",
+          "context_description": "Article about semiconductor manufacturing"
+        },
+        {
+          "name": "Lifestyle blog",
+          "context_description": "Blog post about sustainable living"
+        }
+      ]
+    },
+    {
+      "request_type": "variant",
+      "variant_id": "gen_tech_mobile_001"
+    },
+    {
+      "request_type": "single",
+      "creative_manifest": {
+        "format_kind": "native_in_feed",
+        "assets": {
+          "hero_image": {
+            "asset_type": "image",
+            "url": "https://cdn.example.com/hero.jpg",
+            "width": 1200,
+            "height": 627
+          },
+          "headline": {
+            "asset_type": "text",
+            "content": "Veterinarian Recommended"
+          }
+        }
+      },
+      "inputs": [
+        {
+          "name": "Desktop",
+          "macros": {
+            "DEVICE_TYPE": "desktop"
+          }
+        },
+        {
+          "name": "Mobile",
+          "macros": {
+            "DEVICE_TYPE": "mobile"
+          }
+        }
+      ]
+    }
+  ]
 }

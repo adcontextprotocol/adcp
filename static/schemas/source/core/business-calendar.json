@@ -37,5 +37,30 @@
     "verifier_constraints": {
       "calendar_integrity": "valid_from <= valid_through; working periods have start < end and never overlap on a shared weekday; all non_working_dates are within coverage; timezone resolves in IANA TZDB; calendar_id is immutable and unique within the seller."
     }
-  }
+  },
+  "examples": [
+    {
+      "calendar_id": "review_team_2027_q1",
+      "timezone": "UTC",
+      "valid_from": "2027-01-01",
+      "valid_through": "2027-03-31",
+      "business_day_minutes": 540,
+      "working_periods": [
+        {
+          "days": [
+            "monday",
+            "tuesday",
+            "wednesday",
+            "thursday",
+            "friday"
+          ],
+          "start_time": "09:00",
+          "end_time": "18:00"
+        }
+      ],
+      "non_working_dates": [
+        "2027-01-01"
+      ]
+    }
+  ]
 }

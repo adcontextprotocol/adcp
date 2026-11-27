@@ -44,6 +44,7 @@ Publishers authorize sales agents by hosting an `adagents.json` file at `/.well-
 
 ### Example adagents.json
 
+{/* schema-example: #/examples/16 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
@@ -58,7 +59,10 @@ Publishers authorize sales agents by hosting an `adagents.json` file at `/.well-
       "property_type": "website",
       "name": "Sports Network",
       "identifiers": [
-        {"type": "domain", "value": "sportsnetwork.com"}
+        {
+          "type": "domain",
+          "value": "sportsnetwork.com"
+        }
       ],
       "tags": ["premium", "sports"]
     }

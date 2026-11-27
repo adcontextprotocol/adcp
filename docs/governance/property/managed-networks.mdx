@@ -29,6 +29,7 @@ The key difference: an HTTP redirect is invisible to the consumer. A validator f
 Each managed domain hosts a minimal pointer file at `/.well-known/adagents.json`. The pointer references one centralized authoritative file that the network maintains.
 
 **Pointer file** (on each domain):
+{/* schema-example: #/examples/18 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
@@ -40,6 +41,7 @@ Each managed domain hosts a minimal pointer file at `/.well-known/adagents.json`
 The `last_updated` timestamp in the pointer file reflects when the pointer itself was last modified (e.g., when the `authoritative_location` URL changed), not when the authoritative file was updated. The authoritative file carries its own `last_updated`.
 
 **Authoritative file** (at the network):
+{/* schema-example: #/examples/19 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json",
@@ -53,7 +55,12 @@ The `last_updated` timestamp in the pointer file reflects when the pointer itsel
       "property_id": "site_cooking_daily",
       "property_type": "website",
       "name": "Cooking Daily",
-      "identifiers": [{"type": "domain", "value": "cookingdaily.com"}],
+      "identifiers": [
+        {
+          "type": "domain",
+          "value": "cookingdaily.com"
+        }
+      ],
       "tags": ["food", "managed_network"],
       "publisher_domain": "cookingdaily.com"
     },
@@ -61,7 +68,12 @@ The `last_updated` timestamp in the pointer file reflects when the pointer itsel
       "property_id": "site_garden_weekly",
       "property_type": "website",
       "name": "Garden Weekly",
-      "identifiers": [{"type": "domain", "value": "gardenweekly.com"}],
+      "identifiers": [
+        {
+          "type": "domain",
+          "value": "gardenweekly.com"
+        }
+      ],
       "tags": ["home", "managed_network"],
       "publisher_domain": "gardenweekly.com"
     }

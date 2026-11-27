@@ -19,21 +19,31 @@ Validates delivery records against a property list to determine compliance. Answ
 
 ## Request
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "/schemas/property/validate-property-delivery-request.json",
   "list_id": "pl_abc123",
   "records": [
     {
-      "identifier": { "type": "domain", "value": "www.nytimes.com" },
+      "identifier": {
+        "type": "domain",
+        "value": "www.nytimes.com"
+      },
       "impressions": 103
     },
     {
-      "identifier": { "type": "domain", "value": "sketchy-site.example" },
+      "identifier": {
+        "type": "domain",
+        "value": "sketchy-site.example"
+      },
       "impressions": 47
     },
     {
-      "identifier": { "type": "android_package", "value": "com.unknown.app" },
+      "identifier": {
+        "type": "android_package",
+        "value": "com.unknown.app"
+      },
       "impressions": 25
     }
   ],
@@ -55,6 +65,7 @@ Validates delivery records against a property list to determine compliance. Answ
 
 ## Response
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "/schemas/property/validate-property-delivery-response.json",
@@ -80,7 +91,10 @@ Validates delivery records against a property list to determine compliance. Answ
   },
   "results": [
     {
-      "identifier": { "type": "domain", "value": "sketchy-site.example" },
+      "identifier": {
+        "type": "domain",
+        "value": "sketchy-site.example"
+      },
       "status": "non_compliant",
       "impressions": 47,
       "features": [
@@ -92,12 +106,18 @@ Validates delivery records against a property list to determine compliance. Answ
       ]
     },
     {
-      "identifier": { "type": "domain", "value": "new-site.example" },
+      "identifier": {
+        "type": "domain",
+        "value": "new-site.example"
+      },
       "status": "not_covered",
       "impressions": 25
     },
     {
-      "identifier": { "type": "android_package", "value": "com.unknown.app" },
+      "identifier": {
+        "type": "android_package",
+        "value": "com.unknown.app"
+      },
       "status": "unidentified",
       "impressions": 25
     }
@@ -236,17 +256,25 @@ When `sales_agent_url` is provided in delivery records, the governance agent val
 
 ### Request with Authorization
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/property/validate-property-delivery-request.json",
   "list_id": "pl_abc123",
   "records": [
     {
-      "identifier": { "type": "domain", "value": "www.nytimes.com" },
+      "identifier": {
+        "type": "domain",
+        "value": "www.nytimes.com"
+      },
       "impressions": 103,
       "sales_agent_url": "https://legitimate-ssp.example.com"
     },
     {
-      "identifier": { "type": "domain", "value": "www.nytimes.com" },
+      "identifier": {
+        "type": "domain",
+        "value": "www.nytimes.com"
+      },
       "impressions": 50,
       "sales_agent_url": "https://unauthorized-reseller.example.com"
     }

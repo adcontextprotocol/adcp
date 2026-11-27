@@ -60,5 +60,44 @@
       ]
     }
   ],
-  "properties": {}
+  "properties": {},
+  "examples": [
+    {
+      "status": "completed",
+      "standards": [
+        {
+          "standards_id": "emea_digital_safety",
+          "name": "EMEA - all digital channels",
+          "countries_all": [
+            "GB",
+            "DE",
+            "FR"
+          ],
+          "channels_any": [
+            "display",
+            "olv",
+            "ctv"
+          ],
+          "languages_any": [
+            "en",
+            "de",
+            "fr"
+          ]
+        },
+        {
+          "standards_id": "us_display_only",
+          "name": "US - display only",
+          "countries_all": [
+            "US"
+          ],
+          "channels_any": [
+            "display"
+          ],
+          "languages_any": [
+            "en"
+          ]
+        }
+      ]
+    }
+  ]
 }

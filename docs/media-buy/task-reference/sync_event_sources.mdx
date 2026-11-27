@@ -325,6 +325,7 @@ asyncio.run(main())
 
 Sellers may provide always-on event sources (e.g. Amazon sales attribution). These appear in the response with `managed_by: "seller"` alongside your buyer-managed sources:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-event-sources-response.json",
@@ -362,6 +363,7 @@ Products with `conversion_tracking.platform_managed: true` indicate the seller p
 
 Seller-managed creator or owned-property sources use the same `event_sources` array, with a flat `action_source` for compatibility and `surface` for structured context:
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-event-sources-response.json",
@@ -468,11 +470,19 @@ asyncio.run(main())
 
 `delete_missing` is the only way to remove sources in bulk, and it cannot be undone. To take one source out of use and keep its configuration, send `archived: true` on that item. To bring it back, send `archived: false`.
 
+{/* schema-example: #/examples/1 */}
 ```json test=false
 {
-  "account": { "account_id": "acct_12345" },
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/sync-event-sources-request.json",
+  "idempotency_key": "909a0027-9874-448d-a514-6fa5f74b6932",
+  "account": {
+    "account_id": "acct_12345"
+  },
   "event_sources": [
-    { "event_source_id": "web_pixel", "archived": true }
+    {
+      "event_source_id": "web_pixel",
+      "archived": true
+    }
   ]
 }
 ```

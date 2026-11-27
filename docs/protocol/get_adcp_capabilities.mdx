@@ -152,13 +152,17 @@ An SDK used solely for signing on selected routes can still report its package a
 
 The following custom-wrapper example uses a hypothetical SDK version. Pinnacle Media uses SDK types and enforced validation for every applicable request and final response, while its wrapper supplies transport, authentication, lifecycle, and replay handling. It makes no SDK coverage claim for those wrapper behaviors.
 
+{/* schema-example: #/examples/4 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/get-adcp-capabilities-response.json",
   "status": "completed",
   "adcp": {
     "major_versions": [3],
-    "idempotency": { "supported": true, "replay_ttl_seconds": 86400 },
+    "idempotency": {
+      "supported": true,
+      "replay_ttl_seconds": 86400
+    },
     "implementation": {
       "sdks": [
         {
@@ -1471,17 +1475,28 @@ Audience targeting capabilities. Presence of this object indicates the seller su
 
 A seller without inline member push MUST reject, with [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature), a `sync_audiences` entry that carries `add` or `remove`, or that would create a new audience without a [`source`](/docs/media-buy/task-reference/sync_audiences#external-audience-sources-experimental) reference. It still answers discovery-only calls, so a buyer can read the `audience_id` values of audiences already on the account, such as ones built in the platform's own tools, and target them. `supported_activation_methods` is experimental, so a seller that declares no inline push lists `media_buy.audience_activation` in `experimental_features`.
 
+{/* schema-example: #/examples/5 */}
 ```json
 {
   "$schema": "/schemas/protocol/get-adcp-capabilities-response.json",
   "status": "completed",
-  "adcp": { "major_versions": [3], "idempotency": { "supported": false } },
+  "adcp": {
+    "major_versions": [3],
+    "idempotency": {
+      "supported": false
+    }
+  },
   "supported_protocols": ["media_buy"],
   "experimental_features": ["media_buy.audience_activation"],
   "media_buy": {
     "audience_targeting": {
       "supported_activation_methods": [
-        { "pattern": "platform_distribution", "vendor": { "domain": "activation-hub.example" } }
+        {
+          "pattern": "platform_distribution",
+          "vendor": {
+            "domain": "activation-hub.example"
+          }
+        }
       ]
     }
   }
@@ -1666,13 +1681,17 @@ Policy registry integration capabilities. See [Policy Registry](/docs/governance
 
 **Example governance agent response:**
 
+{/* schema-example: #/examples/6 */}
 ```json
 {
   "$schema": "/schemas/protocol/get-adcp-capabilities-response.json",
   "status": "completed",
   "adcp": {
     "major_versions": [3],
-    "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
+    "idempotency": {
+      "supported": true,
+      "replay_ttl_seconds": 86400
+    }
   },
   "supported_protocols": ["governance"],
   "governance": {
@@ -1680,7 +1699,10 @@ Policy registry integration capabilities. See [Policy Registry](/docs/governance
       {
         "feature_id": "mfa_score",
         "type": "quantitative",
-        "range": { "min": 0, "max": 100 },
+        "range": {
+          "min": 0,
+          "max": 100
+        },
         "description": "Made For Advertising detection (0=quality content, 100=likely MFA)",
         "methodology_url": "https://vendor.example.com/methodology/mfa"
       },
@@ -1697,7 +1719,10 @@ Policy registry integration capabilities. See [Policy Registry](/docs/governance
       {
         "feature_id": "carbon_score",
         "type": "quantitative",
-        "range": { "min": 0, "max": 100 },
+        "range": {
+          "min": 0,
+          "max": 100
+        },
         "description": "Carbon footprint sustainability score",
         "methodology_url": "https://vendor.example.com/methodology/carbon-score"
       }
@@ -2257,13 +2282,17 @@ const buy = await client.createMediaBuy({
 
 ## Response Example
 
+{/* schema-example: #/examples/7 */}
 ```json
 {
   "$schema": "/schemas/protocol/get-adcp-capabilities-response.json",
   "status": "completed",
   "adcp": {
     "major_versions": [3],
-    "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
+    "idempotency": {
+      "supported": true,
+      "replay_ttl_seconds": 86400
+    }
   },
   "supported_protocols": ["media_buy"],
   "experimental_features": ["media_buy.audience_activation"],
@@ -2271,7 +2300,10 @@ const buy = await client.createMediaBuy({
     "require_operator_auth": false,
     "supported_billing": ["operator", "agent"],
     "supported_account_currency_modes": ["fixed", "per_media_buy"],
-    "timezone": { "mode": "seller_fixed", "fixed_timezone": "UTC" }
+    "timezone": {
+      "mode": "seller_fixed",
+      "fixed_timezone": "UTC"
+    }
   },
   "media_buy": {
     "creative_approval_mode": "auto_approve",
@@ -2320,7 +2352,12 @@ const buy = await client.createMediaBuy({
             "operation": "resolve_value",
             "performed_by": "seller",
             "supported_contexts": ["url_query_value"],
-            "supported_encodings": [{ "kind": "rfc3986", "depth": 1 }]
+            "supported_encodings": [
+              {
+                "kind": "rfc3986",
+                "depth": 1
+              }
+            ]
           },
           {
             "dialect": "iab_vast",
@@ -2331,7 +2368,12 @@ const buy = await client.createMediaBuy({
             "operation": "resolve_value",
             "performed_by": "request_executor",
             "supported_contexts": ["url_query_value"],
-            "supported_encodings": [{ "kind": "iab_vast_uri", "depth": 1 }]
+            "supported_encodings": [
+              {
+                "kind": "iab_vast_uri",
+                "depth": 1
+              }
+            ]
           }
         ],
         "mraid_versions": ["3.0"],
@@ -2407,19 +2449,32 @@ const buy = await client.createMediaBuy({
       "supports_platform_customer_id": false,
       "supported_uid_types": ["uid2", "rampid"],
       "minimum_audience_size": 500,
-      "matching_latency_hours": { "min": 1, "max": 24 },
+      "matching_latency_hours": {
+        "min": 1,
+        "max": 24
+      },
       "supported_activation_methods": [
-        { "pattern": "sync_audiences" },
+        {
+          "pattern": "sync_audiences"
+        },
         {
           "pattern": "dataset_query",
-          "vendor": { "domain": "data-cloud.example" },
+          "vendor": {
+            "domain": "data-cloud.example"
+          },
           "consumer_identities": [
-            { "cloud": "aws", "region": "us-east-1", "identity": "SELLERORG.ADCP_INGEST" }
+            {
+              "cloud": "aws",
+              "region": "us-east-1",
+              "identity": "SELLERORG.ADCP_INGEST"
+            }
           ]
         },
         {
           "pattern": "platform_distribution",
-          "vendor": { "domain": "activation-hub.example" },
+          "vendor": {
+            "domain": "activation-hub.example"
+          },
           "destination_ref": "dest_12345",
           "bind_expiry_days": 14
         }
@@ -2427,22 +2482,29 @@ const buy = await client.createMediaBuy({
     },
     "conversion_tracking": {
       "multi_source_event_dedup": false,
-      "supported_event_types": [
-        "purchase",
-        "lead",
-        "add_to_cart",
-        "view_content"
-      ],
+      "supported_event_types": ["purchase", "lead", "add_to_cart", "view_content"],
       "supported_action_sources": ["website", "app"],
       "attribution_windows": [
         {
           "post_click": [
-            { "interval": 7, "unit": "days" },
-            { "interval": 28, "unit": "days" }
+            {
+              "interval": 7,
+              "unit": "days"
+            },
+            {
+              "interval": 28,
+              "unit": "days"
+            }
           ],
           "post_view": [
-            { "interval": 1, "unit": "days" },
-            { "interval": 7, "unit": "days" }
+            {
+              "interval": 1,
+              "unit": "days"
+            },
+            {
+              "interval": 7,
+              "unit": "days"
+            }
           ]
         }
       ]
@@ -2476,13 +2538,17 @@ This tells buyers:
 
 An agent can implement multiple protocols from a single endpoint. This is common for sellers that manage both media buying and creative generation — the buyer calls all tasks on the same URL.
 
+{/* schema-example: #/examples/8 */}
 ```json
 {
   "$schema": "/schemas/protocol/get-adcp-capabilities-response.json",
   "status": "completed",
   "adcp": {
     "major_versions": [3],
-    "idempotency": { "supported": true, "replay_ttl_seconds": 86400 },
+    "idempotency": {
+      "supported": true,
+      "replay_ttl_seconds": 86400
+    },
     "capability_changes": {
       "capabilities_version": "rev_20260702_091455",
       "last_modified": "2026-07-02T09:14:55Z",
@@ -2499,7 +2565,10 @@ An agent can implement multiple protocols from a single endpoint. This is common
     "require_operator_auth": false,
     "supported_billing": ["operator"],
     "supported_account_currency_modes": ["fixed"],
-    "timezone": { "mode": "seller_fixed", "fixed_timezone": "UTC" }
+    "timezone": {
+      "mode": "seller_fixed",
+      "fixed_timezone": "UTC"
+    }
   },
   "media_buy": {
     "anonymous_discovery": true,
@@ -2528,15 +2597,20 @@ An agent can implement multiple protocols from a single endpoint. This is common
         "operations": ["build", "validate", "preview"],
         "format": {
           "format_kind": "image",
-          "params": { "width": 300, "height": 250 }
+          "params": {
+            "width": 300,
+            "height": 250
+          }
         }
       }
     ],
     "preview": {
-      "routes": [{
-        "capability_id": "display_image_generator",
-        "rendering_origin": "platform_native"
-      }]
+      "routes": [
+        {
+          "capability_id": "display_image_generator",
+          "rendering_origin": "platform_native"
+        }
+      ]
     }
   }
 }

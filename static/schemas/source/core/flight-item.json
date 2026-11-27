@@ -99,29 +99,55 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Direct transatlantic route",
-      "data": {
-        "flight_id": "ams-jfk-summer",
-        "origin": { "airport_code": "AMS", "city": "Amsterdam" },
-        "destination": { "airport_code": "JFK", "city": "New York" },
-        "airline": "KLM",
-        "price": { "amount": 449, "currency": "EUR" },
-        "description": "Direct flights from Amsterdam to New York, daily departures.",
-        "image_url": "https://images.acmeair.com/routes/ams-jfk.jpg",
-        "url": "https://acmeair.com/flights/ams-jfk",
-        "tags": ["direct", "transatlantic"]
+      "flight_id": "ams-jfk-summer",
+      "origin": { "airport_code": "AMS", "city": "Amsterdam" },
+      "destination": { "airport_code": "JFK", "city": "New York" },
+      "airline": "KLM",
+      "price": { "amount": 449, "currency": "EUR" },
+      "description": "Direct flights from Amsterdam to New York, daily departures.",
+      "image_url": "https://images.acmeair.com/routes/ams-jfk.jpg",
+      "url": "https://acmeair.com/flights/ams-jfk",
+      "tags": ["direct", "transatlantic"]
+    },
+    {
+      "flight_id": "bcn-lis-q4",
+      "origin": { "airport_code": "BCN", "city": "Barcelona" },
+      "destination": { "airport_code": "LIS", "city": "Lisbon" },
+      "price": { "amount": 39, "currency": "EUR" },
+      "url": "https://acmeair.com/flights/bcn-lis",
+      "tags": ["budget", "short-haul"]
+    },
+    {
+      "flight_id": "ams-jfk-summer",
+      "origin": {
+        "airport_code": "AMS"
+      },
+      "destination": {
+        "airport_code": "JFK"
       }
     },
     {
-      "description": "Budget European route",
-      "data": {
-        "flight_id": "bcn-lis-q4",
-        "origin": { "airport_code": "BCN", "city": "Barcelona" },
-        "destination": { "airport_code": "LIS", "city": "Lisbon" },
-        "price": { "amount": 39, "currency": "EUR" },
-        "url": "https://acmeair.com/flights/bcn-lis",
-        "tags": ["budget", "short-haul"]
-      }
+      "flight_id": "ams-jfk-summer",
+      "origin": {
+        "airport_code": "AMS",
+        "city": "Amsterdam"
+      },
+      "destination": {
+        "airport_code": "JFK",
+        "city": "New York"
+      },
+      "airline": "Acme Air",
+      "price": {
+        "amount": 449,
+        "currency": "EUR"
+      },
+      "description": "Direct flights from Amsterdam to New York, daily departures.",
+      "image_url": "https://images.acmeair.com/routes/ams-jfk.jpg",
+      "url": "https://acmeair.com/flights/ams-jfk",
+      "tags": [
+        "direct",
+        "transatlantic"
+      ]
     }
   ]
 }

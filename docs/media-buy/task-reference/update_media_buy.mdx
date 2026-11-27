@@ -726,9 +726,14 @@ asyncio.run(update_multiple_packages())
 
 Cancel an entire media buy:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
-  "account": { "account_id": "acc_acme_001" },
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/update-media-buy-request.json",
+  "idempotency_key": "3e66e49f-7e8a-47c5-978a-cfe20fe0f00b",
+  "account": {
+    "account_id": "acc_acme_001"
+  },
   "media_buy_id": "mb_12345",
   "canceled": true,
   "cancellation_reason": "Campaign strategy changed"
@@ -736,8 +741,11 @@ Cancel an entire media buy:
 ```
 
 **Success response:**
+{/* schema-example: #/examples/0 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/update-media-buy-response.json",
+  "status": "completed",
   "media_buy_id": "mb_12345",
   "media_buy_status": "canceled",
   "revision": 4,
@@ -791,9 +799,14 @@ The body-level `media_buy_status` is the canonical field for the buy's lifecycle
 
 Cancel a single package while the media buy remains active:
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
-  "account": { "account_id": "acc_acme_001" },
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/update-media-buy-request.json",
+  "idempotency_key": "87b872e1-fdbf-4b78-9d2a-fb0c15229e58",
+  "account": {
+    "account_id": "acc_acme_001"
+  },
   "media_buy_id": "mb_12345",
   "packages": [
     {
@@ -911,30 +924,49 @@ When approval is needed, `implementation_date` will be `null` and `affected_pack
 
 Only specified fields are updated - omitted fields remain unchanged:
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
-  "account": { "account_id": "acc_acme_001" },
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/update-media-buy-request.json",
+  "idempotency_key": "fdc41275-0f84-45ed-ae79-197abb77af0c",
+  "account": {
+    "account_id": "acc_acme_001"
+  },
   "media_buy_id": "mb_12345",
-  "packages": [{
-    "package_id": "pkg_001",
-    "budget": 50000
-  }]
+  "packages": [
+    {
+      "package_id": "pkg_001",
+      "budget": 50000
+    }
+  ]
 }
 ```
 
 **Array replacement**: When updating arrays (like `creative_assignments`), provide the complete new array:
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
-  "account": { "account_id": "acc_acme_001" },
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/update-media-buy-request.json",
+  "idempotency_key": "08b1a997-2eb2-4f78-b195-840270eb75e6",
+  "account": {
+    "account_id": "acc_acme_001"
+  },
   "media_buy_id": "mb_12345",
-  "packages": [{
-    "package_id": "pkg_001",
-    "creative_assignments": [
-      { "creative_id": "creative_video_v2" },
-      { "creative_id": "creative_display_v2", "weight": 60 }
-    ]
-  }]
+  "packages": [
+    {
+      "package_id": "pkg_001",
+      "creative_assignments": [
+        {
+          "creative_id": "creative_video_v2"
+        },
+        {
+          "creative_id": "creative_display_v2",
+          "weight": 60
+        }
+      ]
+    }
+  ]
 }
 ```
 

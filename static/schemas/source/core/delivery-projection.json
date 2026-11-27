@@ -39,5 +39,14 @@
     "basis",
     "as_of"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "projected_impressions": 1180000,
+      "projected_spend": 9440,
+      "projected_end_state": "under_delivery",
+      "basis": "trailing_daily_avg",
+      "as_of": "2026-10-01T00:00:00Z"
+    }
+  ]
 }

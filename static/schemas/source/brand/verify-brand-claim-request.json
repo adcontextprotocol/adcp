@@ -160,5 +160,41 @@
       "required": ["claim_type", "claim"],
       "additionalProperties": true
     }
+  ],
+  "examples": [
+    {
+      "claim_type": "subsidiary",
+      "claim": {
+        "subsidiary_domain": "converse.com",
+        "subsidiary_brand_id": "converse",
+        "observed_at": "2026-05-14T10:00:00Z"
+      }
+    },
+    {
+      "claim_type": "parent",
+      "claim": {
+        "parent_domain": "nikeinc.com",
+        "claimant_says": "Nike's brand_refs[] lists converse.com"
+      }
+    },
+    {
+      "claim_type": "property",
+      "claim": {
+        "property": {
+          "type": "website",
+          "identifier": "nike.cn",
+          "region": "CN"
+        },
+        "use_case": "advertising"
+      }
+    },
+    {
+      "claim_type": "trademark",
+      "claim": {
+        "mark": "AIR JORDAN",
+        "registry": "USPTO",
+        "number": "1234567"
+      }
+    }
   ]
 }

@@ -171,8 +171,11 @@ Control result set size with cursor-based pagination:
 
 The response provides creative data with optional enrichment:
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/list-creatives-response.json",
+  "status": "completed",
   "query_summary": {
     "total_matching": 1,
     "returned": 1,
@@ -333,8 +336,10 @@ Creative-library sellers that advertise `list_creatives` in `media_buy.relations
 
 An assignment row MAY carry `approval_status_as_of`: when the seller last refreshed `approval_status`, `rejection_reason`, and `approval_scopes` for that relationship from its source of truth. It follows the same rules as `creative_approvals[].approval_status_as_of` on `get_media_buys`. When both reads carry it for the same relationship, the values agree. See [creative state freshness](/docs/media-buy/specification#creative-state-freshness).
 
+{/* schema-example: #/examples/6 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/list-creatives-request.json",
   "include_assignments": true,
   "filters": {
     "indicator_types": ["creative_fatigue"]
@@ -544,8 +549,10 @@ Creative agents that host a library should implement the [accounts protocol](/do
 
 List all approved creatives in a specific concept, including DCO variable definitions:
 
+{/* schema-example: #/examples/7 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/list-creatives-request.json",
   "filters": {
     "concept_ids": ["concept_holiday_2026"],
     "statuses": ["approved"]
@@ -575,8 +582,10 @@ Find canonical image creatives across concepts:
 
 Find creatives with dynamic content variables for personalized campaigns:
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/list-creatives-request.json",
   "filters": {
     "has_variables": true,
     "statuses": ["approved"]
@@ -589,8 +598,10 @@ Find creatives with dynamic content variables for personalized campaigns:
 
 Get minimal creative data for a selection dropdown:
 
+{/* schema-example: #/examples/8 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/list-creatives-request.json",
   "fields": ["creative_id", "name", "format_kind", "status"],
   "include_assignments": false,
   "filters": {
@@ -607,8 +618,10 @@ Get minimal creative data for a selection dropdown:
 
 Find active creatives with delivery snapshots to identify stale or dormant assets:
 
+{/* schema-example: #/examples/9 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/creative/list-creatives-request.json",
   "filters": {
     "media_buy_ids": ["mb_summer_2026", "mb_spring_2026"],
     "statuses": ["approved"]

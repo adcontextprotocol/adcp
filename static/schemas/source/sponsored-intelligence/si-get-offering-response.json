@@ -163,5 +163,96 @@
   "required": [
     "available"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "status": "completed",
+      "available": true,
+      "offering_token": "offering_abc123xyz",
+      "ttl_seconds": 3600,
+      "checked_at": "2025-01-19T10:00:00Z",
+      "offering": {
+        "offering_id": "nike-summer-sale",
+        "title": "Nike Summer Sale",
+        "summary": "Up to 50% off summer collection",
+        "price_hint": "from $89",
+        "expires_at": "2025-08-31T23:59:59Z"
+      }
+    },
+    {
+      "status": "completed",
+      "available": true,
+      "offering_token": "offering_abc123xyz",
+      "ttl_seconds": 3600,
+      "checked_at": "2025-01-19T10:00:00Z",
+      "offering": {
+        "offering_id": "nike-summer-sale",
+        "title": "Nike Summer Sale",
+        "summary": "Up to 50% off summer collection",
+        "price_hint": "from $89"
+      },
+      "matching_products": [
+        {
+          "product_id": "nike-pegasus-41",
+          "name": "Nike Pegasus 41",
+          "price": "$89",
+          "original_price": "$130",
+          "image_url": "https://cdn.nike.com/pegasus-41.jpg",
+          "availability_summary": "Size 14 in stock"
+        },
+        {
+          "product_id": "nike-air-max-90",
+          "name": "Nike Air Max 90",
+          "price": "$129",
+          "image_url": "https://cdn.nike.com/air-max-90.jpg",
+          "availability_summary": "Size 14 in stock"
+        }
+      ],
+      "total_matching": 12
+    },
+    {
+      "status": "completed",
+      "available": true,
+      "offering_token": "offering_abc123xyz",
+      "matching_products": [
+        {
+          "product_id": "trail-pace-14",
+          "name": "Trail Pace 14",
+          "price": "$89",
+          "availability_summary": "Size 14 in stock"
+        }
+      ],
+      "sponsored_context": {
+        "paying_principal": {
+          "brand": {
+            "domain": "acme-running.example"
+          },
+          "display_name": "Acme Running"
+        },
+        "context_use": "comparison_set",
+        "disclosure_obligation": {
+          "required": true,
+          "label_text": "Sponsored results from Acme Running",
+          "timing": "near_each_influenced_output",
+          "proximity": "near_influenced_output"
+        },
+        "declared_by": {
+          "agent_url": "https://agent.acme-running.example/si",
+          "role": "brand_agent"
+        },
+        "declared_at": "2025-01-19T10:00:00Z"
+      },
+      "total_matching": 1
+    },
+    {
+      "status": "completed",
+      "available": false,
+      "checked_at": "2025-01-19T10:00:00Z",
+      "unavailable_reason": "expired",
+      "alternative_offering_ids": [
+        "nike-fall-collection",
+        "nike-clearance"
+      ]
+    }
+  ]
 }

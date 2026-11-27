@@ -102,5 +102,115 @@
     "outcome_id",
     "outcome_state"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "status": "completed",
+      "outcome_id": "out_001",
+      "outcome_state": "accepted",
+      "committed_budget": 150000,
+      "plan_summary": {
+        "total_committed": 425000,
+        "budget_remaining": 75000
+      }
+    },
+    {
+      "status": "completed",
+      "outcome_id": "out_002",
+      "outcome_state": "findings",
+      "committed_budget": 150000,
+      "findings": [
+        {
+          "category_id": "outcome_budget_reconciliation",
+          "severity": "warning",
+          "explanation": "Caller reported $120,000; ledger reserved the governance-authorized $150,000. A seller-side purchase execution check is required to narrow the authoritative amount.",
+          "details": {
+            "discrepancies": [
+              {
+                "field": "packages[0].budget",
+                "requested": 150000,
+                "received": 120000
+              },
+              {
+                "field": "packages[0].targeting_overlay.geo.include",
+                "requested": [
+                  "US"
+                ],
+                "received": [
+                  "US",
+                  "CA"
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "plan_summary": {
+        "total_committed": 425000,
+        "budget_remaining": 75000
+      }
+    },
+    {
+      "status": "completed",
+      "outcome_id": "out_del_001",
+      "outcome_state": "accepted",
+      "delivery_reconciliation_status": "consistent",
+      "delivery_period_state": "open"
+    },
+    {
+      "status": "completed",
+      "outcome_id": "out_del_002",
+      "outcome_state": "findings",
+      "delivery_reconciliation_status": "disputed",
+      "delivery_period_state": "open",
+      "findings": [
+        {
+          "category_id": "delivery_evidence_conflict",
+          "severity": "critical",
+          "explanation": "The forwarded seller statement does not match the canonical statement retained by governance.",
+          "details": {
+            "field": "delivery.seller_statement_digest",
+            "expected": "sha256:4b55f1157094ed8df2635250f71568701d294cb0da57845eba886a62e5434633",
+            "actual": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+          }
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "outcome_id": "out_del_004",
+      "outcome_state": "findings",
+      "delivery_reconciliation_status": "measurement_variance",
+      "delivery_period_state": "open",
+      "findings": [
+        {
+          "category_id": "delivery_measurement_variance",
+          "severity": "warning",
+          "explanation": "Buyer-measured delivery differs from the seller statement; the higher amount is used as conservative exposure and as the delivered figure for decommitment bounds.",
+          "details": {
+            "field": "delivery.cumulative_spend",
+            "seller_stated": 12500,
+            "buyer_observed": 12384
+          }
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "outcome_id": "out_del_003",
+      "outcome_state": "findings",
+      "delivery_reconciliation_status": "closed_unresolved",
+      "delivery_period_state": "closed"
+    },
+    {
+      "status": "completed",
+      "outcome_id": "out_003",
+      "outcome_state": "accepted",
+      "committed_budget": 0,
+      "plan_summary": {
+        "total_committed": 275000,
+        "budget_remaining": 225000
+      }
+    }
+  ]
 }

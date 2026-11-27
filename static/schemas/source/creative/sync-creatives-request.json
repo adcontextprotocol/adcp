@@ -466,116 +466,371 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Full sync with hosted video creative",
-      "data": {
-        "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
-        "account": {
-          "account_id": "acct_acmecorp"
-        },
-        "creatives": [
-          {
-            "creative_id": "hero_video_30s",
-            "name": "Brand Hero Video 30s",
-            "format_kind": "video_hosted",
-            "assets": {
-              "video": {
-                "asset_type": "video",
-                "url": "https://cdn.example.com/hero-video.mp4",
-                "width": 1920,
-                "height": 1080,
-                "duration_ms": 30000
-              }
-            },
-            "tags": [
-              "q1_2026",
-              "video"
-            ]
-          }
-        ],
-        "assignments": [
-          {
-            "creative_id": "hero_video_30s",
-            "package_id": "pkg_ctv_001"
+      "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
+      "account": {
+        "account_id": "acct_acmecorp"
+      },
+      "creatives": [
+        {
+          "creative_id": "hero_video_30s",
+          "name": "Brand Hero Video 30s",
+          "format_kind": "video_hosted",
+          "assets": {
+            "video": {
+              "asset_type": "video",
+              "url": "https://cdn.example.com/hero-video.mp4",
+              "width": 1920,
+              "height": 1080,
+              "duration_ms": 30000
+            }
           },
-          {
-            "creative_id": "hero_video_30s",
-            "package_id": "pkg_ctv_002"
-          }
-        ]
-      }
+          "tags": [
+            "q1_2026",
+            "video"
+          ]
+        }
+      ],
+      "assignments": [
+        {
+          "creative_id": "hero_video_30s",
+          "package_id": "pkg_ctv_001"
+        },
+        {
+          "creative_id": "hero_video_30s",
+          "package_id": "pkg_ctv_002"
+        }
+      ]
     },
     {
-      "description": "Generative creative with approval",
-      "data": {
-        "idempotency_key": "5f8b1f3a-1234-4a5b-9cde-1234567890ab",
-        "account": {
-          "account_id": "acct_acmecorp"
+      "idempotency_key": "5f8b1f3a-1234-4a5b-9cde-1234567890ab",
+      "account": {
+        "account_id": "acct_acmecorp"
+      },
+      "creatives": [
+        {
+          "creative_id": "holiday_hero",
+          "name": "Holiday Campaign Hero",
+          "format_kind": "image",
+          "assets": {
+            "product_catalog": {
+              "asset_type": "catalog",
+              "type": "product",
+              "catalog_id": "winter-products"
+            },
+            "generation_prompt": {
+              "asset_type": "text",
+              "content": "Create a warm, festive holiday campaign featuring winter products"
+            }
+          },
+          "tags": [
+            "holiday",
+            "q4_2026"
+          ]
+        }
+      ]
+    },
+    {
+      "idempotency_key": "6a9c2f4b-5678-49ab-8def-fedcba987654",
+      "account": {
+        "account_id": "acct_acmecorp"
+      },
+      "creative_ids": [
+        "hero_video_30s",
+        "banner_300x250"
+      ],
+      "creatives": [
+        {
+          "creative_id": "hero_video_30s",
+          "name": "Brand Hero Video 30s - Updated",
+          "format_kind": "video_hosted",
+          "assets": {
+            "video": {
+              "asset_type": "video",
+              "url": "https://cdn.example.com/updated-hero.mp4",
+              "width": 1920,
+              "height": 1080,
+              "duration_ms": 30000
+            }
+          }
         },
-        "creatives": [
-          {
-            "creative_id": "holiday_hero",
-            "name": "Holiday Campaign Hero",
-            "format_kind": "image",
-            "assets": {
-              "product_catalog": {
-                "asset_type": "catalog",
-                "type": "product",
-                "catalog_id": "winter-products"
+        {
+          "creative_id": "banner_300x250",
+          "name": "Display Banner 300x250 - Updated",
+          "format_kind": "image",
+          "assets": {
+            "image": {
+              "asset_type": "image",
+              "url": "https://cdn.example.com/updated-banner.png",
+              "width": 300,
+              "height": 250
+            }
+          }
+        }
+      ]
+    },
+    {
+      "account": {
+        "account_id": "acct_acme_2026"
+      },
+      "idempotency_key": "ba8fe15a-e451-486c-9cfb-4d0fdde22efa",
+      "creatives": [
+        {
+          "creative_id": "acme_video_001",
+          "revision_id": "acme_video_001_v1",
+          "name": "Holiday Sale 30s",
+          "format_kind": "video_hosted",
+          "assets": {
+            "video": {
+              "asset_type": "video",
+              "url": "https://cdn.acme-example.com/holiday-sale-30s.mp4",
+              "width": 1920,
+              "height": 1080,
+              "duration_ms": 30000
+            }
+          }
+        }
+      ]
+    },
+    {
+      "account": {
+        "account_id": "acct_acme_2026"
+      },
+      "idempotency_key": "ce731bf6-ebaf-4ccc-bfe9-bf1a538848b6",
+      "assignment_operations": [
+        {
+          "operation": "assign",
+          "creative_id": "acme_video_001",
+          "package_id": "pkg_premium_video"
+        }
+      ]
+    },
+    {
+      "account": {
+        "account_id": "acct_acme"
+      },
+      "idempotency_key": "assignment-landing-page-reset-0001",
+      "assignment_operations": [
+        {
+          "operation": "unassign",
+          "creative_id": "hero",
+          "package_id": "pkg_display"
+        },
+        {
+          "operation": "assign",
+          "creative_id": "hero",
+          "package_id": "pkg_display",
+          "weight": 50
+        }
+      ]
+    },
+    {
+      "account": {
+        "account_id": "acct_acme"
+      },
+      "idempotency_key": "assignment-trackers-example-0001",
+      "assignment_operations": [
+        {
+          "operation": "assign",
+          "creative_id": "hero",
+          "package_id": "pkg_display_a",
+          "trackers": [
+            {
+              "event": "impression",
+              "url": "https://measurement.example/imp?mb=mb_a&pkg=pkg_display_a&cb={CACHEBUSTER}"
+            },
+            {
+              "event": "custom",
+              "custom_event_name": "engagement_3s",
+              "url": "https://measurement.example/engagement?mb=mb_a"
+            }
+          ]
+        },
+        {
+          "operation": "assign",
+          "creative_id": "hero",
+          "package_id": "pkg_display_b",
+          "trackers": [
+            {
+              "event": "impression",
+              "url": "https://measurement.example/imp?mb=mb_b&pkg=pkg_display_b&cb={CACHEBUSTER}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "account": {
+        "account_id": "acct_acme"
+      },
+      "idempotency_key": "replace-hero-v2-0001",
+      "assignment_operations": [
+        {
+          "operation": "replace",
+          "creative_id": "hero_v2",
+          "replaces_creative_id": "hero_v1",
+          "package_id": "pkg_display"
+        }
+      ]
+    },
+    {
+      "account": {
+        "account_id": "acct_acme"
+      },
+      "idempotency_key": "juniper-vale-posts-0001",
+      "assignment_operations": [
+        {
+          "operation": "assign",
+          "creative_id": "juniper_awareness_brief",
+          "package_id": "pkg_juniper_vale",
+          "installment_refs": [
+            {
+              "collection_ref": {
+                "publisher_domain": "creatorloop.example",
+                "collection_id": "creatorloop_channel_juniper_vale"
               },
-              "generation_prompt": {
-                "asset_type": "text",
-                "content": "Create a warm, festive holiday campaign featuring winter products"
-              }
-            },
-            "tags": [
-              "holiday",
-              "q4_2026"
-            ]
-          }
-        ]
-      }
+              "installment_id": "juniper_vale_slot_1"
+            }
+          ]
+        },
+        {
+          "operation": "assign",
+          "creative_id": "juniper_offer_brief",
+          "package_id": "pkg_juniper_vale",
+          "installment_refs": [
+            {
+              "collection_ref": {
+                "publisher_domain": "creatorloop.example",
+                "collection_id": "creatorloop_channel_juniper_vale"
+              },
+              "installment_id": "juniper_vale_slot_2"
+            }
+          ]
+        }
+      ]
     },
     {
-      "description": "Scoped update using creative_ids filter",
-      "data": {
-        "idempotency_key": "6a9c2f4b-5678-49ab-8def-fedcba987654",
-        "account": {
-          "account_id": "acct_acmecorp"
-        },
-        "creative_ids": [
-          "hero_video_30s",
-          "banner_300x250"
-        ],
-        "creatives": [
-          {
-            "creative_id": "hero_video_30s",
-            "name": "Brand Hero Video 30s - Updated",
-            "format_kind": "video_hosted",
-            "assets": {
-              "video": {
-                "asset_type": "video",
-                "url": "https://cdn.example.com/updated-hero.mp4",
-                "width": 1920,
-                "height": 1080,
-                "duration_ms": 30000
-              }
+      "adcp_version": "3.1",
+      "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
+      "account": {
+        "account_id": "acct_nova"
+      },
+      "creatives": [
+        {
+          "creative_id": "summer_image_localized",
+          "name": "Summer image — localized",
+          "format_kind": "image",
+          "assets": {
+            "image": {
+              "asset_type": "image",
+              "url": "https://cdn.nova.example/summer-en.jpg",
+              "width": 1080,
+              "height": 1080
+            },
+            "headline": {
+              "asset_type": "text",
+              "content": "Summer starts here",
+              "language": "en-US"
             }
           },
-          {
-            "creative_id": "banner_300x250",
-            "name": "Display Banner 300x250 - Updated",
-            "format_kind": "image",
-            "assets": {
-              "image": {
-                "asset_type": "image",
-                "url": "https://cdn.example.com/updated-banner.png",
-                "width": 300,
-                "height": 250
+          "localization": {
+            "source": {
+              "locale_variant_id": "loc_en_us",
+              "locale": "en-US"
+            },
+            "target_variants": [
+              {
+                "locale_variant_id": "loc_es_mx",
+                "locale": "es-MX",
+                "assets": {
+                  "image": {
+                    "asset_type": "image",
+                    "url": "https://cdn.nova.example/summer-es-mx.jpg",
+                    "width": 1080,
+                    "height": 1080
+                  },
+                  "headline": {
+                    "asset_type": "text",
+                    "content": "El verano empieza aquí",
+                    "language": "es-MX"
+                  }
+                }
               }
+            ],
+            "locale_fallbacks": [
+              {
+                "language_range": "es",
+                "locale_variant_id": "loc_es_mx"
+              }
+            ],
+            "default_locale_variant_id": "loc_en_us",
+            "unmatched_locale_action": "do_not_serve"
+          }
+        }
+      ]
+    },
+    {
+      "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
+      "account": {
+        "account_id": "acct_acmecorp"
+      },
+      "creatives": [
+        {
+          "creative_id": "bv_card01_a",
+          "name": "Summer card - studio take",
+          "format_kind": "image",
+          "assets": {
+            "headline_0_text": {
+              "asset_type": "text",
+              "content": "Summer Sale - 50% Off"
+            },
+            "image_0_url": {
+              "asset_type": "image",
+              "url": "https://cdn.example.com/beach-hero.jpg",
+              "width": 300,
+              "height": 250
             }
           }
-        ]
-      }
+        }
+      ]
+    },
+    {
+      "account": {
+        "account_id": "acct_acme_2026"
+      },
+      "idempotency_key": "7d4f2a90-3c1e-4b8a-9f62-0e5d8c1b7a34",
+      "assignment_operations": [
+        {
+          "operation": "merge",
+          "creative_id": "acme_video_001",
+          "package_id": "pkg_premium_video",
+          "merged_creative_id": "slr_88412"
+        }
+      ]
+    },
+    {
+      "idempotency_key": "d2e3f4a5-b6c7-4890-d123-890123456789",
+      "account": {
+        "brand": {
+          "domain": "acmeoutdoor.com"
+        },
+        "operator": "pinnacle-agency.com"
+      },
+      "creatives": [
+        {
+          "creative_id": "acme_summer_ctv_30s",
+          "name": "Acme Summer CTV 30s",
+          "format_kind": "video_hosted",
+          "assets": {
+            "video": {
+              "asset_type": "video",
+              "url": "https://cdn.pinnacle.com/acme_summer_30s.mp4",
+              "width": 1920,
+              "height": 1080,
+              "duration_ms": 30000
+            }
+          }
+        }
+      ]
     }
   ]
 }

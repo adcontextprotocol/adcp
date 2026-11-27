@@ -70,5 +70,30 @@
       ]
     }
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "idempotency_key": "eb81b10c-9cec-4b9a-a7bd-4d199ce28a9b",
+      "session_id": "sess_abc123",
+      "message": "Do you have any earlier flights?"
+    },
+    {
+      "idempotency_key": "6c6e031a-65b0-4528-94a8-6d1188b852f0",
+      "session_id": "sess_abc123",
+      "action_response": {
+        "action": "select_flight",
+        "payload": {
+          "flight_number": "DL628",
+          "departure_time": "05:30"
+        }
+      }
+    },
+    {
+      "idempotency_key": "76eed0d6-1fb3-44e1-b5a1-46e75dab1f7c",
+      "session_id": "sess_abc123",
+      "action_response": {
+        "action": "checkout"
+      }
+    }
+  ]
 }

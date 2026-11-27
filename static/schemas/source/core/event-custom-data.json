@@ -91,5 +91,31 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "value": 149.99,
+      "currency": "USD",
+      "order_id": "order_98765",
+      "content_ids": [
+        "SKU-1234",
+        "SKU-5678"
+      ],
+      "num_items": 3,
+      "contents": [
+        {
+          "id": "SKU-1234",
+          "quantity": 2,
+          "price": 49.99,
+          "brand": "Acme"
+        },
+        {
+          "id": "SKU-5678",
+          "quantity": 1,
+          "price": 50.01,
+          "brand": "Nova"
+        }
+      ]
+    }
+  ]
 }

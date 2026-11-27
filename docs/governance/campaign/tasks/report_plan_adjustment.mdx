@@ -79,12 +79,18 @@ For actions cancelled before any delivery occurs, the seller first submits a [`c
 
 ## Verified accounting
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/governance/report-plan-adjustment-response.json",
+  "status": "completed",
   "adjustment_id": "adj_5d92a018",
   "adjustment_state": "verified",
   "adjustment_type": "decommitment",
-  "amount": { "amount": 40000, "currency": "USD" },
+  "amount": {
+    "amount": 40000,
+    "currency": "USD"
+  },
   "headroom_restored": 40000,
   "plan_summary": {
     "accounting_mode": "gross_commitment",

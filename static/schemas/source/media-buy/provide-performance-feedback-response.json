@@ -128,5 +128,15 @@
       }
     }
   ],
-  "properties": {}
+  "properties": {},
+  "examples": [
+    {
+      "status": "completed",
+      "success": true,
+      "feedback_id": "fb_01J5Y5KQ2T8B2M8P0A4E6R3C9D",
+      "application_status": "applied",
+      "received_at": "2026-08-04T12:00:02Z",
+      "applied_at": "2026-08-04T12:00:02Z"
+    }
+  ]
 }

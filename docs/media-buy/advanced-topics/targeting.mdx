@@ -151,6 +151,7 @@ Support is product-scoped because one seller may route products through differen
 
 Whole-hour `start_hour` and `end_hour` cannot express a schedule such as "19:30–23:00, Monday to Friday, local time", or a break that sits at a programme junction like 20:28. A `daypart_targets` entry can instead carry `start_time` and `end_time` as 24-hour `HH:MM` strings. An entry uses exactly one form: `start_hour` with `end_hour`, or `start_time` with `end_time`. Mixing them, or sending half of a pair, is `INVALID_REQUEST`.
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "/schemas/core/targeting.json",
@@ -172,6 +173,7 @@ Whole-hour `start_hour` and `end_hour` cannot express a schedule such as "19:30�
 
 An `end_time` earlier than `start_time` means the window crosses midnight and ends at `end_time` on the next civil day. The window belongs to the day it **starts** on: `days` lists start days, so Friday 22:00 to 02:00 runs into Saturday morning and is requested with `friday`.
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "/schemas/core/targeting.json",
@@ -193,6 +195,7 @@ This delivers Friday 22:00 to Saturday 02:00 and Saturday 22:00 to Sunday 02:00,
 
 Sellers differ in how finely their scheduling systems place spots, so support is product-scoped and declared in the structured form of `overlay_support.daypart_targets`:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "/schemas/core/targeting-overlay-support.json",
@@ -215,6 +218,7 @@ A seller MUST NOT round a requested time to a coarser boundary. When an entry's 
 
 A buyer that will schedule dayparts after discovery requires a minimum granularity through `required_overlay_support.daypart_targets.time_granularity`. Unlike timezone modes, granularity is ordered rather than a subset test: a `minute` product satisfies a `quarter_hour` requirement, and an `hour` product does not. A requirement object may carry `time_granularity` alone.
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "/schemas/core/targeting-overlay-requirements.json",
@@ -298,12 +302,20 @@ known identity outside this minimum vocabulary, MUST NOT be reclassified as
 unknown. Sellers MUST reject an unsupported value or incompatible unknown
 policy before mutation; they MUST NOT drop non-binary from a request.
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "/schemas/core/targeting.json",
   "demographics": {
-    "age": { "min": 18, "max": 55, "include_unknown": false },
-    "gender": { "values": ["female", "non_binary"], "include_unknown": true }
+    "age": {
+      "min": 18,
+      "max": 55,
+      "include_unknown": false
+    },
+    "gender": {
+      "values": ["female", "non_binary"],
+      "include_unknown": true
+    }
   }
 }
 ```
@@ -317,6 +329,7 @@ Core support is negotiated through
 only a seller-wide discovery hint. Each selected Product MUST declare its
 supported subset, execution modes, and unknown policy:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "/schemas/core/demographic-targeting-capability.json",
@@ -362,34 +375,66 @@ AdCP 3.3 limitation: `demographic-reporting-capability.json` and canonical `by_d
 
 Gender-only native readback uses `execution.type: "gender_values"`:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "/schemas/core/demographic-targeting-resolution.json",
-  "requested": { "gender": { "values": ["non_binary"], "include_unknown": false } },
-  "applied": { "gender": { "values": ["non_binary"], "include_unknown": false } },
+  "requested": {
+    "gender": {
+      "values": ["non_binary"],
+      "include_unknown": false
+    }
+  },
+  "applied": {
+    "gender": {
+      "values": ["non_binary"],
+      "include_unknown": false
+    }
+  },
   "equivalent": true,
-  "execution": { "type": "gender_values" }
+  "execution": {
+    "type": "gender_values"
+  }
 }
 ```
 
 Mixed execution uses `per_dimension` with both age and gender mechanisms:
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "/schemas/core/demographic-targeting-resolution.json",
   "requested": {
-    "age": { "min": 18, "max": 55, "include_unknown": false },
-    "gender": { "values": ["female", "non_binary"], "include_unknown": true }
+    "age": {
+      "min": 18,
+      "max": 55,
+      "include_unknown": false
+    },
+    "gender": {
+      "values": ["female", "non_binary"],
+      "include_unknown": true
+    }
   },
   "applied": {
-    "age": { "min": 18, "max": 55, "include_unknown": false },
-    "gender": { "values": ["non_binary", "female"], "include_unknown": true }
+    "age": {
+      "min": 18,
+      "max": 55,
+      "include_unknown": false
+    },
+    "gender": {
+      "values": ["non_binary", "female"],
+      "include_unknown": true
+    }
   },
   "equivalent": true,
   "execution": {
     "type": "per_dimension",
-    "age": { "type": "continuous_bounds" },
-    "gender": { "type": "gender_values" }
+    "age": {
+      "type": "continuous_bounds"
+    },
+    "gender": {
+      "type": "gender_values"
+    }
   }
 }
 ```
@@ -532,15 +577,23 @@ A signal's `demographic_predicate.age` says which ages it covers, not how those 
 
 **Matching.** A signal listing (an `included_signals` entry, a `signal_targeting_options` entry, or a `get_signals` result) satisfies a requested age predicate that carries `accepted_bases` only when both hold: its `demographic_predicate.age` is within the requested range, and every value in its `age_determination_bases` is in the request's `accepted_bases`. This is a condition on each signal, not on the union: `supported_bases` is an any-of set of ways a product can resolve an impression, while a signal's bases describe every member, so a mixed `["verified", "inferred"]` signal fails a buyer that accepts only `verified`. Coverage of the requested interval still follows the exact-union rule above: the signals together must cover the request with no gap and no extra age, and each one must pass the basis test. The accepted set is the effective one after `age_restriction` narrowing, so a signal declaring only `declared` fails when `verification_required` is true. When the request has no `accepted_bases` and no `verification_required`, the basis does not affect matching. `age_determination_bases` is disclosure on the signal; it does not change how `supported_bases` or `applied_bases` are computed.
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/signal-listing.json",
-  "signal_ref": { "scope": "product", "signal_id": "verified_adults_25_34" },
+  "signal_ref": {
+    "scope": "product",
+    "signal_id": "verified_adults_25_34"
+  },
   "name": "Verified adults 25–34",
   "value_type": "binary",
   "restricted_attributes": ["age"],
   "demographic_predicate": {
-    "age": { "min": 25, "max": 34, "include_unknown": false }
+    "age": {
+      "min": 25,
+      "max": 34,
+      "include_unknown": false
+    }
   },
   "age_determination_bases": ["verified"]
 }
@@ -714,6 +767,7 @@ Technical specifications included in product format:
 
 When publishers return products, they include targeting information buyers need:
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "/schemas/media-buy/get-products-response.json",
@@ -737,7 +791,10 @@ When publishers return products, they include targeting information buyers need:
         {
           "format_option_id": "display_300x250_image",
           "format_kind": "image",
-          "params": { "width": 300, "height": 250 }
+          "params": {
+            "width": 300,
+            "height": 250
+          }
         }
       ],
       "pricing_options": [
@@ -745,7 +802,7 @@ When publishers return products, they include targeting information buyers need:
           "pricing_option_id": "premium_mobile_cpm",
           "pricing_model": "cpm",
           "currency": "USD",
-          "fixed_price": 8.50
+          "fixed_price": 8.5
         }
       ],
       "forecast": {
@@ -756,8 +813,12 @@ When publishers return products, they include targeting information buyers need:
         "points": [
           {
             "metrics": {
-              "audience_size": { "mid": 2500000 },
-              "impressions": { "mid": 12000000 }
+              "audience_size": {
+                "mid": 2500000
+              },
+              "impressions": {
+                "mid": 12000000
+              }
             }
           }
         ]
@@ -888,6 +949,7 @@ Use for **legal compliance** requirements:
 - **Gambling/Gaming**: Require verified 18+ or 21+ depending on jurisdiction
 - **Cannabis**: Require verified age per local regulations
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
   "$schema": "/schemas/core/targeting.json",
@@ -913,6 +975,7 @@ Use for **technical requirements**:
 - **App install campaigns**: iOS-only app requires `device_platform: ["ios"]`
 - **CTV campaigns**: Target specific TV operating systems
 
+{/* schema-example: #/examples/4 */}
 ```json
 {
   "$schema": "/schemas/core/targeting.json",
@@ -944,6 +1007,7 @@ Use for **performance optimization** targeting by hardware category rather than 
 - **CTV campaigns**: Target connected TVs across all platforms
 - **Exclude form factors**: Skip CTV for app-install campaigns
 
+{/* schema-example: #/examples/5 */}
 ```json
 {
   "$schema": "/schemas/core/targeting.json",
@@ -953,6 +1017,7 @@ Use for **performance optimization** targeting by hardware category rather than 
 
 **Exclusion** — use `device_type_exclude` to exclude specific form factors:
 
+{/* schema-example: #/examples/6 */}
 ```json
 {
   "$schema": "/schemas/core/targeting.json",
@@ -970,6 +1035,7 @@ Use for **localization requirements**:
 - Creative is in a specific language
 - Campaign targets specific language speakers
 
+{/* schema-example: #/examples/7 */}
 ```json
 {
   "$schema": "/schemas/core/targeting.json",
@@ -987,23 +1053,31 @@ Use for **localization requirements**:
 Two frequency controls can be used independently or together:
 
 **Cooldown between exposures** — `suppress` prevents back-to-back delivery:
+{/* schema-example: #/examples/8 */}
 ```json
 {
   "$schema": "/schemas/core/targeting.json",
   "frequency_cap": {
-    "suppress": { "interval": 60, "unit": "minutes" }
+    "suppress": {
+      "interval": 60,
+      "unit": "minutes"
+    }
   }
 }
 ```
 
 **Impression cap per entity per window** — `max_impressions` + `per` + `window` limits total exposure:
+{/* schema-example: #/examples/9 */}
 ```json
 {
   "$schema": "/schemas/core/targeting.json",
   "frequency_cap": {
     "max_impressions": 5,
     "per": "households",
-    "window": { "interval": 7, "unit": "days" }
+    "window": {
+      "interval": 7,
+      "unit": "days"
+    }
   }
 }
 ```
@@ -1462,13 +1536,26 @@ A buyer selecting both ranges pays one 1.00 EUR CPM data fee. Rules:
 - **Use cases**: Search campaigns, retail media sponsored products, keyword-based intent targeting
 - **Note**: Seller must declare `execution.targeting.keyword_targets` in `get_adcp_capabilities` with the `supported_match_types` it accepts. Only use match types the seller declares — sellers must reject unsupported match types. Use `keyword_targets_add` and `keyword_targets_remove` in `update_media_buy` to add or update keywords incrementally after launch. Keyword-level delivery data (`by_keyword` in reporting) requires `reporting_capabilities.supports_keyword_breakdown: true` on the product — these are independent capabilities. `by_keyword` is keyword-grain (one row per keyword+match_type pair), not search-term-grain.
 
+{/* schema-example: #/examples/10 */}
 ```json
 {
   "$schema": "/schemas/core/targeting.json",
   "keyword_targets": [
-    { "keyword": "running shoes", "match_type": "broad", "bid_price": 0.45 },
-    { "keyword": "trail running shoes womens", "match_type": "phrase", "bid_price": 0.85 },
-    { "keyword": "acme cloudrunner 5", "match_type": "exact", "bid_price": 1.20 }
+    {
+      "keyword": "running shoes",
+      "match_type": "broad",
+      "bid_price": 0.45
+    },
+    {
+      "keyword": "trail running shoes womens",
+      "match_type": "phrase",
+      "bid_price": 0.85
+    },
+    {
+      "keyword": "acme cloudrunner 5",
+      "match_type": "exact",
+      "bid_price": 1.2
+    }
   ]
 }
 ```
@@ -1479,12 +1566,19 @@ A buyer selecting both ranges pays one 1.00 EUR CPM data fee. Rules:
 - **Use cases**: Prevent wasteful spend on irrelevant queries, exclude competitor brand terms
 - **Note**: Seller must declare `execution.targeting.negative_keywords` in `get_adcp_capabilities` with the `supported_match_types` it accepts. Use `negative_keywords_add` and `negative_keywords_remove` in `update_media_buy` to add/remove negatives incrementally after launch.
 
+{/* schema-example: #/examples/11 */}
 ```json
 {
   "$schema": "/schemas/core/targeting.json",
   "negative_keywords": [
-    { "keyword": "free", "match_type": "broad" },
-    { "keyword": "used running shoes", "match_type": "phrase" }
+    {
+      "keyword": "free",
+      "match_type": "broad"
+    },
+    {
+      "keyword": "used running shoes",
+      "match_type": "phrase"
+    }
   ]
 }
 ```
@@ -1581,6 +1675,7 @@ Sellers SHOULD enforce minimum area thresholds consistent with their privacy pol
 
 Validated examples:
 
+{/* schema-example: #/examples/12 */}
 ```json
 {
   "$schema": "/schemas/core/targeting.json",
@@ -1589,27 +1684,35 @@ Validated examples:
       "lat": 51.2277,
       "lng": 6.7735,
       "label": "Düsseldorf",
-      "travel_time": { "value": 2, "unit": "hr" },
+      "travel_time": {
+        "value": 2,
+        "unit": "hr"
+      },
       "transport_mode": "driving"
     }
   ]
 }
 ```
 
+{/* schema-example: #/examples/13 */}
 ```json
 {
   "$schema": "/schemas/core/targeting.json",
   "geo_proximity": [
     {
-      "lat": 51.4700,
+      "lat": 51.47,
       "lng": -0.4543,
       "label": "Heathrow Airport",
-      "radius": { "value": 30, "unit": "km" }
+      "radius": {
+        "value": 30,
+        "unit": "km"
+      }
     }
   ]
 }
 ```
 
+{/* schema-example: #/examples/14 */}
 ```json
 {
   "$schema": "/schemas/core/targeting.json",
@@ -1618,7 +1721,15 @@ Validated examples:
       "label": "2hr drive from Düsseldorf",
       "geometry": {
         "type": "Polygon",
-        "coordinates": [[[5.87, 50.35], [8.23, 50.35], [8.23, 52.10], [5.87, 52.10], [5.87, 50.35]]]
+        "coordinates": [
+          [
+            [5.87, 50.35],
+            [8.23, 50.35],
+            [8.23, 52.1],
+            [5.87, 52.1],
+            [5.87, 50.35]
+          ]
+        ]
       }
     }
   ]

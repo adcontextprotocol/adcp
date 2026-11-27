@@ -73,8 +73,11 @@ When `session_status` is `pending_handoff`:
 
 **Request:**
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/sponsored-intelligence/si-send-message-request.json",
+  "idempotency_key": "eb81b10c-9cec-4b9a-a7bd-4d199ce28a9b",
   "session_id": "sess_abc123",
   "message": "Do you have any earlier flights?"
 }
@@ -82,8 +85,11 @@ When `session_status` is `pending_handoff`:
 
 **Response:**
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/sponsored-intelligence/si-send-message-response.json",
+  "status": "completed",
   "session_id": "sess_abc123",
   "response": {
     "message": "Yes! There's DL628 departing at 5:30 AM. It's a bit earlier but also qualifies for the Premium Economy upgrade.",
@@ -117,8 +123,11 @@ When `session_status` is `pending_handoff`:
 
 **Request:**
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/sponsored-intelligence/si-send-message-request.json",
+  "idempotency_key": "6c6e031a-65b0-4528-94a8-6d1188b852f0",
   "session_id": "sess_abc123",
   "action_response": {
     "action": "select_flight",
@@ -132,8 +141,11 @@ When `session_status` is `pending_handoff`:
 
 **Response:**
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/sponsored-intelligence/si-send-message-response.json",
+  "status": "completed",
   "session_id": "sess_abc123",
   "response": {
     "message": "Great choice! DL628 is confirmed with your Premium Economy upgrade. Ready to book?",
@@ -145,7 +157,10 @@ When `session_status` is `pending_handoff`:
           "subtitle": "Tue Jan 27, 5:30 AM → 8:57 AM",
           "price": "$199",
           "badge": "Premium Economy",
-          "cta": { "label": "Book Now", "action": "checkout" }
+          "cta": {
+            "label": "Book Now",
+            "action": "checkout"
+          }
         }
       }
     ]
@@ -160,8 +175,11 @@ When the user is ready to purchase:
 
 **Request:**
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/sponsored-intelligence/si-send-message-request.json",
+  "idempotency_key": "76eed0d6-1fb3-44e1-b5a1-46e75dab1f7c",
   "session_id": "sess_abc123",
   "action_response": {
     "action": "checkout"
@@ -171,8 +189,11 @@ When the user is ready to purchase:
 
 **Response:**
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/sponsored-intelligence/si-send-message-response.json",
+  "status": "completed",
   "session_id": "sess_abc123",
   "response": {
     "message": "Perfect! I'll hand you back to complete the booking."

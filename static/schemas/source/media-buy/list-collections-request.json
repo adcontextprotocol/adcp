@@ -119,29 +119,49 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Key lookup to refresh two cards, passing product selectors through unchanged",
-      "data": {
-        "adcp_version": "3.3",
-        "collections": [
-          { "publisher_domain": "novacreators.example", "collection_ids": ["kitchen_lab"] },
-          { "publisher_domain": "pinnaclepods.example", "collection_ids": ["founders_hour"] }
-        ]
-      }
+      "adcp_version": "3.3",
+      "collections": [
+        { "publisher_domain": "novacreators.example", "collection_ids": ["kitchen_lab"] },
+        { "publisher_domain": "pinnaclepods.example", "collection_ids": ["founders_hour"] }
+      ]
     },
     {
-      "description": "Browse active English series featuring one creator on one platform",
-      "data": {
-        "adcp_version": "3.3",
-        "account": { "account_id": "acct_nova_agency" },
-        "filters": {
-          "kinds": ["series"],
-          "statuses": ["active"],
-          "languages": ["en"],
-          "talent": [{ "domain": "jordanvega.example" }],
-          "platforms": ["videoplatform.example"]
-        },
-        "pagination": { "max_results": 50 }
-      }
+      "adcp_version": "3.3",
+      "account": { "account_id": "acct_nova_agency" },
+      "filters": {
+        "kinds": ["series"],
+        "statuses": ["active"],
+        "languages": ["en"],
+        "talent": [{ "domain": "jordanvega.example" }],
+        "platforms": ["videoplatform.example"]
+      },
+      "pagination": { "max_results": 50 }
+    },
+    {
+      "adcp_version": "3.3",
+      "account": {
+        "account_id": "acct_nova_agency"
+      },
+      "filters": {
+        "kinds": [
+          "series"
+        ],
+        "statuses": [
+          "active"
+        ],
+        "languages": [
+          "en"
+        ],
+        "talent": [
+          {
+            "domain": "jordanvega.example"
+          }
+        ],
+        "platforms": [
+          "videoplatform.example"
+        ]
+      },
+      "if_collections_version": "cc_2026_10_16_r88"
     }
   ]
 }

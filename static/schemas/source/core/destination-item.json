@@ -99,36 +99,34 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "European city break",
-      "data": {
-        "destination_id": "barcelona",
-        "name": "Barcelona",
-        "description": "Mediterranean city blending Gaudí architecture, beaches, and world-class dining.",
-        "city": "Barcelona",
-        "region": "Catalonia",
-        "country": "ES",
-        "location": { "lat": 41.3874, "lng": 2.1686 },
-        "destination_type": "urban",
-        "price": { "amount": 399, "currency": "EUR" },
-        "image_url": "https://images.acmetravel.com/barcelona/hero.jpg",
-        "url": "https://acmetravel.com/destinations/barcelona",
-        "rating": 4.7,
-        "tags": ["city-break", "beach", "culture"]
-      }
+      "destination_id": "barcelona",
+      "name": "Barcelona",
+      "description": "Mediterranean city blending Gaudí architecture, beaches, and world-class dining.",
+      "city": "Barcelona",
+      "region": "Catalonia",
+      "country": "ES",
+      "location": { "lat": 41.3874, "lng": 2.1686 },
+      "destination_type": "urban",
+      "price": { "amount": 399, "currency": "EUR" },
+      "image_url": "https://images.acmetravel.com/barcelona/hero.jpg",
+      "url": "https://acmetravel.com/destinations/barcelona",
+      "rating": 4.7,
+      "tags": ["city-break", "beach", "culture"]
     },
     {
-      "description": "Adventure destination",
-      "data": {
-        "destination_id": "swiss-alps-interlaken",
-        "name": "Swiss Alps — Interlaken",
-        "description": "Gateway to the Jungfrau region with paragliding, hiking, and glacier views.",
-        "country": "CH",
-        "location": { "lat": 46.6863, "lng": 7.8632 },
-        "destination_type": "adventure",
-        "price": { "amount": 799, "currency": "CHF" },
-        "url": "https://acmetravel.com/destinations/interlaken",
-        "tags": ["adventure", "mountains", "winter-sports"]
-      }
+      "destination_id": "swiss-alps-interlaken",
+      "name": "Swiss Alps — Interlaken",
+      "description": "Gateway to the Jungfrau region with paragliding, hiking, and glacier views.",
+      "country": "CH",
+      "location": { "lat": 46.6863, "lng": 7.8632 },
+      "destination_type": "adventure",
+      "price": { "amount": 799, "currency": "CHF" },
+      "url": "https://acmetravel.com/destinations/interlaken",
+      "tags": ["adventure", "mountains", "winter-sports"]
+    },
+    {
+      "destination_id": "barcelona",
+      "name": "Barcelona"
     }
   ]
 }

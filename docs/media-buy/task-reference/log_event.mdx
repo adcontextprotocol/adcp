@@ -179,8 +179,11 @@ At least one of `uids`, `hashed_email`, `hashed_phone`, `click_id`, or `client_i
 
 Log creator or content engagement events against the configured owned-property source. Use `surface` to identify the property and put watch thresholds in `custom_data.progress_percent` or `custom_data.progress_seconds`.
 
+{/* schema-example: #/examples/1 */}
 ```json test=false
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/media-buy/log-event-request.json",
+  "idempotency_key": "6d549d4b-fce9-41a1-b341-aca2924203fa",
   "event_source_id": "creator_channel",
   "events": [
     {
@@ -195,7 +198,12 @@ Log creator or content engagement events against the configured owned-property s
         "property_id": "channel_123"
       },
       "user_match": {
-        "uids": [{ "type": "uid2", "value": "CreatorViewer456" }]
+        "uids": [
+          {
+            "type": "uid2",
+            "value": "CreatorViewer456"
+          }
+        ]
       },
       "custom_data": {
         "content_ids": ["episode_001"],

@@ -141,39 +141,41 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Luxury city hotel",
-      "data": {
-        "hotel_id": "grand-amsterdam",
-        "name": "Grand Hotel Amsterdam",
-        "description": "Five-star canal-side hotel in the heart of Amsterdam with rooftop bar and spa.",
-        "location": { "lat": 52.3676, "lng": 4.9041 },
-        "address": {
-          "street": "Herengracht 100",
-          "city": "Amsterdam",
-          "region": "NL-NH",
-          "postal_code": "1015 BS",
-          "country": "NL"
-        },
-        "star_rating": 5,
-        "price": { "amount": 289, "currency": "EUR", "period": "night" },
-        "image_url": "https://images.acmehotels.com/grand-amsterdam/hero.jpg",
-        "url": "https://acmehotels.com/amsterdam/grand",
-        "amenities": ["spa", "pool", "restaurant", "wifi", "parking"],
-        "check_in_time": "15:00",
-        "check_out_time": "11:00",
-        "tags": ["luxury", "city-center", "business"]
-      }
+      "hotel_id": "grand-amsterdam",
+      "name": "Grand Hotel Amsterdam",
+      "description": "Five-star canal-side hotel in the heart of Amsterdam with rooftop bar and spa.",
+      "location": { "lat": 52.3676, "lng": 4.9041 },
+      "address": {
+        "street": "Herengracht 100",
+        "city": "Amsterdam",
+        "region": "NL-NH",
+        "postal_code": "1015 BS",
+        "country": "NL"
+      },
+      "star_rating": 5,
+      "price": { "amount": 289, "currency": "EUR", "period": "night" },
+      "image_url": "https://images.acmehotels.com/grand-amsterdam/hero.jpg",
+      "url": "https://acmehotels.com/amsterdam/grand",
+      "amenities": ["spa", "pool", "restaurant", "wifi", "parking"],
+      "check_in_time": "15:00",
+      "check_out_time": "11:00",
+      "tags": ["luxury", "city-center", "business"]
     },
     {
-      "description": "Budget seaside property",
-      "data": {
-        "hotel_id": "beach-hostel-bcn",
-        "name": "Barcelona Beach Hostel",
-        "location": { "lat": 41.3784, "lng": 2.1925 },
-        "star_rating": 2,
-        "price": { "amount": 45, "currency": "EUR", "period": "night" },
-        "url": "https://acmehostels.com/barcelona/beach",
-        "tags": ["budget", "beach"]
+      "hotel_id": "beach-hostel-bcn",
+      "name": "Barcelona Beach Hostel",
+      "location": { "lat": 41.3784, "lng": 2.1925 },
+      "star_rating": 2,
+      "price": { "amount": 45, "currency": "EUR", "period": "night" },
+      "url": "https://acmehostels.com/barcelona/beach",
+      "tags": ["budget", "beach"]
+    },
+    {
+      "hotel_id": "grand-amsterdam",
+      "name": "Grand Hotel Amsterdam",
+      "location": {
+        "lat": 52.3676,
+        "lng": 4.9041
       }
     }
   ]

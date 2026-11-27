@@ -148,5 +148,193 @@
       }
     }
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "format_kind": "video_hosted",
+      "assets": {
+        "video_brief": {
+          "asset_type": "video_brief",
+          "segments": [
+            {
+              "order": 1,
+              "duration_ms": 6000,
+              "prompt": "Show Acme's trail boot crossing a mountain stream."
+            }
+          ]
+        }
+      }
+    },
+    {
+      "format_kind": "audio_hosted",
+      "assets": {
+        "audio_main": {
+          "asset_type": "audio",
+          "url": "https://cdn.acmeoutdoor.example/trail-pro-30s.mp3",
+          "duration_ms": 30000,
+          "container_format": "mp3",
+          "bitrate_kbps": 192,
+          "loudness_lufs": -16,
+          "true_peak_dbfs": -2
+        }
+      }
+    },
+    {
+      "format_kind": "audio_vast",
+      "format_option_ref": {
+        "scope": "product",
+        "format_option_id": "streaming_audio_vast_30s"
+      },
+      "assets": {
+        "vast_tag": {
+          "asset_type": "vast",
+          "delivery_type": "url",
+          "url": "https://ads.acmeaudio.example/vast/audio-30s",
+          "vast_version": "4.3"
+        }
+      }
+    },
+    {
+      "format_kind": "video_hosted",
+      "format_option_ref": {
+        "scope": "product",
+        "format_option_id": "broadcast_tv_30s"
+      },
+      "industry_identifiers": [
+        {
+          "type": "ad_id",
+          "value": "NOVA1234001H"
+        }
+      ],
+      "assets": {
+        "video_main": {
+          "asset_type": "video",
+          "url": "https://cdn.novabrands.example/tv/summer-30.mxf",
+          "duration_ms": 30000,
+          "width": 1920,
+          "height": 1080,
+          "container_format": "mxf",
+          "video_codec": "mpeg2",
+          "frame_rate": "29.97",
+          "audio_codec": "pcm"
+        }
+      }
+    },
+    {
+      "format_kind": "html5",
+      "assets": {
+        "html5_bundle": {
+          "asset_type": "zip",
+          "url": "https://cdn.acme.example/creatives/spring-300x250.zip",
+          "width": 300,
+          "height": 250
+        }
+      }
+    },
+    {
+      "format_kind": "audio_hosted",
+      "format_option_ref": {
+        "scope": "product",
+        "format_option_id": "broadcast_radio_30s"
+      },
+      "industry_identifiers": [
+        {
+          "type": "isci",
+          "value": "NOVA123430"
+        }
+      ],
+      "assets": {
+        "audio_main": {
+          "asset_type": "audio",
+          "url": "https://cdn.novamotors.example/radio/summer-30.wav",
+          "duration_ms": 30000,
+          "container_format": "wav",
+          "codec": "pcm",
+          "sampling_rate_hz": 48000,
+          "channels": "stereo",
+          "bitrate_kbps": 1536,
+          "loudness_lufs": -16,
+          "true_peak_dbfs": -2
+        }
+      }
+    },
+    {
+      "format_kind": "image",
+      "provenance": {
+        "digital_source_type": "composite_with_trained_algorithmic_media",
+        "declared_by": {
+          "role": "agency"
+        }
+      },
+      "assets": {
+        "banner_image": {
+          "asset_type": "image",
+          "url": "https://cdn.novabrands.example.com/hero_ai.jpg",
+          "width": 300,
+          "height": 250,
+          "provenance": {
+            "digital_source_type": "trained_algorithmic_media",
+            "ai_tool": {
+              "name": "DALL-E 3",
+              "version": "3.0",
+              "provider": "OpenAI"
+            },
+            "human_oversight": "selected",
+            "declared_by": {
+              "role": "agency"
+            },
+            "c2pa": {
+              "manifest_url": "https://cdn.novabrands.example.com/c2pa/hero_ai.c2pa"
+            }
+          }
+        },
+        "headline": {
+          "asset_type": "text",
+          "content": "Nutrition dogs love"
+        },
+        "clickthrough_url": {
+          "asset_type": "url",
+          "url": "https://novabrands.example.com/products?campaign={MEDIA_BUY_ID}"
+        }
+      }
+    },
+    {
+      "format_kind": "display_tag",
+      "format_option_ref": {
+        "scope": "product",
+        "format_option_id": "acme_internal_redirect_300x250"
+      },
+      "representation_selection": {
+        "creative_id": "cr_launch_mrec",
+        "revision_id": "rev_2026_08_22_1",
+        "revision_content_digest": "sha256:13358fdf61931ccab0567451eb1a5968786a50d31cee8c384e332b39c3d444d4",
+        "selected_representation_id": "source-paired",
+        "strategy": "representation_order",
+        "selected_output_digest": "sha256:02735eb8341dc1c2c25b63d20a0a675577407f7500084a67a6ad71ac1bd0e4c3",
+        "resolved_by": "seller"
+      },
+      "assets": {
+        "serving_tag": {
+          "asset_type": "display_tag",
+          "delivery_type": "paired_redirect",
+          "ad_request_url": "https://ads.acme-example.com/ad?slot=42",
+          "clickthrough_url": "https://click.acme-example.com/redirect"
+        }
+      }
+    },
+    {
+      "format_kind": "sponsored_placement",
+      "format_option_ref": {
+        "scope": "product",
+        "format_option_id": "product_carousel"
+      },
+      "assets": {
+        "source_catalog": {
+          "asset_type": "catalog",
+          "type": "product",
+          "catalog_id": "winter-products"
+        }
+      }
+    }
+  ]
 }

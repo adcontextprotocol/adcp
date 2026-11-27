@@ -93,21 +93,18 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Seller enabled sandbox support",
-      "data": {
-        "idempotency_key": "whk_01J1T3K6YZR7V5P9Q2M4N6B8CD",
-        "notification_id": "capchg_20260702_0001",
-        "notification_type": "capabilities.changed",
-        "fired_at": "2026-07-02T09:15:30Z",
-        "subscriber_id": "registry-cache",
-        "agent_url": "https://seller.example/adcp",
-        "changed_at": "2026-07-02T09:14:55Z",
-        "reason": "capability_enabled",
-        "capabilities_version": "rev_20260702_091455",
-        "changed_paths": [
-          "/account/sandbox"
-        ]
-      }
+      "idempotency_key": "whk_01J1T3K6YZR7V5P9Q2M4N6B8CD",
+      "notification_id": "capchg_20260702_0001",
+      "notification_type": "capabilities.changed",
+      "fired_at": "2026-07-02T09:15:30Z",
+      "subscriber_id": "registry-cache",
+      "agent_url": "https://seller.example/adcp",
+      "changed_at": "2026-07-02T09:14:55Z",
+      "reason": "capability_enabled",
+      "capabilities_version": "rev_20260702_091455",
+      "changed_paths": [
+        "/account/sandbox"
+      ]
     }
   ]
 }

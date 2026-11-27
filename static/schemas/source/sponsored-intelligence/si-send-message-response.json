@@ -128,5 +128,92 @@
     "session_id",
     "session_status"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "status": "completed",
+      "session_id": "sess_abc123",
+      "response": {
+        "message": "Yes! There's DL628 departing at 5:30 AM. It's a bit earlier but also qualifies for the Premium Economy upgrade.",
+        "ui_elements": [
+          {
+            "type": "carousel",
+            "data": {
+              "items": [
+                {
+                  "title": "DL628 - 5:30 AM",
+                  "subtitle": "Arrives 8:57 AM",
+                  "price": "$199",
+                  "badge": "Free Upgrade"
+                },
+                {
+                  "title": "DL632 - 6:15 AM",
+                  "subtitle": "Arrives 9:42 AM",
+                  "price": "$199",
+                  "badge": "Free Upgrade"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "session_status": "active"
+    },
+    {
+      "status": "completed",
+      "session_id": "sess_abc123",
+      "response": {
+        "message": "Great choice! DL628 is confirmed with your Premium Economy upgrade. Ready to book?",
+        "ui_elements": [
+          {
+            "type": "product_card",
+            "data": {
+              "title": "DL628 to Boston",
+              "subtitle": "Tue Jan 27, 5:30 AM → 8:57 AM",
+              "price": "$199",
+              "badge": "Premium Economy",
+              "cta": {
+                "label": "Book Now",
+                "action": "checkout"
+              }
+            }
+          }
+        ]
+      },
+      "session_status": "active"
+    },
+    {
+      "status": "completed",
+      "session_id": "sess_abc123",
+      "response": {
+        "message": "Perfect! I'll hand you back to complete the booking."
+      },
+      "session_status": "pending_handoff",
+      "handoff": {
+        "type": "transaction",
+        "intent": {
+          "action": "purchase",
+          "product": {
+            "type": "flight",
+            "flight_number": "DL628",
+            "departure": "2026-01-27T05:30:00-05:00",
+            "arrival": "2026-01-27T08:57:00-05:00",
+            "origin": "JFK",
+            "destination": "BOS",
+            "class": "premium_economy"
+          },
+          "price": {
+            "amount": 199,
+            "currency": "USD"
+          }
+        },
+        "context_for_checkout": {
+          "conversation_summary": "Jane selected DL628 JFK→BOS on Jan 27 with free Premium Economy upgrade via campaign offer",
+          "applied_offers": [
+            "delta_chatgpt_3313"
+          ]
+        }
+      }
+    }
+  ]
 }

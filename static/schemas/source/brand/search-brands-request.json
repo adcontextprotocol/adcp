@@ -52,5 +52,19 @@
   "required": [
     "query"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "query": "automotive brands with electric vehicles",
+      "countries": [
+        "US"
+      ],
+      "pagination": {
+        "max_results": 20
+      },
+      "context": {
+        "correlation_id": "brand-search-001"
+      }
+    }
+  ]
 }

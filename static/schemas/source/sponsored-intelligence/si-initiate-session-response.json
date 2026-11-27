@@ -69,5 +69,50 @@
     "session_id",
     "session_status"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "status": "completed",
+      "session_id": "sess_abc123",
+      "session_status": "active",
+      "response": {
+        "message": "Hi Jane! I found DL632 departing at 6:15 AM next Tuesday. Great news—as a SkyMiles Gold member, you qualify for our free Premium Economy upgrade on this flight.",
+        "ui_elements": [
+          {
+            "type": "product_card",
+            "data": {
+              "title": "DL632 to Boston - Tue Jan 27",
+              "subtitle": "6:15 AM → 9:42 AM (3h 27m)",
+              "price": "$199",
+              "badge": "Free Premium Economy Upgrade",
+              "image_url": "https://delta.com/images/premium-economy.jpg",
+              "cta": {
+                "label": "Book with Upgrade",
+                "action": "checkout"
+              }
+            }
+          }
+        ]
+      },
+      "negotiated_capabilities": {
+        "modalities": {
+          "conversational": true,
+          "voice": true
+        },
+        "components": {
+          "standard": [
+            "text",
+            "link",
+            "image",
+            "product_card",
+            "carousel",
+            "action_button"
+          ]
+        },
+        "commerce": {
+          "acp_checkout": true
+        }
+      }
+    }
+  ]
 }

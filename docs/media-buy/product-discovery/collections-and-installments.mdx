@@ -64,6 +64,7 @@ A collection is a persistent, publisher-controlled content program that produces
 | `deadline_policy` | object | No | Default deadline rules for installments. Agents compute absolute deadlines from `scheduled_at` minus `lead_days`. Episodes with explicit `deadlines` override. See [deadline policy](#deadline-policy). |
 | `related_collections` | array | No | Relationships to other collections: `spinoff`, `companion`, `sequel`, `prequel`, `crossover`. Each entry has `collection_id` + `relationship`. References are scoped to the same publisher's `adagents.json`. Symmetric types (`companion`, `crossover`) do not require both collections to declare. |
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/collection.json",
@@ -101,7 +102,9 @@ A collection is a persistent, publisher-controlled content program that produces
     {
       "role": "host",
       "name": "Jordan Vega",
-      "brand_ref": { "domain": "jordanvega.example.com" },
+      "brand_ref": {
+        "domain": "jordanvega.example.com"
+      },
       "brand_url": "https://jordanvega.example.com/brand.json"
     }
   ],
@@ -109,13 +112,19 @@ A collection is a persistent, publisher-controlled content program that produces
     {
       "publisher_domain": "youtube.com",
       "identifiers": [
-        { "type": "youtube_channel_id", "value": "UCexample123456" }
+        {
+          "type": "youtube_channel_id",
+          "value": "UCexample123456"
+        }
       ]
     },
     {
       "publisher_domain": "acmestreaming.example.com",
       "identifiers": [
-        { "type": "imdb_id", "value": "tt9876543" }
+        {
+          "type": "imdb_id",
+          "value": "tt9876543"
+        }
       ]
     }
   ]
@@ -158,6 +167,7 @@ The channel owner declares the canonical collection in its own `adagents.json`.
 Each `distribution` entry can name both the host properties carrying the
 channel and identifiers used by the host or an independent metadata system:
 
+{/* schema-example: #/examples/2 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/collection.json",
@@ -165,14 +175,22 @@ channel and identifiers used by the host or an independent metadata system:
   "kind": "channel",
   "name": "Acme Retro News",
   "status": "active",
-  "distribution": [{
-    "publisher_domain": "hoststream.example",
-    "property_ids": ["hoststream_ctv"],
-    "identifiers": [
-      { "type": "platform_channel_id", "value": "channel_942" },
-      { "type": "gracenote_id", "value": "example-channel-id" }
-    ]
-  }]
+  "distribution": [
+    {
+      "publisher_domain": "hoststream.example",
+      "property_ids": ["hoststream_ctv"],
+      "identifiers": [
+        {
+          "type": "platform_channel_id",
+          "value": "channel_942"
+        },
+        {
+          "type": "gracenote_id",
+          "value": "example-channel-id"
+        }
+      ]
+    }
+  ]
 }
 ```
 
@@ -391,6 +409,7 @@ Episodes inherit collection-level fields they do not override:
 
 Buyer agents evaluate both levels: the collection baseline provides the default safety profile, and installment fields refine it for specific installments.
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/installment.json",
@@ -630,6 +649,7 @@ A special is content anchored to a real-world event or occasion. The `special` o
 | `starts` | datetime | No | When the event starts |
 | `ends` | datetime | No | When the event ends. Omit for single-day events. |
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/collection.json",
@@ -646,7 +666,10 @@ A special is content anchored to a real-world event or occasion. The `special` o
     "ends": "2026-05-25T23:00:00Z"
   },
   "talent": [
-    { "role": "host", "name": "Deshawn Moreaux" }
+    {
+      "role": "host",
+      "name": "Deshawn Moreaux"
+    }
   ]
 }
 ```
@@ -663,6 +686,7 @@ A limited series is a bounded content run with a defined arc. Unlike ongoing ser
 | `starts` | datetime | No | When the series begins |
 | `ends` | datetime | No | When the series ends |
 
+{/* schema-example: #/examples/4 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/core/collection.json",
@@ -750,6 +774,7 @@ One shape difference matters. A canonical installment's identity is the `(collec
 {/* Using latest because canonical-installment.json is not yet released in any version.
      Update to correct version alias after the next release. */}
 
+{/* schema-example: #/examples/0 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/latest/core/canonical-installment.json",
@@ -767,9 +792,21 @@ One shape difference matters. A canonical installment's identity is the `(collec
     "booking_deadline": "2026-11-17T17:00:00Z",
     "cancellation_deadline": "2026-11-24T17:00:00Z",
     "material_deadlines": [
-      { "stage": "talking_points", "due_at": "2026-12-01T17:00:00Z", "label": "Talking points and brand guidelines" },
-      { "stage": "script", "due_at": "2026-12-15T17:00:00Z", "label": "Creator script for brand approval" },
-      { "stage": "draft", "due_at": "2026-12-22T17:00:00Z", "label": "Draft cut for final review" }
+      {
+        "stage": "talking_points",
+        "due_at": "2026-12-01T17:00:00Z",
+        "label": "Talking points and brand guidelines"
+      },
+      {
+        "stage": "script",
+        "due_at": "2026-12-15T17:00:00Z",
+        "label": "Creator script for brand approval"
+      },
+      {
+        "stage": "draft",
+        "due_at": "2026-12-22T17:00:00Z",
+        "label": "Draft cut for final review"
+      }
     ]
   }
 }

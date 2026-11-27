@@ -46,6 +46,7 @@ Variants 1–3 are mutually exclusive with each other and with variants 4–5. V
 
 Points to a hosted brand.json at another URL:
 
+{/* schema-example: #/examples/10 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
@@ -69,6 +70,7 @@ Optional fields (shared with House Redirect — see [Redirect ergonomics](#redir
 
 Points to the house domain that contains the full brand portfolio:
 
+{/* schema-example: #/examples/11 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
@@ -110,6 +112,7 @@ This is the brand.json analogue to the migration patterns in IAB Tech Lab's [ads
 
 Example — acquisition redirect:
 
+{/* schema-example: #/examples/12 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
@@ -124,6 +127,7 @@ Example — acquisition redirect:
 
 Designates an MCP agent that provides brand information:
 
+{/* schema-example: #/examples/13 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
@@ -154,6 +158,7 @@ A given child appears in **exactly one** of the two arrays. At least one of `bra
 
 **Simple house (inline only):**
 
+{/* schema-example: #/examples/14 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
@@ -166,10 +171,18 @@ A given child appears in **exactly one** of the two arrays. At least one of `bra
   "brands": [
     {
       "id": "nike",
-      "names": [{"en": "Nike"}],
+      "names": [
+        {
+          "en": "Nike"
+        }
+      ],
       "keller_type": "master",
       "properties": [
-        {"type": "website", "identifier": "nike.com", "primary": true}
+        {
+          "type": "website",
+          "identifier": "nike.com",
+          "primary": true
+        }
       ]
     }
   ]
@@ -178,6 +191,7 @@ A given child appears in **exactly one** of the two arrays. At least one of `bra
 
 **Mixed hybrid (inline + pointer):**
 
+{/* schema-example: #/examples/15 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
@@ -190,13 +204,23 @@ A given child appears in **exactly one** of the two arrays. At least one of `bra
   "brands": [
     {
       "id": "nike_sb",
-      "names": [{"en_US": "Nike SB"}],
+      "names": [
+        {
+          "en_US": "Nike SB"
+        }
+      ],
       "keller_type": "sub_brand"
     }
   ],
   "brand_refs": [
-    { "domain": "converse.com", "brand_id": "converse" },
-    { "domain": "jordan.com",   "brand_id": "jordan" }
+    {
+      "domain": "converse.com",
+      "brand_id": "converse"
+    },
+    {
+      "domain": "jordan.com",
+      "brand_id": "jordan"
+    }
   ]
 }
 ```
@@ -216,6 +240,7 @@ Trust semantics for the relationship between this entry and the child's `house_d
 
 Holdcos delegate brand management to agency networks. WPP plc owns brands but Ogilvy or BBH actually runs them day-to-day. `managed_by` on a `brand_refs[]` entry captures this as a unilateral declaration by the owning house. The leaf brand doesn't reference the manager. UIs render BBH Sport under BBH for agency views; trust validation walks BBH Sport → WPP only.
 
+{/* schema-example: #/examples/16 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
@@ -225,9 +250,20 @@ Holdcos delegate brand management to agency networks. WPP plc owns brands but Og
     "name": "WPP plc"
   },
   "brand_refs": [
-    { "domain": "bbh-sport.com",     "brand_id": "bbh_sport",     "managed_by": "bbh.com" },
-    { "domain": "ogilvy-toyota.com", "brand_id": "ogilvy_toyota", "managed_by": "ogilvy.com" },
-    { "domain": "wpp-direct.com",    "brand_id": "wpp_direct" }
+    {
+      "domain": "bbh-sport.com",
+      "brand_id": "bbh_sport",
+      "managed_by": "bbh.com"
+    },
+    {
+      "domain": "ogilvy-toyota.com",
+      "brand_id": "ogilvy_toyota",
+      "managed_by": "ogilvy.com"
+    },
+    {
+      "domain": "wpp-direct.com",
+      "brand_id": "wpp_direct"
+    }
   ]
 }
 ```
@@ -240,16 +276,24 @@ Self-published per-brand document where the brand owns its own identity attribut
 
 **With a house — Converse under Nike:**
 
+{/* schema-example: #/examples/17 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
   "version": "1.0",
   "id": "converse",
-  "names": [{"en_US": "Converse"}],
+  "names": [
+    {
+      "en_US": "Converse"
+    }
+  ],
   "keller_type": "sub_brand",
   "house_domain": "nikeinc.com",
   "logos": [
-    {"url": "https://converse.com/logo.svg", "variant": "primary"}
+    {
+      "url": "https://converse.com/logo.svg",
+      "variant": "primary"
+    }
   ],
   "tagline": "Sneaker for the streets"
 }
@@ -257,15 +301,23 @@ Self-published per-brand document where the brand owns its own identity attribut
 
 **Standalone — Patagonia:**
 
+{/* schema-example: #/examples/18 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
   "version": "1.0",
   "id": "patagonia",
-  "names": [{"en_US": "Patagonia"}],
+  "names": [
+    {
+      "en_US": "Patagonia"
+    }
+  ],
   "keller_type": "independent",
   "logos": [
-    {"url": "https://patagonia.com/logo.svg", "variant": "primary"}
+    {
+      "url": "https://patagonia.com/logo.svg",
+      "variant": "primary"
+    }
   ],
   "tagline": "We're in business to save our home planet."
 }
@@ -1296,6 +1348,7 @@ Maximum document redirect depth: 3 hops. This budget counts `authoritative_locat
 
 ### Small Business
 
+{/* schema-example: #/examples/19 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
@@ -1307,15 +1360,28 @@ Maximum document redirect depth: 3 hops. This budget counts `authoritative_locat
   "brands": [
     {
       "id": "bobs_burgers",
-      "names": [{"en": "Bob's Burgers"}],
+      "names": [
+        {
+          "en": "Bob's Burgers"
+        }
+      ],
       "keller_type": "master",
       "properties": [
-        {"type": "website", "identifier": "bobsburgers.com", "primary": true}
+        {
+          "type": "website",
+          "identifier": "bobsburgers.com",
+          "primary": true
+        }
       ],
       "logos": [
-        { "url": "https://bobsburgers.com/logo.svg", "tags": ["icon"] }
+        {
+          "url": "https://bobsburgers.com/logo.svg",
+          "tags": ["icon"]
+        }
       ],
-      "colors": { "primary": "#FF6B35" }
+      "colors": {
+        "primary": "#FF6B35"
+      }
     }
   ]
 }
@@ -1323,6 +1389,7 @@ Maximum document redirect depth: 3 hops. This budget counts `authoritative_locat
 
 ### Enterprise with Agent
 
+{/* schema-example: #/examples/20 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
@@ -1343,6 +1410,7 @@ Maximum document redirect depth: 3 hops. This budget counts `authoritative_locat
 
 ### Multi-Brand Portfolio
 
+{/* schema-example: #/examples/21 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
@@ -1355,31 +1423,82 @@ Maximum document redirect depth: 3 hops. This budget counts `authoritative_locat
   "brands": [
     {
       "id": "nike",
-      "names": [{"en": "Nike"}, {"zh": "耐克"}, {"ja": "ナイキ"}],
+      "names": [
+        {
+          "en": "Nike"
+        },
+        {
+          "zh": "耐克"
+        },
+        {
+          "ja": "ナイキ"
+        }
+      ],
       "keller_type": "master",
       "properties": [
-        {"type": "website", "identifier": "nike.com", "primary": true},
-        {"type": "website", "identifier": "nike.cn", "region": "CN"},
-        {"type": "mobile_app", "store": "apple", "identifier": "com.nike.omega"}
+        {
+          "type": "website",
+          "identifier": "nike.com",
+          "primary": true
+        },
+        {
+          "type": "website",
+          "identifier": "nike.cn",
+          "region": "CN"
+        },
+        {
+          "type": "mobile_app",
+          "store": "apple",
+          "identifier": "com.nike.omega"
+        }
       ]
     },
     {
       "id": "air_jordan",
-      "names": [{"en": "Air Jordan"}, {"en": "Jordan"}, {"en": "Jumpman"}],
+      "names": [
+        {
+          "en": "Air Jordan"
+        },
+        {
+          "en": "Jordan"
+        },
+        {
+          "en": "Jumpman"
+        }
+      ],
       "keller_type": "endorsed",
       "parent_brand": "nike",
       "properties": [
-        {"type": "website", "identifier": "jordan.com", "primary": true},
-        {"type": "website", "identifier": "jumpman23.com"},
-        {"type": "mobile_app", "store": "apple", "identifier": "com.nike.snkrs"}
+        {
+          "type": "website",
+          "identifier": "jordan.com",
+          "primary": true
+        },
+        {
+          "type": "website",
+          "identifier": "jumpman23.com"
+        },
+        {
+          "type": "mobile_app",
+          "store": "apple",
+          "identifier": "com.nike.snkrs"
+        }
       ]
     },
     {
       "id": "converse",
-      "names": [{"en": "Converse"}],
+      "names": [
+        {
+          "en": "Converse"
+        }
+      ],
       "keller_type": "independent",
       "properties": [
-        {"type": "website", "identifier": "converse.com", "primary": true}
+        {
+          "type": "website",
+          "identifier": "converse.com",
+          "primary": true
+        }
       ]
     }
   ],
@@ -1394,6 +1513,7 @@ Maximum document redirect depth: 3 hops. This budget counts `authoritative_locat
 
 A talent agency managing athlete brands with licensable rights:
 
+{/* schema-example: #/examples/22 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
@@ -1406,7 +1526,11 @@ A talent agency managing athlete brands with licensable rights:
   "brands": [
     {
       "id": "daan_janssen",
-      "names": [{"en": "Daan Janssen"}],
+      "names": [
+        {
+          "en": "Daan Janssen"
+        }
+      ],
       "description": "Dutch Olympic speed skater, 2x gold medalist",
       "industries": ["sports"],
       "logos": [
@@ -1437,6 +1561,7 @@ The `agents[]` entry does both jobs: `available_uses`, `right_types`, and `count
 
 On `nike.cn/.well-known/brand.json`:
 
+{/* schema-example: #/examples/23 */}
 ```json
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",

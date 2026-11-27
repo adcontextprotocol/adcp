@@ -211,8 +211,10 @@ production data.
 |-------|------|----------|-------------|
 | `media_buy_id` | string | Yes | Sandbox MediaBuy to purge without touching its idempotency ledger |
 
+{/* schema-example: #/examples/12 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-request.json",
   "scenario": "force_media_buy_purge",
   "params": {
     "media_buy_id": "mb-789"
@@ -287,8 +289,10 @@ the other operation is invalid.
 
 **Prepare request:**
 
+{/* schema-example: #/examples/13 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-request.json",
   "account": {
     "sandbox": true
   },
@@ -302,8 +306,11 @@ the other operation is invalid.
 
 **Prepare response:**
 
+{/* schema-example: #/examples/10 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-response.json",
+  "status": "completed",
   "success": true,
   "simulated": {
     "prepared": true,
@@ -314,8 +321,10 @@ the other operation is invalid.
 
 **Expiry request:**
 
+{/* schema-example: #/examples/14 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-request.json",
   "account": {
     "sandbox": true
   },
@@ -329,8 +338,11 @@ the other operation is invalid.
 
 **Expiry response:**
 
+{/* schema-example: #/examples/11 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-response.json",
+  "status": "completed",
   "success": true,
   "simulated": {
     "expiry_processed": true,
@@ -389,8 +401,10 @@ out-of-envelope increase valid.
 
 **Prepare request:**
 
+{/* schema-example: #/examples/15 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-request.json",
   "account": {
     "sandbox": true
   },
@@ -404,8 +418,11 @@ out-of-envelope increase valid.
 
 **Prepare response:**
 
+{/* schema-example: #/examples/12 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-response.json",
+  "status": "completed",
   "success": true,
   "simulated": {
     "prepared": true,
@@ -510,12 +527,19 @@ and status call below.
 }
 ```
 
+{/* schema-example: #/examples/16 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-request.json",
   "adcp_version": "3.2",
-  "account": { "account_id": "acc_copy_from_sync_accounts", "sandbox": true },
+  "account": {
+    "account_id": "acc_copy_from_sync_accounts",
+    "sandbox": true
+  },
   "scenario": "reporting_core_lifecycle_probe",
-  "params": { "operation": "prepare" }
+  "params": {
+    "operation": "prepare"
+  }
 }
 ```
 
@@ -531,10 +555,15 @@ Read the waiting obligation through [`get_reporting_status`](/docs/media-buy/tas
 
 Then advance past its SLA to make the missing revision operationally visible:
 
+{/* schema-example: #/examples/17 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-request.json",
   "adcp_version": "3.2",
-  "account": { "account_id": "acc_copy_from_sync_accounts", "sandbox": true },
+  "account": {
+    "account_id": "acc_copy_from_sync_accounts",
+    "sandbox": true
+  },
   "scenario": "reporting_core_lifecycle_probe",
   "params": {
     "operation": "advance_time",
@@ -545,31 +574,51 @@ Then advance past its SLA to make the missing revision operationally visible:
 
 The corresponding escalation, publication, and deliberate omission calls are:
 
+{/* schema-example: #/examples/18 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-request.json",
   "adcp_version": "3.2",
-  "account": { "account_id": "acc_copy_from_sync_accounts", "sandbox": true },
+  "account": {
+    "account_id": "acc_copy_from_sync_accounts",
+    "sandbox": true
+  },
   "scenario": "reporting_core_lifecycle_probe",
-  "params": { "operation": "advance_time", "target_health": "action_required" }
+  "params": {
+    "operation": "advance_time",
+    "target_health": "action_required"
+  }
 }
 ```
 
+{/* schema-example: #/examples/19 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-request.json",
   "adcp_version": "3.2",
-  "account": { "account_id": "acc_copy_from_sync_accounts", "sandbox": true },
+  "account": {
+    "account_id": "acc_copy_from_sync_accounts",
+    "sandbox": true
+  },
   "scenario": "reporting_core_lifecycle_probe",
-  "params": { "operation": "publish_zero_row" }
+  "params": {
+    "operation": "publish_zero_row"
+  }
 }
 ```
 
 To grade the stale-received grace window, first publish a revision and record a
 `received` consumer status for it, then restate it against that exact ID:
 
+{/* schema-example: #/examples/20 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-request.json",
   "adcp_version": "3.2",
-  "account": { "account_id": "acc_copy_from_sync_accounts", "sandbox": true },
+  "account": {
+    "account_id": "acc_copy_from_sync_accounts",
+    "sandbox": true
+  },
   "scenario": "reporting_core_lifecycle_probe",
   "params": {
     "operation": "restate_after_received",
@@ -587,21 +636,35 @@ The two consumer-status boundaries have their own operations. Neither takes
 parameters, because the seller — not the caller — owns the windows being
 crossed:
 
+{/* schema-example: #/examples/21 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-request.json",
   "adcp_version": "3.2",
-  "account": { "account_id": "acc_copy_from_sync_accounts", "sandbox": true },
+  "account": {
+    "account_id": "acc_copy_from_sync_accounts",
+    "sandbox": true
+  },
   "scenario": "reporting_core_lifecycle_probe",
-  "params": { "operation": "advance_past_status_deadline" }
+  "params": {
+    "operation": "advance_past_status_deadline"
+  }
 }
 ```
 
+{/* schema-example: #/examples/22 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-request.json",
   "adcp_version": "3.2",
-  "account": { "account_id": "acc_copy_from_sync_accounts", "sandbox": true },
+  "account": {
+    "account_id": "acc_copy_from_sync_accounts",
+    "sandbox": true
+  },
   "scenario": "reporting_core_lifecycle_probe",
-  "params": { "operation": "advance_past_escalation" }
+  "params": {
+    "operation": "advance_past_escalation"
+  }
 }
 ```
 
@@ -616,12 +679,19 @@ a re-emission cannot reset the window.
 
 Reset with `prepare` before the negative fixture, then call:
 
+{/* schema-example: #/examples/23 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-request.json",
   "adcp_version": "3.2",
-  "account": { "account_id": "acc_copy_from_sync_accounts", "sandbox": true },
+  "account": {
+    "account_id": "acc_copy_from_sync_accounts",
+    "sandbox": true
+  },
   "scenario": "reporting_core_lifecycle_probe",
-  "params": { "operation": "omit_obligation" }
+  "params": {
+    "operation": "omit_obligation"
+  }
 }
 ```
 
@@ -673,8 +743,11 @@ none mutates state outside the caller's sandbox accounts.
 | `changed_at` | When the timezone changed | The instant on the sandbox clock at which the change applied: the `simulated_now` of the call that made it, as `revoke_grant` returns `unauthorized_at`. A repeat at the same `simulated_now` returns the same value. |
 | `timezone_cutovers` | Yes | One entry per `account_timezone`-aligned offering, shaped as a `subscription_coverage[].timezone_cutovers[]` entry with `offering_id` and `previous_timezone` always present: `effective_at` is the end of that offering's last old-timezone period that started before `changed_at`. Coverage lists the same instants for the offerings a subscription covers, and may merge entries that share boundaries. Empty when nothing changed or no offering is `account_timezone`-aligned. |
 
+{/* schema-example: #/examples/13 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-response.json",
+  "status": "completed",
   "success": true,
   "simulated": {
     "simulated_now": "2030-11-04T18:00:00Z",
@@ -742,8 +815,11 @@ The submitted-arm wire shape is otherwise implementation-dependent: most sellers
 
 **Response.** A `ForcedDirectiveSuccess` shape carrying the registered directive:
 
+{/* schema-example: #/examples/14 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-response.json",
+  "status": "completed",
   "success": true,
   "forced": {
     "arm": "submitted",
@@ -772,18 +848,26 @@ One scenario covers both halves through `action`.
 
 **`hold`.** Registers a directive keyed to the caller's authenticated sandbox account (account + principal pair). The next `create_media_buy` from that account that creates a media buy MUST return synchronous success with `media_buy_id`, `packages`, `confirmed_at: null`, and a `media_buy_status` of `pending_creatives` or `pending_start`, and the directive is then consumed. A request that fails validation, an idempotency replay, and a request answered with the `submitted` arm do not consume it. Subsequent creates use the seller's default behavior, and a second `hold` before consumption leaves one directive registered. `hold` and `force_create_media_buy_arm` are independent directives: if both are registered, the forced `submitted` arm wins that create (no `media_buy_id` is issued), and the hold stays registered for the next create that actually creates a buy. The response is a `SimulationSuccess` (`simulated` echoes the registered action):
 
+{/* schema-example: #/examples/15 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-response.json",
+  "status": "completed",
   "success": true,
-  "simulated": { "action": "hold" },
+  "simulated": {
+    "action": "hold"
+  },
   "message": "Next create_media_buy call from this sandbox account will return synchronous success with confirmed_at null"
 }
 ```
 
 **`confirm`.** Commits the held buy as the seller would on approval: it sets `confirmed_at` exactly once and increments `revision`. The resulting `status` follows the ordinary lifecycle for the buy's creative readiness and flight (it never becomes `active` while `confirmed_at` is null, and it MAY advance once `confirmed_at` is set). The response is a `StateTransitionSuccess`:
 
+{/* schema-example: #/examples/16 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-response.json",
+  "status": "completed",
   "success": true,
   "previous_state": "unconfirmed",
   "current_state": "confirmed",
@@ -847,8 +931,10 @@ products, proposals, errors, or envelope-level adcp_error.
 
 **Examples:**
 
+{/* schema-example: #/examples/24 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-request.json",
   "scenario": "force_get_products_arm",
   "account": {
     "brand": {
@@ -865,8 +951,10 @@ products, proposals, errors, or envelope-level adcp_error.
 }
 ```
 
+{/* schema-example: #/examples/25 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-request.json",
   "adcp_version": "3.2",
   "adcp_major_version": 3,
   "scenario": "force_get_products_arm",
@@ -885,8 +973,10 @@ products, proposals, errors, or envelope-level adcp_error.
 }
 ```
 
+{/* schema-example: #/examples/26 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-request.json",
   "scenario": "force_get_signals_arm",
   "account": {
     "brand": {
@@ -932,8 +1022,10 @@ Experimental (`media_buy.hold_policy`). Makes the next [`refine_proposals`](/doc
 |-------|------|----------|-------------|
 | `proposal_id` | string | Yes | Draft proposal, owned by the calling sandbox account, whose next finalize fails |
 
+{/* schema-example: #/examples/27 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-request.json",
   "scenario": "force_hold_unavailable",
   "params": {
     "proposal_id": "prop_draft_ctv"
@@ -989,8 +1081,11 @@ The submitted → completed lifecycle is otherwise non-deterministic — real ta
 
 **Response.** Returns a state-transition success shape:
 
+{/* schema-example: #/examples/17 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-response.json",
+  "status": "completed",
   "success": true,
   "previous_state": "submitted",
   "current_state": "completed",
@@ -1374,8 +1469,11 @@ and defines what it resets.
 
 **Success:**
 
+{/* schema-example: #/examples/1 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-response.json",
+  "status": "completed",
   "success": true,
   "previous_state": "processing",
   "current_state": "approved",
@@ -1385,8 +1483,11 @@ and defines what it resets.
 
 **Failure (invalid transition):**
 
+{/* schema-example: #/examples/5 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-response.json",
+  "status": "completed",
   "success": false,
   "error": "INVALID_TRANSITION",
   "error_detail": "Cannot transition from archived to processing — archived is terminal",
@@ -1396,8 +1497,11 @@ and defines what it resets.
 
 **Failure (unknown entity):**
 
+{/* schema-example: #/examples/6 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-response.json",
+  "status": "completed",
   "success": false,
   "error": "NOT_FOUND",
   "error_detail": "Creative cr-unknown not found",
@@ -1409,8 +1513,11 @@ and defines what it resets.
 
 **`simulate_delivery` response:**
 
+{/* schema-example: #/examples/18 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-response.json",
+  "status": "completed",
   "success": true,
   "simulated": {
     "delivery_date": "2026-04-15",
@@ -1418,7 +1525,13 @@ and defines what it resets.
     "clicks": 150,
     "reach": 4000,
     "frequency": 2.5,
-    "reach_window": { "kind": "rolling", "period": { "interval": 7, "unit": "days" } },
+    "reach_window": {
+      "kind": "rolling",
+      "period": {
+        "interval": 7,
+        "unit": "days"
+      }
+    },
     "viewability": {
       "measurable_impressions": 9000,
       "viewable_impressions": 7200,
@@ -1426,14 +1539,23 @@ and defines what it resets.
       "viewed_seconds": 4.3,
       "standard": "mrc"
     },
-    "reported_spend": { "amount": 150.00, "currency": "USD" }
+    "reported_spend": {
+      "amount": 150,
+      "currency": "USD"
+    }
   },
   "cumulative": {
     "impressions": 25000,
     "clicks": 380,
     "reach": 4000,
     "frequency": 2.5,
-    "reach_window": { "kind": "rolling", "period": { "interval": 7, "unit": "days" } },
+    "reach_window": {
+      "kind": "rolling",
+      "period": {
+        "interval": 7,
+        "unit": "days"
+      }
+    },
     "viewability": {
       "measurable_impressions": 9000,
       "viewable_impressions": 7200,
@@ -1441,7 +1563,10 @@ and defines what it resets.
       "viewed_seconds": 4.3,
       "standard": "mrc"
     },
-    "reported_spend": { "amount": 375.00, "currency": "USD" }
+    "reported_spend": {
+      "amount": 375,
+      "currency": "USD"
+    }
   },
   "message": "Delivery simulated for mb-789: 10000 impressions, 150 clicks, $150.00 spend"
 }
@@ -1451,13 +1576,22 @@ The `simulated` field echoes back the values injected by this call. The `cumulat
 
 **`simulate_budget_spend` response:**
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-response.json",
+  "status": "completed",
   "success": true,
   "simulated": {
     "spend_percentage": 95,
-    "computed_spend": { "amount": 950.00, "currency": "USD" },
-    "budget": { "amount": 1000.00, "currency": "USD" }
+    "computed_spend": {
+      "amount": 950,
+      "currency": "USD"
+    },
+    "budget": {
+      "amount": 1000,
+      "currency": "USD"
+    }
   },
   "message": "Budget for mb-789 set to 95% consumed ($950.00 of $1000.00)"
 }
@@ -1503,8 +1637,11 @@ The presence of `comply_test_controller` in a seller's tool list determines whic
 
 A seller may implement the test controller without supporting every scenario. The storyboard runner SHOULD call `comply_test_controller` with `scenario: "list_scenarios"` as the first interaction. Sellers that support this return the list of implemented scenarios:
 
+{/* schema-example: #/examples/19 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-response.json",
+  "status": "completed",
   "success": true,
   "scenarios": [
     "force_creative_status",

@@ -178,54 +178,128 @@
   },
   "examples": [
     {
-      "description": "Current principal configuration with a superseded generation",
-      "data": {
-        "status": "completed",
-        "result": {
-          "kind": "current",
-          "principal_id": "prin_01K4C6RGT5Q18VCPGXE7DDWQ5F",
-          "principal_kind": "buyer_agent",
-          "configuration_version": "cfg_01K4C6V2N5PC1TQAH9WTT8D2HP",
-          "configuration": {
-            "notification_configs": [],
-            "reporting_destinations": [
-              {
+      "status": "completed",
+      "result": {
+        "kind": "current",
+        "principal_id": "prin_01K4C6RGT5Q18VCPGXE7DDWQ5F",
+        "principal_kind": "buyer_agent",
+        "configuration_version": "cfg_01K4C6V2N5PC1TQAH9WTT8D2HP",
+        "configuration": {
+          "notification_configs": [],
+          "reporting_destinations": [
+            {
+              "destination_id": "analytics-warehouse",
+              "destination_ref": "dest_01K4C6T6Q0A9E6Y3N1FQ1T8YKV",
+              "prior_destination_refs": ["dest_01K4C5A2M9XPZ0T4B7QCW3JHRD"],
+              "state": "ready",
+              "configuration": {
+                "pattern": "warehouse_materialization",
                 "destination_id": "analytics-warehouse",
-                "destination_ref": "dest_01K4C6T6Q0A9E6Y3N1FQ1T8YKV",
-                "prior_destination_refs": ["dest_01K4C5A2M9XPZ0T4B7QCW3JHRD"],
-                "state": "ready",
-                "configuration": {
-                  "pattern": "warehouse_materialization",
-                  "destination_id": "analytics-warehouse",
-                  "active": true,
-                  "provider": { "domain": "data-warehouse.example" },
-                  "transport": "bigquery",
-                  "location": "pinnacle-analytics.adcp_reporting",
-                  "accepted_verification_profiles": ["native_commit", "canonical_digest"]
-                }
+                "active": true,
+                "provider": { "domain": "data-warehouse.example" },
+                "transport": "bigquery",
+                "location": "pinnacle-analytics.adcp_reporting",
+                "accepted_verification_profiles": ["native_commit", "canonical_digest"]
               }
-            ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "status": "completed",
+      "result": {
+        "kind": "recognized",
+        "principal_kind": "buyer_agent",
+        "principal_id": "prin_01K4C6RGT5Q18VCPGXE7DDWQ5F"
+      }
+    },
+    {
+      "status": "completed",
+      "result": {
+        "kind": "unconfigured"
+      }
+    },
+    {
+      "status": "completed",
+      "result": {
+        "kind": "current",
+        "principal_id": "prin_01K4C6RGT5Q18VCPGXE7DDWQ5F",
+        "principal_kind": "buyer_agent",
+        "configuration_version": "cfg_01K4C6V2N5PC1TQAH9WTT8D2HP",
+        "configuration": {
+          "notification_configs": [
+            {
+              "subscriber_id": "pinnacle-events",
+              "url": "https://agents.pinnacle-agency.example/adcp/webhooks",
+              "event_types": [
+                "capabilities.changed",
+                "principal.changed"
+              ],
+              "active": true
+            }
+          ],
+          "reporting_destinations": [
+            {
+              "destination_id": "pinnacle-archive",
+              "destination_ref": "dest_01K4C6T6Q0A9E6Y3N1FQ1T8YKV",
+              "state": "ready",
+              "configuration": {
+                "pattern": "file_transfer",
+                "destination_id": "pinnacle-archive",
+                "active": true,
+                "provider": {
+                  "domain": "object-store.example"
+                },
+                "transport": "s3",
+                "location": "s3://pinnacle-reporting/adcp/",
+                "accepted_formats": [
+                  "parquet"
+                ],
+                "accepted_verification_profiles": [
+                  "manifest_checksums"
+                ]
+              }
+            }
+          ],
+          "declarations": {
+            "declared": {
+              "async_adcp_versions": [
+                "3.2"
+              ],
+              "webhook_signing_algorithms": [
+                "ed25519"
+              ],
+              "experimental_features": [
+                "protocol.principal"
+              ]
+            },
+            "accepted": {
+              "async_adcp_versions": [
+                "3.2"
+              ],
+              "webhook_signing_algorithms": [
+                "ed25519"
+              ],
+              "experimental_features": [
+                "protocol.principal"
+              ]
+            },
+            "selected_async_adcp_version": "3.2"
           }
         }
       }
     },
     {
-      "description": "Registered buyer agent has a durable principal record but no standing configuration",
-      "data": {
-        "status": "completed",
-        "result": {
-          "kind": "recognized",
-          "principal_kind": "buyer_agent",
-          "principal_id": "prin_01K4C6RGT5Q18VCPGXE7DDWQ5F"
-        }
-      }
-    },
-    {
-      "description": "Stable authenticated caller has no durable principal record",
-      "data": {
-        "status": "completed",
-        "result": {
-          "kind": "unconfigured"
+      "status": "completed",
+      "result": {
+        "kind": "unconfigured",
+        "relationship": {
+          "status": "pending_approval",
+          "setup": {
+            "url": "https://streamhaus.example/partners/applications/7k3q",
+            "message": "Upload your billing entity details to finish the agent-billing application."
+          }
         }
       }
     }

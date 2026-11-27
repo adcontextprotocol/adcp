@@ -117,23 +117,32 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Account requires payment action",
-      "data": {
-        "idempotency_key": "whk_01K18GM0Z7J3Q6WBH7DYK2R4VM",
-        "notification_id": "acctchg_acc_glow_20260719T100712Z",
-        "notification_type": "account.status_changed",
-        "fired_at": "2026-07-19T10:07:15Z",
-        "subscriber_id": "buyer-primary",
-        "account_id": "acc_glow_pending",
-        "previous_status": "pending_approval",
-        "status": "payment_required",
-        "observed_at": "2026-07-19T10:07:12Z",
-        "reason_code": "setup_required",
-        "setup": {
-          "message": "Complete advertiser billing setup.",
-          "expires_at": "2026-07-30T00:00:00Z"
-        }
+      "idempotency_key": "whk_01K18GM0Z7J3Q6WBH7DYK2R4VM",
+      "notification_id": "acctchg_acc_glow_20260719T100712Z",
+      "notification_type": "account.status_changed",
+      "fired_at": "2026-07-19T10:07:15Z",
+      "subscriber_id": "buyer-primary",
+      "account_id": "acc_glow_pending",
+      "previous_status": "pending_approval",
+      "status": "payment_required",
+      "observed_at": "2026-07-19T10:07:12Z",
+      "reason_code": "setup_required",
+      "setup": {
+        "message": "Complete advertiser billing setup.",
+        "expires_at": "2026-07-30T00:00:00Z"
       }
+    },
+    {
+      "idempotency_key": "whk_01J5C8PX4W6EJYNRDT30M0VN4A",
+      "notification_id": "acctchg_streamhaus_nova_20260812T143000Z",
+      "notification_type": "account.status_changed",
+      "fired_at": "2026-08-12T14:30:03Z",
+      "subscriber_id": "account-lifecycle",
+      "account_id": "acct_streamhaus_nova_pinnacle",
+      "previous_status": "pending_approval",
+      "status": "active",
+      "observed_at": "2026-08-12T14:30:00Z",
+      "reason_code": "seller_approved"
     }
   ]
 }

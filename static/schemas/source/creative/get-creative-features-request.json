@@ -50,5 +50,24 @@
   "required": [
     "creative_manifest"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "idempotency_key": "550e8400-e29b-41d4-a716-446655440760",
+      "creative_manifest": {
+        "format_kind": "display_tag",
+        "assets": {
+          "tag_url": {
+            "asset_type": "url",
+            "url": "https://cdn.agency.com/creative/abc123.html"
+          }
+        }
+      },
+      "feature_ids": [
+        "auto_redirect",
+        "credential_harvest",
+        "cloaking"
+      ]
+    }
+  ]
 }

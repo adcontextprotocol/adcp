@@ -14,5 +14,17 @@
   },
   "required": ["asset_type"],
   "allOf": [{ "$ref": "/schemas/creative/video-brief.json" }],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "asset_type": "video_brief",
+      "segments": [
+        {
+          "order": 1,
+          "duration_ms": 15000,
+          "prompt": "An Acme hiking boot on a forest trail."
+        }
+      ]
+    }
+  ]
 }

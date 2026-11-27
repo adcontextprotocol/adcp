@@ -261,6 +261,7 @@ asyncio.run(main())
 
 <CodeGroup>
 
+{/* schema-example: #/examples/2 */}
 ```json Request
 {
   "$schema": "https://adcontextprotocol.org/schemas/v3/account/sync-governance-request.json",
@@ -268,7 +269,10 @@ asyncio.run(main())
   "accounts": [
     {
       "account": {
-        "brand": { "domain": "nova-brands.com", "brand_id": "spark" },
+        "brand": {
+          "domain": "nova-brands.com",
+          "brand_id": "spark"
+        },
         "operator": "pinnacle-media.com"
       },
       "governance_agents": [

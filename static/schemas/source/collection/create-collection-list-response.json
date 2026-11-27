@@ -29,5 +29,18 @@
     "list",
     "auth_token"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "status": "completed",
+      "list": {
+        "list_id": "cl_novamotors_dna_2026",
+        "name": "Nova Motors CTV Do Not Air — 2026",
+        "collection_count": 247,
+        "created_at": "2026-04-07T12:00:00Z",
+        "updated_at": "2026-04-07T12:00:00Z"
+      },
+      "auth_token": "tok_example_store_this_securely"
+    }
+  ]
 }

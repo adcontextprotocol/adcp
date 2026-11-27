@@ -75,5 +75,22 @@
     "idempotency_key",
     "rights_id"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "idempotency_key": "a7a3a7aa-4eb2-4e77-b7ff-72d8054773c6",
+      "rights_id": "janssen_likeness_voice",
+      "end_date": "2026-09-30"
+    },
+    {
+      "idempotency_key": "a1529566-24ba-46af-9f02-7fd9878e2d54",
+      "rights_id": "janssen_likeness_voice",
+      "impression_cap": 200000
+    },
+    {
+      "idempotency_key": "2616860f-4ed4-4595-b9da-1dde951e1aa2",
+      "rights_id": "janssen_likeness_voice",
+      "paused": true
+    }
+  ]
 }

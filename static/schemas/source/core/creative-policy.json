@@ -86,5 +86,40 @@
     "landing_page",
     "templates_available"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "co_branding": "optional",
+      "landing_page": "any",
+      "templates_available": false,
+      "provenance_required": true,
+      "provenance_requirements": {
+        "require_digital_source_type": true,
+        "require_synthetic_depiction": true,
+        "require_disclosure_metadata": true,
+        "require_embedded_provenance": true
+      },
+      "accepted_verifiers": [
+        {
+          "agent_url": "https://governance.encypher.seller.example",
+          "feature_id": "encypher.markers_present_v2",
+          "providers": [
+            "Encypher"
+          ]
+        },
+        {
+          "agent_url": "https://governance.imatag.seller.example",
+          "feature_id": "imatag.watermark_detected",
+          "providers": [
+            "Imatag"
+          ]
+        }
+      ]
+    },
+    {
+      "co_branding": "required",
+      "landing_page": "retailer_site_only",
+      "templates_available": true
+    }
+  ]
 }

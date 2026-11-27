@@ -28,5 +28,18 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "account": {
+        "brand": {
+          "domain": "novamotors.com"
+        },
+        "operator": "pinnacleagency.com"
+      },
+      "pagination": {
+        "max_results": 50
+      }
+    }
+  ]
 }

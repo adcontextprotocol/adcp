@@ -113,18 +113,15 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "HTML5 banner bundle with backup image",
-      "data": {
-        "asset_type": "zip",
-        "url": "https://cdn.acme.example/creatives/spring-300x250-html5.zip",
-        "width": 300,
-        "height": 250,
-        "max_file_size_kb": 200,
-        "entry_point": "index.html",
-        "allowed_inner_extensions": ["html", "css", "js", "png", "jpg", "svg", "json"],
-        "backup_image_url": "https://cdn.acme.example/creatives/spring-300x250-backup.jpg",
-        "digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-      }
+      "asset_type": "zip",
+      "url": "https://cdn.acme.example/creatives/spring-300x250-html5.zip",
+      "width": 300,
+      "height": 250,
+      "max_file_size_kb": 200,
+      "entry_point": "index.html",
+      "allowed_inner_extensions": ["html", "css", "js", "png", "jpg", "svg", "json"],
+      "backup_image_url": "https://cdn.acme.example/creatives/spring-300x250-backup.jpg",
+      "digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     }
   ]
 }

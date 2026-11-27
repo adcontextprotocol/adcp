@@ -72,5 +72,45 @@
     "session_id",
     "reason"
   ],
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "session_id": "sess_abc123",
+      "reason": "handoff_transaction",
+      "termination_context": {
+        "transaction_intent": {
+          "action": "purchase",
+          "product": {
+            "type": "flight",
+            "flight_number": "DL628"
+          }
+        }
+      }
+    },
+    {
+      "session_id": "sess_abc123",
+      "reason": "handoff_complete"
+    },
+    {
+      "session_id": "sess_abc123",
+      "reason": "user_exit",
+      "termination_context": {
+        "summary": "The user viewed flight DL628, reached seat selection, and changed the topic."
+      }
+    },
+    {
+      "session_id": "sess_abc123",
+      "reason": "session_timeout",
+      "termination_context": {
+        "summary": "No user activity for 300 seconds after 2026-01-18T10:25:00Z."
+      }
+    },
+    {
+      "session_id": "sess_abc123",
+      "reason": "host_terminated",
+      "termination_context": {
+        "cause": "user_left_app"
+      }
+    }
+  ]
 }

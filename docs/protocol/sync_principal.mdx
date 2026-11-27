@@ -152,8 +152,10 @@ Caller-level and account-level subscriptions to the same event are independent: 
 
 Synchronous calls negotiate versions per request, but a webhook fired weeks after registration has no request context to negotiate against. The `declarations` section is that channel: the caller declares bounded facts about what it can consume, and the seller returns the **accepted intersection** it will honor for asynchronous interactions.
 
+{/* schema-example: #/examples/3 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/sync-principal-request.json",
   "idempotency_key": "8b54cf59-77f4-41ce-9f2a-6d1f0c8b1a77",
   "configuration": {
     "declarations": {
@@ -178,8 +180,10 @@ Rules:
 
 A destination is registered once on the caller's principal record and can later be referenced from several advertiser accounts for which that caller is independently authorized. In the example below, the authenticated principal might be a delegated human user in Claude or an autonomous buyer-agent workload; the request body is identical because identity never comes from the payload.
 
+{/* schema-example: #/examples/4 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/sync-principal-request.json",
   "idempotency_key": "528f1f06-e2a7-49b9-bd13-c953f35a1c49",
   "configuration": {
     "reporting_destinations": [
@@ -187,32 +191,32 @@ A destination is registered once on the caller's principal record and can later 
         "pattern": "file_transfer",
         "destination_id": "reporting-archive",
         "active": true,
-        "provider": { "domain": "object-store.example" },
+        "provider": {
+          "domain": "object-store.example"
+        },
         "transport": "s3",
         "location": "s3://pinnacle-reporting/adcp/",
         "accepted_formats": ["parquet"],
-        "accepted_verification_profiles": [
-          "manifest_checksums",
-          "canonical_digest"
-        ]
+        "accepted_verification_profiles": ["manifest_checksums", "canonical_digest"]
       },
       {
         "pattern": "warehouse_materialization",
         "destination_id": "analytics-warehouse",
         "active": true,
-        "provider": { "domain": "data-warehouse.example" },
+        "provider": {
+          "domain": "data-warehouse.example"
+        },
         "transport": "bigquery",
         "location": "pinnacle-analytics.adcp_reporting",
-        "accepted_verification_profiles": [
-          "native_commit",
-          "canonical_digest"
-        ]
+        "accepted_verification_profiles": ["native_commit", "canonical_digest"]
       },
       {
         "pattern": "dataset_share",
         "destination_id": "daily-share",
         "active": true,
-        "provider": { "domain": "data-platform.example" },
+        "provider": {
+          "domain": "data-platform.example"
+        },
         "transport": "delta_sharing",
         "access_mode": "open_sharing",
         "recipient": {
@@ -277,8 +281,10 @@ Experimental in 3.3 under `media_buy.reporting_subscriptions` ([RFC #8543](https
 
 Account-level `reporting_delivery_configs` on [`sync_accounts`](/docs/accounts/tasks/sync_accounts) report nothing for a new account until someone configures it. A reporting subscription is registered once on the principal and follows the caller's account authority, the way a caller-level webhook with `all_authorized_accounts: true` does. The seller turns each subscription into per-account obligations, and buyers read them through [`get_reporting_status`](/docs/media-buy/task-reference/get_reporting_status#subscription-coverage) as before.
 
+{/* schema-example: #/examples/5 */}
 ```json
 {
+  "$schema": "https://adcontextprotocol.org/schemas/v3/protocol/sync-principal-request.json",
   "idempotency_key": "0f4c1d2e-7b9a-4c3e-8f61-2d5a9b7e3c40",
   "configuration": {
     "reporting_subscriptions": [
@@ -286,7 +292,9 @@ Account-level `reporting_delivery_configs` on [`sync_accounts`](/docs/accounts/t
         "subscription_id": "analytics-daily",
         "subscription_version": 1,
         "active": true,
-        "scope": { "all_authorized_accounts": true },
+        "scope": {
+          "all_authorized_accounts": true
+        },
         "selector": {
           "feed_purpose": "analytics",
           "period_duration": "P1D",

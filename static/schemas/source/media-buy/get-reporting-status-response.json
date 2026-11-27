@@ -218,5 +218,84 @@
     "subscription_coverage": "Obligations derived from a subscription carry delivery_config_id equal to subscription_id and the resolved offering_id and report_definition_id, and appear in scope.delivery_config_generations like any configuration generation. Which periods are owed is computable by the buyer by the coverage rule in reporting-subscription.json: visible confirmed buys, the resolved offering's published schedule, periods starting on or after the first boundary at or after the later of accepted_at and authorized_at, ending after the buy's confirmed_at, and overlapping the buy's flight, which ends at the cancellation's delivery stop (cancellation_effective_at) rather than when the cancellation was recorded, as resolved at each period's scope_resolved_at. A cutover onto a billing feed whose schedule has no boundary at E adds one stub obligation (stub true) for [E, first incoming boundary), so billing coverage has no unowed stretch. The obligation's offering_id and report_definition_id are authoritative for timing (alignment, anchor, delivery_sla, and so expected_at). subscription_coverage lists only exceptions, each removing the periods whose start falls in [from, until); a seller MUST NOT owe fewer periods than that rule implies without a matching exception, and exceptions never add periods. A resolution change is a cutover per reporting-subscription.json, so no period is owed under two offerings. Each obligation freezes media_buy_ids at its own scope_resolved_at. A period's owed set is frozen at its scope_resolved_at and is final in a snapshot whose ledger_as_of is later than period.end, where obligation_availability already requires its obligation; a period ending at or after ledger_as_of is not frozen, so the buyer treats its own projection, and next_expected_at, as provisional and reports nothing missing for it. A buyer reads the flight in force at each scope_resolved_at from the buy's flight_history, the offerings each package could resolve from its reporting_delivery_offering_ids snapshot and each offering's available_from and withdrawn_at, and re-grant timing from authorization.regranted_at. caller_isolation is unchanged: once the caller loses authority for the account, this task treats it as unknown, and the revocation is reported in get_principal reporting_subscriptions accounts_unauthorized instead.",
     "consumer_status_deadline": "A buyer owes a current consumer status for every elapsed expected period by expected_at plus automated_recovery_window_seconds, not merely before it closes the scope. Past that deadline with no current statement from the authenticated caller, the seller counts the obligation in obligation_counts.consumer_status_pending. Silence is a counted unknown only: it MUST NOT create an issue, change health, excuse a seller obligation, or appear in another caller's view."
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "status": "completed",
+      "view": "summary",
+      "ledger_snapshot_id": "ledger_20260828_001",
+      "ledger_as_of": "2026-08-28T12:00:00Z",
+      "account_id": "acc_123",
+      "scope": {
+        "period_start": "2026-08-01T00:00:00Z",
+        "period_end": "2026-08-28T00:00:00Z",
+        "scope_closed": false,
+        "all_accessible_media_buys": true,
+        "delivery_config_generations": [
+          {
+            "delivery_config_id": "analytics-daily",
+            "delivery_config_version": 1,
+            "feed_purpose": "analytics"
+          }
+        ],
+        "feed_purposes": [
+          "analytics"
+        ],
+        "finality": [
+          "official"
+        ],
+        "ledger_retained_from": "2026-07-29T00:00:00Z",
+        "coverage_complete": true
+      },
+      "health": "action_required",
+      "coverage": {
+        "status": "full",
+        "evaluated_at": "2026-08-28T00:00:00Z",
+        "media_buy_ids": [
+          "mb_123"
+        ],
+        "fully_covered_media_buy_ids": [
+          "mb_123"
+        ],
+        "partially_covered_media_buy_ids": [],
+        "unsupported_media_buy_ids": [],
+        "unknown_media_buy_ids": [],
+        "package_ids": [
+          "pkg_123"
+        ],
+        "covered_package_ids": [
+          "pkg_123"
+        ],
+        "unsupported_package_ids": [],
+        "unknown_package_ids": [],
+        "limitations": []
+      },
+      "data_through": "2026-08-26T00:00:00Z",
+      "next_expected_at": "2026-08-28T04:00:00Z",
+      "obligation_counts": {
+        "total": 27,
+        "waiting": 1,
+        "healthy": 25,
+        "delayed": 0,
+        "action_required": 1,
+        "complete": 0,
+        "consumer_status_pending": 2
+      },
+      "issues": [
+        {
+          "issue_id": "iss_report_overdue_analytics_daily_20260826",
+          "code": "REPORT_OVERDUE",
+          "severity": "action_required",
+          "responsible_party": "seller",
+          "recommended_action": "contact_seller",
+          "media_buy_ids": [
+            "mb_123"
+          ],
+          "period_start": "2026-08-26T00:00:00Z",
+          "period_end": "2026-08-27T00:00:00Z",
+          "expected_at": "2026-08-27T04:00:00Z"
+        }
+      ]
+    }
+  ]
 }

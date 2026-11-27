@@ -283,5 +283,449 @@
       ]
     }
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "examples": [
+    {
+      "status": "completed",
+      "message": "Found 1 luxury segment matching your criteria. Already activated for your sales agent.",
+      "context_id": "ctx-signals-123",
+      "cache_scope": "public",
+      "wholesale_feed_version": "sig_v2026-05-18T08:00:00Z-public-rev12",
+      "signals": [
+        {
+          "signal_ref": {
+            "scope": "data_provider",
+            "data_provider_domain": "pinnacle-data.example",
+            "signal_id": "luxury_auto_intenders"
+          },
+          "signal_agent_segment_id": "luxury_auto_intenders",
+          "name": "Luxury Automotive Intenders",
+          "description": "High-income individuals researching luxury vehicles",
+          "signal_type": "marketplace",
+          "data_provider": "Pinnacle Data",
+          "coverage_forecast": {
+            "method": "estimate",
+            "forecast_range_unit": "availability",
+            "scope": {
+              "kind": "inventory",
+              "label": "eligible destination inventory"
+            },
+            "bucket_semantics": "exclusive",
+            "bucket_completeness": "partial",
+            "points": [
+              {
+                "label": "present",
+                "dimensions": [
+                  {
+                    "kind": "signal",
+                    "signal_ref": {
+                      "scope": "data_provider",
+                      "data_provider_domain": "pinnacle-data.example",
+                      "signal_id": "luxury_auto_intenders"
+                    },
+                    "presence": "present"
+                  }
+                ],
+                "metrics": {
+                  "coverage_rate": {
+                    "mid": 0.12
+                  }
+                }
+              }
+            ]
+          },
+          "deployments": [
+            {
+              "type": "agent",
+              "agent_url": "https://wonderstruck.salesagents.com",
+              "is_live": true,
+              "activation_key": {
+                "type": "key_value",
+                "key": "audience_segment",
+                "value": "luxury_auto_intenders_v2"
+              }
+            }
+          ],
+          "pricing_options": [
+            {
+              "pricing_option_id": "po_cpm_usd",
+              "model": "cpm",
+              "cpm": 3.5,
+              "currency": "USD"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "message": "Found 1 segment matching your criteria. Three pricing options are available: CPM at $3.50, 15% of media spend, or $5,000/month flat fee.",
+      "context_id": "ctx-signals-456",
+      "cache_scope": "public",
+      "wholesale_feed_version": "sig_v2026-05-18T08:00:00Z-public-rev12",
+      "signals": [
+        {
+          "signal_ref": {
+            "scope": "data_provider",
+            "data_provider_domain": "acmedata.com",
+            "signal_id": "eco_conscious_shoppers"
+          },
+          "signal_agent_segment_id": "eco_conscious_shoppers",
+          "name": "Eco-Conscious Shoppers",
+          "description": "Users with demonstrated interest in sustainable and eco-friendly products",
+          "signal_type": "marketplace",
+          "data_provider": "Acme Data",
+          "coverage_percentage": 18,
+          "deployments": [
+            {
+              "type": "agent",
+              "agent_url": "https://wonderstruck.salesagents.com",
+              "is_live": true,
+              "activation_key": {
+                "type": "segment_id",
+                "segment_id": "eco_seg_789"
+              }
+            }
+          ],
+          "pricing_options": [
+            {
+              "pricing_option_id": "po_eco_cpm",
+              "model": "cpm",
+              "cpm": 3.5,
+              "currency": "USD"
+            },
+            {
+              "pricing_option_id": "po_eco_pom",
+              "model": "percent_of_media",
+              "percent": 15,
+              "max_cpm": 1.5,
+              "currency": "USD"
+            },
+            {
+              "pricing_option_id": "po_eco_flat",
+              "model": "flat_fee",
+              "amount": 5000,
+              "period": "monthly",
+              "currency": "USD"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "message": "Found 1 luxury segment matching your criteria. Already activated on The Trade Desk, pending activation on Amazon DSP.",
+      "context_id": "ctx-signals-123",
+      "cache_scope": "public",
+      "wholesale_feed_version": "sig_v2026-05-18T08:00:00Z-public-rev12",
+      "signals": [
+        {
+          "signal_ref": {
+            "scope": "data_provider",
+            "data_provider_domain": "experian.com",
+            "signal_id": "luxury_auto_intenders"
+          },
+          "signal_agent_segment_id": "luxury_auto_intenders",
+          "name": "Luxury Automotive Intenders",
+          "description": "High-income individuals researching luxury vehicles",
+          "signal_type": "marketplace",
+          "data_provider": "Experian",
+          "coverage_percentage": 12,
+          "deployments": [
+            {
+              "type": "platform",
+              "platform": "the-trade-desk",
+              "account": "agency-123",
+              "is_live": true,
+              "activation_key": {
+                "type": "segment_id",
+                "segment_id": "ttd_agency123_exp_lux_auto"
+              }
+            },
+            {
+              "type": "platform",
+              "platform": "amazon-dsp",
+              "is_live": false,
+              "estimated_activation_duration_minutes": 60
+            }
+          ],
+          "pricing_options": [
+            {
+              "pricing_option_id": "po_cpm_usd",
+              "model": "cpm",
+              "cpm": 3.5,
+              "currency": "USD"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "cache_scope": "public",
+      "wholesale_feed_version": "sig_v2026-05-18T08:00:00Z-public-rev12",
+      "signals": [
+        {
+          "signal_ref": {
+            "scope": "data_provider",
+            "data_provider_domain": "peer39.com",
+            "signal_id": "peer39_luxury_auto"
+          },
+          "signal_agent_segment_id": "peer39_luxury_auto",
+          "name": "Luxury Automotive Context",
+          "description": "Pages with luxury automotive content and high viewability",
+          "signal_type": "marketplace",
+          "data_provider": "Peer39",
+          "coverage_percentage": 15,
+          "deployments": [
+            {
+              "type": "platform",
+              "platform": "index-exchange",
+              "account": "agency-123-ix",
+              "is_live": true,
+              "activation_key": {
+                "type": "segment_id",
+                "segment_id": "ix_agency123_peer39_lux_auto"
+              }
+            },
+            {
+              "type": "platform",
+              "platform": "index-exchange",
+              "is_live": true,
+              "activation_key": {
+                "type": "segment_id",
+                "segment_id": "ix_peer39_luxury_auto_gen"
+              }
+            },
+            {
+              "type": "platform",
+              "platform": "openx",
+              "is_live": true,
+              "activation_key": {
+                "type": "segment_id",
+                "segment_id": "ox_peer39_lux_auto_456"
+              }
+            },
+            {
+              "type": "platform",
+              "platform": "pubmatic",
+              "account": "brand-456-pm",
+              "is_live": false,
+              "estimated_activation_duration_minutes": 60
+            }
+          ],
+          "pricing_options": [
+            {
+              "pricing_option_id": "po_cpm_usd",
+              "model": "cpm",
+              "cpm": 2.5,
+              "currency": "USD"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "message": "Found 1 lookalike segment modeled from your Nova Brands seed audience; it is still being built.",
+      "cache_scope": "account",
+      "signals": [
+        {
+          "signal_ref": {
+            "scope": "signal_source",
+            "signal_source_url": "https://signals.pinnacle-data.example",
+            "signal_id": "lookalike_nova_buyers"
+          },
+          "signal_agent_segment_id": "sas_abc123",
+          "name": "Nova Brands lookalike buyers",
+          "description": "Lookalike segment modeled from the Nova Brands buyer seed audience",
+          "signal_type": "custom",
+          "signal_status": "processing",
+          "source_audience_id": "aud_seed_xyz",
+          "deployments": [
+            {
+              "type": "agent",
+              "agent_url": "https://dsp.pinnaclemedia.example",
+              "is_live": false,
+              "estimated_activation_duration_minutes": 60
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "message": "Returning 50 of 312 signals in wholesale mode.",
+      "context_id": "ctx-wholesale-001",
+      "cache_scope": "public",
+      "wholesale_feed_version": "v2026-05-18T08:00:00Z-acme-rev412",
+      "signals": [
+        {
+          "signal_ref": {
+            "scope": "data_provider",
+            "data_provider_domain": "acme-data.com",
+            "signal_id": "luxury_auto_intenders"
+          },
+          "signal_agent_segment_id": "sigagent_seg_4421",
+          "name": "Luxury Auto Intenders",
+          "description": "Households researching premium vehicles in the last 30 days.",
+          "signal_type": "marketplace",
+          "data_provider": "Acme Data",
+          "coverage_percentage": 18.4,
+          "deployments": [
+            {
+              "type": "platform",
+              "platform": "the-trade-desk",
+              "is_live": true,
+              "activation_key": {
+                "type": "segment_id",
+                "segment_id": "ttd_seg_99821"
+              }
+            }
+          ],
+          "pricing_options": [
+            {
+              "pricing_option_id": "po_cpm_1",
+              "model": "cpm",
+              "cpm": 2.5,
+              "currency": "USD"
+            }
+          ]
+        }
+      ],
+      "pagination": {
+        "has_more": true,
+        "cursor": "eyJvIjo1MH0=",
+        "total_count": 312
+      }
+    },
+    {
+      "status": "completed",
+      "message": "Wholesale signals feed unchanged since v2026-05-18T08:00:00Z-acme-rev412.",
+      "context_id": "ctx-abc-789",
+      "unchanged": true,
+      "wholesale_feed_version": "v2026-05-18T08:00:00Z-acme-rev412",
+      "pricing_version": "v2026-05-18T08:00:00Z-acme-rev412",
+      "cache_scope": "public"
+    },
+    {
+      "status": "completed",
+      "message": "Returning 312 signals (wholesale feed version advanced).",
+      "context_id": "ctx-abc-790",
+      "wholesale_feed_version": "v2026-05-18T10:15:00Z-acme-rev415",
+      "pricing_version": "v2026-05-18T10:15:00Z-acme-rev415",
+      "cache_scope": "public",
+      "signals": [
+        {
+          "signal_ref": {
+            "scope": "data_provider",
+            "data_provider_domain": "acme-data.com",
+            "signal_id": "luxury_auto_intenders"
+          },
+          "signal_agent_segment_id": "sigagent_seg_4421",
+          "name": "Luxury Auto Intenders",
+          "description": "Households researching premium vehicles in the last 30 days.",
+          "signal_type": "marketplace",
+          "data_provider": "Acme Data",
+          "coverage_percentage": 18.4,
+          "deployments": [
+            {
+              "type": "platform",
+              "platform": "the-trade-desk",
+              "is_live": true,
+              "activation_key": {
+                "type": "segment_id",
+                "segment_id": "ttd_seg_99821"
+              }
+            }
+          ],
+          "pricing_options": [
+            {
+              "pricing_option_id": "po_cpm_1",
+              "model": "cpm",
+              "cpm": 2.5,
+              "currency": "USD"
+            }
+          ]
+        }
+      ],
+      "pagination": {
+        "has_more": true,
+        "cursor": "eyJvIjo1MH0=",
+        "total_count": 312
+      }
+    },
+    {
+      "status": "completed",
+      "message": "Found 2 luxury signals, but encountered some platform limitations. The 'Premium Auto Shoppers' signal has limited reach due to data restrictions, and pricing data is unavailable for one platform. Review the warnings below for optimization suggestions.",
+      "context_id": "ctx-signals-abc123",
+      "cache_scope": "public",
+      "wholesale_feed_version": "sig_v2026-05-18T08:00:00Z-public-rev12",
+      "signals": [
+        {
+          "signal_ref": {
+            "scope": "data_provider",
+            "data_provider_domain": "experian.com",
+            "signal_id": "premium_auto_shoppers"
+          },
+          "signal_agent_segment_id": "premium_auto_shoppers",
+          "name": "Premium Auto Shoppers",
+          "description": "High-value automotive purchase intenders",
+          "signal_type": "marketplace",
+          "data_provider": "Experian",
+          "coverage_percentage": 8,
+          "deployments": [
+            {
+              "type": "platform",
+              "platform": "the-trade-desk",
+              "is_live": true,
+              "activation_key": {
+                "type": "segment_id",
+                "segment_id": "ttd_exp_auto_premium"
+              }
+            }
+          ],
+          "pricing_options": [
+            {
+              "pricing_option_id": "po_cpm_usd",
+              "model": "cpm",
+              "cpm": 4.5,
+              "currency": "USD"
+            }
+          ]
+        }
+      ],
+      "errors": [
+        {
+          "code": "PRICING_UNAVAILABLE",
+          "message": "Pricing data temporarily unavailable for The Trade Desk platform",
+          "field": "signals[0].pricing_options",
+          "suggestion": "Retry in 15-30 minutes when platform pricing feed updates",
+          "details": {
+            "affected_platform": "the-trade-desk",
+            "last_updated": "2025-01-15T12:00:00Z",
+            "retry_after": 1800
+          }
+        },
+        {
+          "code": "PRICING_UNAVAILABLE",
+          "message": "Pricing data temporarily unavailable for Amazon DSP",
+          "field": "filters.platforms",
+          "suggestion": "Pricing will be available during activation, or try again later",
+          "details": {
+            "affected_platform": "amazon-dsp",
+            "retry_after": 1800
+          }
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "message": "I couldn't find any signals matching 'underwater basket weavers' in the requested platforms. This appears to be a very niche audience. Consider broadening your criteria to 'craft enthusiasts' or 'hobby communities' for better results. Alternatively, we could create a custom signal for this specific audience.",
+      "context_id": "ctx-signals-abc123",
+      "cache_scope": "public",
+      "wholesale_feed_version": "sig_v2026-05-18T08:00:00Z-public-rev12",
+      "signals": []
+    }
+  ]
 }

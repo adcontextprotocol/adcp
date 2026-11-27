@@ -152,5 +152,88 @@
       ]
     }
   ],
-  "properties": {}
+  "properties": {},
+  "examples": [
+    {
+      "status": "completed",
+      "media_buy_id": "mb_nike_reddit_q1",
+      "artifacts": [
+        {
+          "record_id": "imp_12345",
+          "timestamp": "2025-01-15T10:30:00Z",
+          "package_id": "pkg_feed_standard",
+          "artifact": {
+            "property_rid": "01916f3a-a1d3-7000-8000-000000000040",
+            "artifact_id": "r_fitness_abc123",
+            "assets": [
+              {
+                "type": "text",
+                "role": "title",
+                "content": "Best protein sources for muscle building",
+                "language": "en"
+              },
+              {
+                "type": "text",
+                "role": "paragraph",
+                "content": "Looking for recommendations on high-quality protein sources for recovery",
+                "language": "en"
+              },
+              {
+                "type": "image",
+                "url": "https://cdn.reddit.com/fitness-image.jpg",
+                "alt_text": "Person lifting weights"
+              }
+            ]
+          },
+          "country": "US",
+          "channel": "social",
+          "brand_context": {
+            "brand_id": "nike_global",
+            "sku_id": "air_max_2025"
+          },
+          "local_verdict": "pass"
+        },
+        {
+          "record_id": "imp_12346",
+          "timestamp": "2025-01-15T10:35:00Z",
+          "package_id": "pkg_feed_standard",
+          "artifact": {
+            "property_rid": "01916f3a-a1d3-7000-8000-000000000040",
+            "artifact_id": "r_news_politics_456",
+            "assets": [
+              {
+                "type": "text",
+                "role": "title",
+                "content": "Election Results Analysis",
+                "language": "en"
+              },
+              {
+                "type": "text",
+                "role": "paragraph",
+                "content": "The latest polling data shows a tight race between candidates",
+                "language": "en"
+              }
+            ]
+          },
+          "country": "US",
+          "channel": "social",
+          "brand_context": {
+            "brand_id": "nike_global",
+            "sku_id": "air_max_2025"
+          },
+          "local_verdict": "fail"
+        }
+      ],
+      "collection_info": {
+        "total_deliveries": 100000,
+        "total_collected": 1000,
+        "returned_count": 1000,
+        "effective_rate": 0.01
+      },
+      "pagination": {
+        "cursor": "eyJvZmZzZXQiOjEwMDB9",
+        "has_more": true
+      }
+    }
+  ]
 }

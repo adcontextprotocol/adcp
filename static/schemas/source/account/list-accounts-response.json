@@ -54,82 +54,120 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Agency with multiple client accounts",
-      "data": {
-        "status": "completed",
-        "accounts": [
-          {
-            "account_id": "acc_acme_pinnacle",
-            "name": "Acme c/o Pinnacle",
-            "advertiser": "Acme Corp",
-            "billing_proxy": "Pinnacle Media",
+      "status": "completed",
+      "accounts": [
+        {
+          "account_id": "acc_acme_pinnacle",
+          "name": "Acme c/o Pinnacle",
+          "advertiser": "Acme Corp",
+          "billing_proxy": "Pinnacle Media",
+        "brand": {
+          "domain": "acme-corp.com",
+          "countries": ["CA", "US"]
+        },
+        "operator": "pinnacle-media.com",
+        "operator_unit": {
+          "id": "seat_north_america_01",
+          "name": "North America"
+        },
+        "currency": "USD",
+          "billing": "operator",
+          "account_scope": "operator_brand",
+          "status": "active"
+        },
+        {
+          "account_id": "acc_nova_pinnacle",
+          "name": "Nova c/o Pinnacle",
+          "advertiser": "Nova Brands",
+          "billing_proxy": "Pinnacle Media",
           "brand": {
-            "domain": "acme-corp.com",
-            "countries": ["CA", "US"]
+            "domain": "nova-brands.com",
+            "brand_id": "spark"
           },
           "operator": "pinnacle-media.com",
-          "operator_unit": {
-            "id": "seat_north_america_01",
-            "name": "North America"
+          "billing": "operator",
+          "account_scope": "operator_brand",
+          "status": "active"
+        },
+        {
+          "account_id": "acc_pinnacle",
+          "name": "Pinnacle",
+          "advertiser": "Pinnacle Media",
+          "brand": {
+            "domain": "pinnacle-media.com"
           },
-          "currency": "USD",
-            "billing": "operator",
-            "account_scope": "operator_brand",
-            "status": "active"
-          },
-          {
-            "account_id": "acc_nova_pinnacle",
-            "name": "Nova c/o Pinnacle",
-            "advertiser": "Nova Brands",
-            "billing_proxy": "Pinnacle Media",
-            "brand": {
-              "domain": "nova-brands.com",
-              "brand_id": "spark"
-            },
-            "operator": "pinnacle-media.com",
-            "billing": "operator",
-            "account_scope": "operator_brand",
-            "status": "active"
-          },
-          {
-            "account_id": "acc_pinnacle",
-            "name": "Pinnacle",
-            "advertiser": "Pinnacle Media",
-            "brand": {
-              "domain": "pinnacle-media.com"
-            },
-            "operator": "pinnacle-media.com",
-            "billing": "operator",
-            "account_scope": "operator",
-            "status": "active"
-          }
-        ],
-        "pagination": {
-          "has_more": false,
-          "total_count": 3
+          "operator": "pinnacle-media.com",
+          "billing": "operator",
+          "account_scope": "operator",
+          "status": "active"
         }
+      ],
+      "pagination": {
+        "has_more": false,
+        "total_count": 3
       }
     },
     {
-      "description": "Direct advertiser with single account",
-      "data": {
-        "status": "completed",
-        "accounts": [
-          {
-            "account_id": "acc_acme_direct",
-            "name": "Acme",
-            "advertiser": "Acme Corp",
-            "brand": {
-              "domain": "acme-corp.com"
+      "status": "completed",
+      "accounts": [
+        {
+          "account_id": "acc_acme_direct",
+          "name": "Acme",
+          "advertiser": "Acme Corp",
+          "brand": {
+            "domain": "acme-corp.com"
+          },
+          "operator": "acme-corp.com",
+          "billing": "operator",
+          "account_scope": "brand",
+          "status": "active",
+          "rate_card": "acme_vip_2024"
+        }
+      ]
+    },
+    {
+      "status": "completed",
+      "accounts": [
+        {
+          "account_id": "acct_streamhaus_nova_pinnacle",
+          "name": "Nova Motors c/o Pinnacle Agency",
+          "brand": {
+            "domain": "novamotors.example"
+          },
+          "operator": "pinnacle-agency.example",
+          "status": "active",
+          "billing": "advertiser",
+          "billing_entity": {
+            "legal_name": "Nova Motors Ltd.",
+            "registration_number": "NM-2026-1042",
+            "address": {
+              "street": "12 Aurora Road",
+              "city": "London",
+              "postal_code": "SW1A 1AA",
+              "country": "GB"
             },
-            "operator": "acme-corp.com",
-            "billing": "operator",
-            "account_scope": "brand",
-            "status": "active",
-            "rate_card": "acme_vip_2024"
-          }
-        ]
-      }
+            "contacts": [
+              {
+                "role": "billing",
+                "name": "Tomoko",
+                "email": "accounts-payable@novamotors.example"
+              }
+            ]
+          },
+          "payment_terms": "net_30",
+          "account_scope": "operator_brand",
+          "notification_configs": [
+            {
+              "subscriber_id": "account-lifecycle",
+              "url": "https://buyer.pinnacle-agency.example/webhooks/adcp/accounts",
+              "event_types": [
+                "account.status_changed"
+              ],
+              "active": true
+            }
+          ]
+        }
+      ]
     }
   ]
 }
