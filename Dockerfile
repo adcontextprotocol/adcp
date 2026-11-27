@@ -46,11 +46,14 @@ RUN if [ "$SKIP_PRECLONE_REPOS" = "true" ]; then \
 
 WORKDIR /repos
 
-# Copy package.json to bust Docker layer cache on every deploy.
+# Bust the Docker layer cache for the clone step on every deploy.
 # Without this, the clone script layer is cached indefinitely because its
 # content never changes, causing search_repos to serve stale repo content.
-COPY package.json /tmp/_cachebust
-RUN rm /tmp/_cachebust
+# Deployment builds pass a unique value (commit SHA plus run ID) via
+# --build-arg REPOS_CACHE_BUST=...; this RUN must stay before the clone step.
+# Builds that omit it keep the static default and may reuse cached clones.
+ARG REPOS_CACHE_BUST=static
+RUN echo "$REPOS_CACHE_BUST" > /tmp/_cachebust && rm /tmp/_cachebust
 
 COPY <<'CLONE' /repos/clone.sh
 #!/bin/sh

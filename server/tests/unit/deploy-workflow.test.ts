@@ -53,8 +53,10 @@ describe('application and protected evaluator deployment', () => {
     expect(lines).toHaveLength(calls + 1);
     expect(lines[0]).toContain('--process-groups web --strategy bluegreen');
     expect(lines[0]).toContain('--image-label app-abc123-17-2');
+    expect(lines[0]).toContain('--build-arg REPOS_CACHE_BUST=abc123-17-2');
     expect(lines[0]).not.toContain('--skip-release-command');
     if (calls === 2) {
+      expect(lines[1]).not.toContain('--build-arg');
       expect(lines[1]).toContain('--image registry.fly.io/adcp-docs:app-abc123-17-2');
       expect(lines[1]).toContain('--process-groups worker --strategy rolling --skip-release-command');
     }

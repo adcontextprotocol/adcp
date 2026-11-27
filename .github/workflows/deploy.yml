@@ -328,8 +328,11 @@ jobs:
           # /ready. Update the singleton worker separately to avoid overlapping
           # scheduled jobs. Both deployments use the one image built here;
           # the first runs migrations, the second explicitly skips them.
+          # The unique REPOS_CACHE_BUST forces the Dockerfile's repos stage to
+          # re-clone instead of reusing the remote builder's cached layer.
           image_label="app-${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           flyctl deploy --remote-only --process-groups web --strategy bluegreen \
+            --build-arg REPOS_CACHE_BUST="${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
             --wait-timeout 600 --image-label "$image_label" && \
           flyctl deploy --image "registry.fly.io/adcp-docs:${image_label}" \
             --process-groups worker --strategy rolling --skip-release-command --wait-timeout 600
