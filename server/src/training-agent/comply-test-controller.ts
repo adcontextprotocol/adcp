@@ -44,6 +44,7 @@ import {
   supportsGetProductsRejected,
   supportsReliableReporting,
   supportsSalesFixedRate,
+  TERMINAL_MEDIA_BUY_STATUSES,
   TRAINING_AGENT_CURRENT_ADCP_VERSION,
 } from './types.js';
 import {
@@ -292,8 +293,6 @@ const MEDIA_BUY_TRANSITIONS: Record<string, string[]> = {
   rejected: [],
   canceled: [],
 };
-
-const MEDIA_BUY_TERMINAL = new Set(['completed', 'rejected', 'canceled']);
 
 const SI_SESSION_TRANSITIONS: Record<string, string[]> = {
   active: ['pending_handoff', 'complete', 'terminated'],
@@ -754,7 +753,7 @@ function propagateAudienceImpairment(
 
 function validateTransition(
   transitions: Record<string, string[]>,
-  terminalSet: Set<string>,
+  terminalSet: ReadonlySet<string>,
   currentStatus: string,
   targetStatus: string,
   entityType: string,
@@ -1137,7 +1136,7 @@ function createStore(
       if (!mb) {
         const priorTerminalState = session.complyExtensions.forcedMediaBuyTerminalStates.get(mediaBuyId);
         if (priorTerminalState) {
-          validateTransition(mediaBuyTransitions, MEDIA_BUY_TERMINAL, priorTerminalState, status, 'media buy');
+          validateTransition(mediaBuyTransitions, TERMINAL_MEDIA_BUY_STATUSES, priorTerminalState, status, 'media buy');
         }
         throw new TestControllerError('NOT_FOUND', `Media buy ${mediaBuyId} not found`, null);
       }
@@ -1152,7 +1151,7 @@ function createStore(
         return { success: true, previous_state: prev, current_state: status, message: `Media buy ${mediaBuyId} is already ${status}` };
       }
 
-      validateTransition(mediaBuyTransitions, MEDIA_BUY_TERMINAL, prev, status, 'media buy');
+      validateTransition(mediaBuyTransitions, TERMINAL_MEDIA_BUY_STATUSES, prev, status, 'media buy');
 
       if (status === 'rejected' && !rejectionReason) {
         throw new TestControllerError('INVALID_PARAMS', 'rejection_reason is required when status = rejected', prev);
@@ -1160,7 +1159,7 @@ function createStore(
 
       const now = new Date().toISOString();
       mb.status = status;
-      if (MEDIA_BUY_TERMINAL.has(status)) {
+      if (TERMINAL_MEDIA_BUY_STATUSES.has(status)) {
         enforceMapCap(session.complyExtensions.forcedMediaBuyTerminalStates, mediaBuyId, 'media buy terminal states');
         session.complyExtensions.forcedMediaBuyTerminalStates.set(mediaBuyId, status);
       } else {
@@ -1240,7 +1239,7 @@ function createStore(
         throw new TestControllerError('NOT_FOUND', `Media buy ${mediaBuyId} not found`, null);
       }
 
-      if (MEDIA_BUY_TERMINAL.has(mb.status)) {
+      if (TERMINAL_MEDIA_BUY_STATUSES.has(mb.status)) {
         throw new TestControllerError('INVALID_STATE', `Cannot simulate delivery for media buy in ${mb.status} state`, mb.status);
       }
 

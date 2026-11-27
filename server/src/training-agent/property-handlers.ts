@@ -14,7 +14,7 @@ import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import { isWebhookTestOrDevelopment, validateWebhookUrl } from './webhook-fetch.js';
 import { emitPropertyListChangedWebhook } from './webhooks.js';
 
-const MAX_PROPERTIES_PER_LIST = 10_000;
+export const MAX_PROPERTIES_PER_LIST = 10_000;
 
 // ── Tool definitions ─────────────────────────────────────────────
 
@@ -185,6 +185,16 @@ function extractDomains(properties: unknown[]): string[] {
   return domains;
 }
 
+function tooManyPropertiesError(count: number) {
+  return {
+    code: 'VALIDATION_ERROR',
+    message: `Too many properties: ${count} (max ${MAX_PROPERTIES_PER_LIST} per property list). Split them across several lists.`,
+    field: 'base_properties',
+    recovery: 'correctable',
+    details: { limit: MAX_PROPERTIES_PER_LIST },
+  };
+}
+
 // ── Handlers ─────────────────────────────────────────────────────
 
 export async function handleCreatePropertyList(
@@ -203,7 +213,14 @@ export async function handleCreatePropertyList(
   const session = await getSession(sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId));
 
   if (session.propertyLists.size >= MAX_PROPERTY_LISTS_PER_SESSION) {
-    return { errors: [{ code: 'LIMIT_EXCEEDED', message: `Session limit reached (max ${MAX_PROPERTY_LISTS_PER_SESSION} property lists).` }] };
+    return {
+      errors: [{
+        code: 'INVALID_STATE',
+        message: `Property list limit reached: this account holds ${session.propertyLists.size} property lists (max ${MAX_PROPERTY_LISTS_PER_SESSION}). Delete lists you no longer need with delete_property_list, or update an existing list with update_property_list.`,
+        recovery: 'correctable',
+        details: { limit: MAX_PROPERTY_LISTS_PER_SESSION, current: session.propertyLists.size },
+      }],
+    };
   }
 
   const now = new Date().toISOString();
@@ -213,7 +230,7 @@ export async function handleCreatePropertyList(
   const baseProperties = req.base_properties || [];
 
   if (baseProperties.length > MAX_PROPERTIES_PER_LIST) {
-    return { errors: [{ code: 'LIMIT_EXCEEDED', message: `Too many properties (max ${MAX_PROPERTIES_PER_LIST}).` }] };
+    return { errors: [tooManyPropertiesError(baseProperties.length)] };
   }
 
   const state: PropertyListState = {
@@ -320,6 +337,10 @@ export async function handleUpdatePropertyList(
     if (webhookError) return { errors: [webhookError] };
   }
 
+  if (req.base_properties && req.base_properties.length > MAX_PROPERTIES_PER_LIST) {
+    return { errors: [tooManyPropertiesError(req.base_properties.length)] };
+  }
+
   const priorDomains = new Set(extractDomains(state.baseProperties));
   const resolvedContentChanged = req.base_properties !== undefined
     || req.filters !== undefined
@@ -335,9 +356,6 @@ export async function handleUpdatePropertyList(
 
   // Per spec: base_properties is a complete replacement, not a patch
   if (req.base_properties) {
-    if (req.base_properties.length > MAX_PROPERTIES_PER_LIST) {
-      return { errors: [{ code: 'LIMIT_EXCEEDED', message: `Update would exceed max properties per list (${MAX_PROPERTIES_PER_LIST}).` }] };
-    }
     state.baseProperties = req.base_properties;
   }
 

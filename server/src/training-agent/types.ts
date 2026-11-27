@@ -29,6 +29,9 @@ export type TalentRole = typeof TALENT_ROLES[number];
 export const COLLECTION_KINDS = ['series', 'publication', 'event_series', 'rotation', 'channel'] as const;
 export type CollectionKind = typeof COLLECTION_KINDS[number];
 
+/** Media-buy lifecycle statuses a buy never leaves. */
+export const TERMINAL_MEDIA_BUY_STATUSES: ReadonlySet<string> = new Set(['completed', 'rejected', 'canceled']);
+
 /** First wire release that carries the get_products business-rejection arm. */
 export const GET_PRODUCTS_REJECTED_ADCP_VERSION = '3.2-beta.2' as const;
 
