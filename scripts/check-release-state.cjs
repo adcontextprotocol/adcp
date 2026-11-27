@@ -150,6 +150,51 @@ function publicationCurrent(extraVersions = []) {
   }
 }
 
+// The same test release.yml's "Detect committed release artifacts" applies:
+// the first-parent diff of `source` adds or changes this version's artifacts.
+// The workflow's grep leaves the version's dots unescaped, so it can only
+// match more paths than this does; a disagreement therefore falls back to the
+// strict fence below, never the other way round.
+function commitsReleaseArtifacts(source, version) {
+  return git("show", "--first-parent", "--format=", "--name-only", "--no-renames", "-z", source)
+    .split("\0")
+    .some(
+      (file) =>
+        file.startsWith(`dist/schemas/${version}/`) ||
+        file.startsWith(`dist/compliance/${version}/`) ||
+        file.startsWith(`dist/protocol/${version}.`),
+    );
+}
+
+// Freshness for release.yml's start: "Require current release branch", the
+// recheck after installation and the recovery check, which all run before
+// artifact detection. A run publishing an already-committed release (a push
+// of the release merge, or an explicit recovery dispatch naming it) gets the
+// publication-scoped rules, so an unrelated merge that lands between the
+// release merge and the job's start no longer strands the release. Anything
+// else keeps the strict exact-head fence: every run that can reach Changesets
+// generation, and the prepare_next supersession dispatch, which RELEASING.md
+// requires on the exact current SHA. A dispatch is relaxed only when it says
+// prepare_next=false explicitly.
+function releaseStart(source = process.env.RELEASE_SHA) {
+  const { expected, branch } = publicationTarget();
+  const dispatch = process.env.GITHUB_EVENT_NAME === "workflow_dispatch";
+  if (dispatch && process.env.PREPARE_NEXT !== "false") {
+    console.log("Release start: a dispatch that may prepare a supersession keeps the strict exact-head fence.");
+    return current();
+  }
+  if (!shaPattern.test(source || ""))
+    throw new Error("Release start requires the exact release commit (RELEASE_SHA).");
+  const version = JSON.parse(git("show", `${expected}:package.json`)).version;
+  if (!versionPattern.test(version || ""))
+    throw new Error(`package.json at ${expected} has no exact version.`);
+  if (!commitsReleaseArtifacts(source, version)) return current();
+  console.log(
+    `Release start: ${source} commits the ${version} release artifacts, so origin/${branch} may advance under publication-scoped freshness.`,
+  );
+  return publicationCurrent();
+}
+
 // Read metadata and bytes through one opened descriptor. O_NOFOLLOW refuses a
 // leaf replaced with a symlink; fstat checks the exact inode read below.
 function readPublicationFile(file, expectedMode) {
@@ -321,10 +366,13 @@ function published(
   fence([version]);
 }
 
+// A recovery target that commits its release artifacts can only lead to
+// publication (release.yml refuses a recovery target without them), so it
+// takes the same start fence as the push of that release merge.
 function recovery(source) {
-  const tested = current();
   if (!shaPattern.test(source || ""))
     throw new Error("Recovery requires the original release merge SHA.");
+  const tested = releaseStart(source);
   git("merge-base", "--is-ancestor", source, tested);
   const version = JSON.parse(git("show", `${source}:package.json`)).version;
   if (version !== JSON.parse(fs.readFileSync("package.json")).version)
@@ -658,6 +706,7 @@ function main() {
   const [mode, argument] = process.argv.slice(2);
   try {
     if (mode === "current") current();
+    else if (mode === "start") releaseStart();
     else if (mode === "publication-current") publicationCurrent([argument]);
     else if (mode === "committed") committed(argument);
     else if (mode === "published") {
@@ -686,7 +735,7 @@ function main() {
     } else if (mode === "verified-merge") verifiedMerge();
     else
       throw new Error(
-        "Expected current, publication-current, committed, published, pending, recovery, approval, provenance, or verified-merge.",
+        "Expected current, start, publication-current, committed, published, pending, recovery, approval, provenance, or verified-merge.",
       );
   } catch (error) {
     if (mode === "verified-merge") {

@@ -89,8 +89,13 @@ jobs:
 
           echo "commit=${target_commit}" >> "$GITHUB_OUTPUT"
 
+      # `start` is the strict exact-head fence, except for a run publishing an
+      # already-committed release, which accepts an unrelated branch advance
+      # under the publication-current rules. prepare_next stays exact.
       - name: Require current release branch
-        run: node scripts/check-release-state.cjs current
+        env:
+          PREPARE_NEXT: ${{ inputs.prepare_next }}
+        run: node scripts/check-release-state.cjs start
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -239,7 +244,9 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
 
       - name: Require current release branch
-        run: node scripts/check-release-state.cjs current
+        env:
+          PREPARE_NEXT: ${{ inputs.prepare_next }}
+        run: node scripts/check-release-state.cjs start
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -258,7 +265,9 @@ jobs:
           PUPPETEER_SKIP_DOWNLOAD: 'true'
 
       - name: Recheck current release branch after installation
-        run: node scripts/check-release-state.cjs current
+        env:
+          PREPARE_NEXT: ${{ inputs.prepare_next }}
+        run: node scripts/check-release-state.cjs start
 
       - name: Detect committed release artifacts
         id: release-artifacts
@@ -278,7 +287,6 @@ jobs:
               node scripts/check-release-state.cjs recovery "$RELEASE_SHA"
             fi
           fi
-          node scripts/check-release-state.cjs current
           changed_files="$(git show --first-parent --format= --name-only --no-renames "${RELEASE_SHA}")"
           if grep -Eq "^dist/(schemas|compliance)/${VERSION}/|^dist/protocol/${VERSION}[.]" <<< "${changed_files}"; then
             # Storyboards were skipped only for a push classified as not a
@@ -287,9 +295,13 @@ jobs:
               echo "::error::verify-release classified this push as generation-only, but it commits release artifacts for ${VERSION}. Refusing to publish unverified content."
               exit 1
             fi
+            # Publication path: Changesets is skipped from here on.
+            node scripts/check-release-state.cjs start
             echo "has_release_artifacts=true" >> "$GITHUB_OUTPUT"
             echo "Detected committed release artifact changes for ${VERSION}."
           else
+            # Generation path: a Version Packages PR must build on exact main.
+            node scripts/check-release-state.cjs current
             echo "has_release_artifacts=false" >> "$GITHUB_OUTPUT"
             if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ "$PREPARE_NEXT" != true ]; then
               echo "::error::Release recovery target ${RELEASE_COMMIT} does not commit artifacts for ${VERSION}."
@@ -601,6 +613,11 @@ jobs:
           fetch-depth: 0
           token: ${{ github.token }}
 
+      # Transient R2 errors (rc.2's ServiceUnavailable after the CLI's default
+      # three attempts) are retried by the CLI, then by a bounded per-object
+      # resume in the script. Both are safe only because every write is
+      # conditional (If-None-Match: *) and an existing object must match
+      # byte-for-byte; integrity and fence failures are never retried.
       - name: Publish release artifacts to R2
         if: steps.release-artifacts.outputs.has_release_artifacts == 'true'
         env:
@@ -609,6 +626,8 @@ jobs:
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID || secrets.CLOUDFLARE_ACCOUNT_ID }}
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID || secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY || secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_MAX_ATTEMPTS: '10'
+          AWS_RETRY_MODE: adaptive
         run: |
           set -euo pipefail
           if [ -z "${R2_ACCOUNT_ID:-}" ] || [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
