@@ -58,6 +58,22 @@ test('scopes that come from a graph name the graph', async () => {
   assert.equal(validate({ ...noVendor, uid_type: 'publisher_first_party', scopes: ['cookies', 'accounts'] }), true);
 });
 
+test('a seller that forms households at serve time names itself and says so', async () => {
+  const validate = await compile('/schemas/core/match-key.json');
+  const serveTime = {
+    uid_type: 'maid',
+    vendor: { domain: 'streamhaus.example' },
+    scopes: ['devices', 'households'],
+    scope_resolution: 'serve_time',
+    uses: ['audience_exclude', 'frequency_cap'],
+  };
+  assert.equal(validate(serveTime), true, JSON.stringify(validate.errors));
+  const { vendor, ...noVendor } = serveTime;
+  assert.equal(validate(noVendor), false, 'a serve-time household still names who forms it');
+  assert.equal(validate({ ...householdKey, scope_resolution: 'graph' }), true, 'graph is the explicit default');
+  assert.equal(validate({ ...serveTime, scope_resolution: 'ip' }), false, 'scope_resolution is a closed set');
+});
+
 test('PAIR and hashed_email are never forwarded to Identity Match', async () => {
   const validate = await compile('/schemas/core/match-key.json');
   for (const uid_type of ['pairid', 'hashed_email']) {
