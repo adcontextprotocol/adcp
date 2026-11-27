@@ -21,6 +21,10 @@ server/node_modules
 /dist/schemas/*.js.map
 /dist/schemas/*.d.ts
 /dist/schemas/*.d.ts.map
+/dist/compliance/*.js
+/dist/compliance/*.js.map
+/dist/compliance/*.d.ts
+/dist/compliance/*.d.ts.map
 /dist/compliance/latest
 /dist/compliance/v*
 /dist/protocol/latest.tgz
