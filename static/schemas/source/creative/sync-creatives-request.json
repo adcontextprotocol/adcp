@@ -175,6 +175,7 @@
       "maxItems": 100,
       "x-adcp-validation": {
         "unique_item_properties": ["creative_id"],
+        "unique_items": [{ "key": ["creative_id"] }],
         "spec": "docs/creative/task-reference/sync_creatives.mdx#request-parameters"
       }
     },

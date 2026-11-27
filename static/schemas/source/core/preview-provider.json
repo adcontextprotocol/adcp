@@ -43,7 +43,8 @@
         "additionalProperties": true
       },
       "x-adcp-validation": {
-        "unique_item_properties": ["format_option_id"]
+        "unique_item_properties": ["format_option_id"],
+        "unique_items": [{ "key": ["format_option_id"] }]
       }
     }
   },
