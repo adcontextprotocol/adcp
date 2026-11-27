@@ -13,7 +13,6 @@
   "definitions": {
     "targeting_kvs": {
       "type": "array",
-      "maxItems": 100,
       "description": "Provider-local key-value pairs for ad-server targeting. The router preserves each pair unchanged under the emitting provider's registered provider_id.",
       "items": {
         "type": "object",

@@ -90,6 +90,8 @@ const SDK_GENERATION_EXCLUSIONS = {
   'core/targeting.json#/properties/collection_lists_exclude': 'the TypeScript SDK hoists the bounded array into a type alias and cannot restore its maxItems',
   'brand/update-rights-response.json#/oneOf/0/properties/generation_credentials': 'the Python SDK post-generation fix fix_update_rights_legacy_response_defaults matches the unbounded field text',
   'core/reporting-subscription-coverage.json#/properties/excluded/items/properties/package_ids': 'the TypeScript SDK reduces excluded[] items (an allOf of if/then rules) to z.object({}).passthrough(), so its maxItems post-process finds no ZodArray to bound',
+  'trusted-match/context-match-response.json#/definitions/targeting_kvs': 'the TypeScript SDK post-process postProcessTrustedMatchResponseSchemas requires the generated TargetingKvsSchema to end in .passthrough()), which a .max() breaks',
+  'trusted-match/provider-context-match-response.json#/definitions/targeting_kvs': 'the TypeScript SDK post-process postProcessTrustedMatchResponseSchemas requires the generated TargetingKvsSchema to end in .passthrough()), which a .max() breaks',
 };
 
 // 3.3 beta fields that the #8501 withdrawal PRs remove. They get no bound, so

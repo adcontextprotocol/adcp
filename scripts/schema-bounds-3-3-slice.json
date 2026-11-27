@@ -1,6 +1,6 @@
 {
   "description": "Bounds added by the 3.3 slice: arrays and strings that are new in 3.3 or experimental. Written by `node scripts/audit-schema-bounds.cjs --apply`; scripts/schema-bounds-inventory.json describes the tree after these edits.",
-  "count": 659,
+  "count": 657,
   "applied": [
     {"file":"account/get-account-financials-response.json","pointer":"/oneOf/0/properties/invoices/items/properties/adjusts_invoice_id","keyword":"maxLength","limit":255,"stability":"experimental","tier":"string-id"},
     {"file":"account/get-account-financials-response.json","pointer":"/oneOf/0/properties/invoices/items/properties/lines","keyword":"maxItems","limit":100,"stability":"experimental","tier":"array-typical"},
@@ -619,7 +619,6 @@
     {"file":"trusted-match/context-match-request.json","pointer":"/properties/placement_id","keyword":"maxLength","limit":255,"stability":"experimental","tier":"string-id"},
     {"file":"trusted-match/context-match-request.json","pointer":"/properties/protocol_version","keyword":"maxLength","limit":64,"stability":"experimental","tier":"string-code"},
     {"file":"trusted-match/context-match-request.json","pointer":"/properties/request_id","keyword":"maxLength","limit":255,"stability":"experimental","tier":"string-id"},
-    {"file":"trusted-match/context-match-response.json","pointer":"/definitions/targeting_kvs","keyword":"maxItems","limit":100,"stability":"experimental","tier":"array-typical"},
     {"file":"trusted-match/context-match-response.json","pointer":"/definitions/targeting_kvs/items/properties/key","keyword":"maxLength","limit":255,"stability":"experimental","tier":"string-id"},
     {"file":"trusted-match/context-match-response.json","pointer":"/definitions/targeting_kvs/items/properties/value","keyword":"maxLength","limit":255,"stability":"experimental","tier":"string-id"},
     {"file":"trusted-match/context-match-response.json","pointer":"/properties/offers","keyword":"maxItems","limit":100,"stability":"experimental","tier":"array-typical"},
@@ -648,7 +647,6 @@
     {"file":"trusted-match/offer.json","pointer":"/properties/creative_data/additionalProperties","keyword":"maxLength","limit":1048576,"stability":"experimental","tier":"string-blob"},
     {"file":"trusted-match/offer.json","pointer":"/properties/package_id","keyword":"maxLength","limit":255,"stability":"experimental","tier":"string-id"},
     {"file":"trusted-match/offer.json","pointer":"/properties/summary","keyword":"maxLength","limit":2000,"stability":"experimental","tier":"string-text"},
-    {"file":"trusted-match/provider-context-match-response.json","pointer":"/definitions/targeting_kvs","keyword":"maxItems","limit":100,"stability":"experimental","tier":"array-typical"},
     {"file":"trusted-match/provider-context-match-response.json","pointer":"/definitions/targeting_kvs/items/properties/key","keyword":"maxLength","limit":255,"stability":"experimental","tier":"string-id"},
     {"file":"trusted-match/provider-context-match-response.json","pointer":"/definitions/targeting_kvs/items/properties/value","keyword":"maxLength","limit":255,"stability":"experimental","tier":"string-id"},
     {"file":"trusted-match/provider-context-match-response.json","pointer":"/properties/offers","keyword":"maxItems","limit":100,"stability":"experimental","tier":"array-typical"},

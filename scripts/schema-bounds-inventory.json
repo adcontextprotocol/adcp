@@ -3,7 +3,7 @@
     "schema_version": "3.3.0-rc.3",
     "last_stable_release": "3.2.12",
     "source_files": 1116,
-    "already_bounded_arrays": 477,
+    "already_bounded_arrays": 475,
     "skipped_strings": {
       "const": 604,
       "enum": 985,
@@ -47,10 +47,10 @@
   },
   "summary": {
     "array": {
-      "total": 1479,
-      "files": 394,
+      "total": 1481,
+      "files": 396,
       "by_stability": {
-        "experimental": 28,
+        "experimental": 30,
         "new-3.3": 9,
         "stable": 1442
       },
@@ -58,12 +58,12 @@
         "both": 456,
         "other": 232,
         "request": 234,
-        "response": 557
+        "response": 559
       },
       "by_stability_and_side": {
         "experimental/both": 5,
         "experimental/other": 1,
-        "experimental/response": 22,
+        "experimental/response": 24,
         "new-3.3/both": 4,
         "new-3.3/response": 5,
         "stable/both": 447,
@@ -77,12 +77,12 @@
         "array-enum": 409,
         "array-large": 61,
         "array-small": 131,
-        "array-typical": 655,
+        "array-typical": 657,
         "inline-property-list": 54
       },
       "by_action": {
         "deferred (#8198)": 27,
-        "deferred (SDK generation)": 4,
+        "deferred (SDK generation)": 6,
         "move out of band (4.0)": 54,
         "tighten in 4.0": 1394
       }
@@ -3821,6 +3821,8 @@
     {"file":"signals/get-signals-response.json","pointer":"/properties/incomplete/items/properties/description","kind":"string","property":"description","side":"both","stability":"stable","in_last_stable":"yes","proposed_limit":2000,"tier":"string-text","rationale":"Prose for a human or model; 2,000 is the repository default (41 fields).","action":"tighten in 4.0"},
     {"file":"signals/get-signals-response.json","pointer":"/properties/wholesale_feed_version","kind":"string","property":"wholesale_feed_version","side":"both","stability":"stable","in_last_stable":"yes","proposed_limit":64,"tier":"string-code","rationale":"Short code or version; 64 covers every registered value with room.","action":"tighten in 4.0"},
     {"file":"signals/get-signals-response.json","pointer":"/properties/pricing_version","kind":"string","property":"pricing_version","side":"both","stability":"stable","in_last_stable":"yes","proposed_limit":64,"tier":"string-code","rationale":"Short code or version; 64 covers every registered value with room.","action":"tighten in 4.0"},
+    {"file":"trusted-match/context-match-response.json","pointer":"/definitions/targeting_kvs","kind":"array","property":"targeting_kvs","side":"response","stability":"experimental","in_last_stable":"yes","items":"object","proposed_limit":100,"tier":"array-typical","rationale":"Typical nested list; 100 until the owning group names a real ceiling.","action":"deferred (SDK generation)"},
+    {"file":"trusted-match/provider-context-match-response.json","pointer":"/definitions/targeting_kvs","kind":"array","property":"targeting_kvs","side":"response","stability":"experimental","in_last_stable":"yes","items":"object","proposed_limit":100,"tier":"array-typical","rationale":"Typical nested list; 100 until the owning group names a real ceiling.","action":"deferred (SDK generation)"},
     {"file":"trusted-match/provider-registration.json","pointer":"/properties/properties","kind":"array","property":"properties","side":"other","stability":"experimental","in_last_stable":"yes","items":"string","proposed_limit":null,"tier":"inline-property-list","rationale":"Property/collection list carried inline; the WG rule is that such lists are passed by reference (agent_url + list_id).","action":"move out of band (4.0)"}
   ]
 }
