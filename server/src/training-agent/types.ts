@@ -39,12 +39,12 @@ export const GET_PRODUCTS_REJECTED_ADCP_VERSION = '3.2-beta.2' as const;
 export const SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION = '3.2-beta.6' as const;
 
 /**
- * Newest 3.2 schema bundle the server ships (release-precision wire value).
- * @adcp/sdk 14.0.0 ships the 3.2 GA bundle (3.2.1, wire value `'3.2'`), so
+ * Newest stable schema bundle the server ships (release-precision wire value).
+ * @adcp/sdk 17.0.0 ships the 3.3 GA bundle (3.3.0, wire value `'3.3'`), so
  * the current version is the release line itself; the release-line pin below
  * derives from it.
  */
-export const TRAINING_AGENT_CURRENT_ADCP_VERSION = '3.2' as const;
+export const TRAINING_AGENT_CURRENT_ADCP_VERSION = '3.3' as const;
 
 type AdcpReleaseLine<V extends string> = V extends `${infer Major}.${infer Minor}-${string}`
   ? `${Major}.${Minor}`
@@ -76,18 +76,28 @@ export const RELIABLE_REPORTING_ADCP_VERSION = '3.2-rc.1' as const;
 export const TRAINING_AGENT_RETAINED_RC_ADCP_VERSION = '3.2-rc.7' as const;
 
 /**
+ * The last hosted preview (candidate-version.ts), the 3.3-rc.3 release
+ * candidate. The preview retired at 3.3 GA; this checkpoint stays served to an
+ * exact `"3.3-rc.3"` pin, from the committed dist/schemas/3.3.0-rc.3 bundle
+ * the training agent registers itself (schema-compat.ts), so pinned docs,
+ * snapshots and learner scripts keep resolving after the GA bump.
+ */
+export const TRAINING_AGENT_RETAINED_PREVIEW_ADCP_VERSION = '3.3-rc.3' as const;
+
+/**
  * Release checkpoints the reference training agent can serve, oldest first.
- * `'3.2-rc.7'` stays listed as an exact prerelease pin after the GA bump so
- * pinned docs, snapshots and learner scripts keep resolving during the
- * transition. Deduplicated so the GA bump (current === release line) leaves a
- * single `'3.2'` entry.
+ * `'3.2-rc.7'` and `'3.3-rc.3'` stay listed as exact prerelease pins after
+ * their lines' GA bumps so pinned docs, snapshots and learner scripts keep
+ * resolving. Deduplicated so the GA bump (current === release line) leaves a
+ * single `'3.3'` entry.
  */
 export const TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS: readonly string[] = Object.freeze([...new Set<string>([
   '3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6',
   '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14',
   '3.1-rc.15', '3.1', SELLER_GOVERNANCE_DISCOVERY_ADCP_VERSION,
   // Explicit, not redundant: keeps the exact rc.7 pin listed after the GA bump.
-  '3.2-rc.0', TRAINING_AGENT_RETAINED_RC_ADCP_VERSION,
+  '3.2-rc.0', TRAINING_AGENT_RETAINED_RC_ADCP_VERSION, '3.2',
+  TRAINING_AGENT_RETAINED_PREVIEW_ADCP_VERSION,
   TRAINING_AGENT_CURRENT_ADCP_VERSION,
   TRAINING_AGENT_CURRENT_ADCP_RELEASE,
   // The opt-in prerelease preview (candidate-version.ts), served only to an
@@ -270,10 +280,13 @@ export function supportsAccountSurfaces33(servedVersion: string | undefined): bo
 
 /** Whether this process registers the experimental 3.3 account tools on its
  * ordinary routes and enforces sandbox grants on every account-scoped call:
- * only when one registry serves the 3.3 wire to every caller (the trusted
- * storyboard candidate mode). The hosted preview's own registry and the 3.3
- * identity route register them too. */
-export const TRAINING_AGENT_REGISTERS_ACCOUNT_SURFACES_33 = supportsAccountSurfaces33(TRAINING_AGENT_CANDIDATE_ADCP_VERSION);
+ * only when one registry serves the 3.3 wire to every caller (from 3.3 GA,
+ * every ordinary route; before it, the trusted storyboard candidate mode).
+ * A hosted preview's own registry and the 3.3 identity route register them
+ * too. The handlers still refuse a request served below 3.3. */
+export const TRAINING_AGENT_REGISTERS_ACCOUNT_SURFACES_33 = supportsAccountSurfaces33(
+  TRAINING_AGENT_CANDIDATE_ADCP_VERSION ?? TRAINING_AGENT_CURRENT_ADCP_VERSION,
+);
 
 /** An AdCP release version (`3.2`, `3.1-rc.4`, `3.0.28`), parsed. */
 export interface ParsedAdcpReleaseVersion {

@@ -852,7 +852,7 @@ components:
             type: array
             items:
               type: string
-          description: "Active AgenticAdvertising.org Verified AdCP releases for each verified role, keyed by canonical badge role and sorted newest-first (e.g. { media-buy: ['3.2', '3.1'] }). Use this when choosing a version-pinned badge URL."
+          description: "Active AgenticAdvertising.org Verified AdCP releases for each verified role, keyed by canonical badge role and sorted newest-first (e.g. { media-buy: ['3.3', '3.2'] }). Use this when choosing a version-pinned badge URL."
       required:
         - status
         - lifecycle_stage
@@ -5071,7 +5071,7 @@ components:
             - description: Canonical role this verification badge covers.
         adcp_version:
           type: string
-          description: AdCP release this badge was issued against, MAJOR.MINOR (e.g. '3.1', '3.2'). Load-bearing for badge identity — pairs with the (agent_url, role, adcp_version) PK.
+          description: AdCP release this badge was issued against, MAJOR.MINOR (e.g. '3.2', '3.3'). Load-bearing for badge identity — pairs with the (agent_url, role, adcp_version) PK.
         verified_at:
           type: string
         verified_specialisms:
@@ -12924,9 +12924,9 @@ paths:
           in: path
         - schema:
             type: string
-            description: AdCP release as MAJOR.MINOR (e.g. '3.1', '3.2')
+            description: AdCP release as MAJOR.MINOR (e.g. '3.2', '3.3')
           required: true
-          description: AdCP release as MAJOR.MINOR (e.g. '3.1', '3.2')
+          description: AdCP release as MAJOR.MINOR (e.g. '3.2', '3.3')
           name: version
           in: path
       responses:
@@ -13956,10 +13956,10 @@ paths:
                         description: Fresh test session id used for the compliance run. Useful when matching seller-side logs to the refresh.
                       requested_compliance_target:
                         type: string
-                        description: Requested compliance target before alias resolution, e.g. 3.2, 3.1, 3.0, 3.2-rc, or 3.2-beta. Present when `ran` is true.
+                        description: Requested compliance target before alias resolution, e.g. 3.3, 3.2, 3.1, 3.0, 3.3-rc, or 3.3-beta. Present when `ran` is true.
                       adcp_version:
                         type: string
-                        description: Concrete AdCP compliance bundle version used for the run, e.g. 3.2.1, 3.1.24, or 3.2.0-rc.7. Present when `ran` is true.
+                        description: Concrete AdCP compliance bundle version used for the run, e.g. 3.3.0, 3.2.12, or 3.3.0-rc.3. Present when `ran` is true.
                       badge_eligible:
                         type: boolean
                         description: True when this run can update public badge state.
@@ -13967,7 +13967,7 @@ paths:
                         type: array
                         items:
                           type: string
-                        description: Public badge versions this run can issue, e.g. ['3.2'].
+                        description: Public badge versions this run can issue, e.g. ['3.3'].
                       overall_status:
                         type: string
                         description: Aggregate verdict from the run (passing / failing / partial / unknown). Only present when `ran` is true.
@@ -14891,9 +14891,9 @@ paths:
           in: query
         - schema:
             type: string
-            description: Compliance target to inspect, e.g. 3.2, 3.1, 3.0, 3.2-rc, or 3.2-beta
+            description: Compliance target to inspect, e.g. 3.3, 3.2, 3.1, 3.0, 3.3-rc, or 3.3-beta
           required: false
-          description: Compliance target to inspect, e.g. 3.2, 3.1, 3.0, 3.2-rc, or 3.2-beta
+          description: Compliance target to inspect, e.g. 3.3, 3.2, 3.1, 3.0, 3.3-rc, or 3.3-beta
           name: compliance_target
           in: query
       responses:
@@ -14942,9 +14942,9 @@ paths:
           in: path
         - schema:
             type: string
-            description: Compliance target to inspect, e.g. 3.2, 3.1, 3.0, 3.2-rc, or 3.2-beta
+            description: Compliance target to inspect, e.g. 3.3, 3.2, 3.1, 3.0, 3.3-rc, or 3.3-beta
           required: false
-          description: Compliance target to inspect, e.g. 3.2, 3.1, 3.0, 3.2-rc, or 3.2-beta
+          description: Compliance target to inspect, e.g. 3.3, 3.2, 3.1, 3.0, 3.3-rc, or 3.3-beta
           name: compliance_target
           in: query
       responses:
@@ -15432,9 +15432,9 @@ paths:
           in: path
         - schema:
             type: string
-            description: Compliance target to inspect, e.g. 3.2, 3.1, 3.0, 3.2-rc, or 3.2-beta
+            description: Compliance target to inspect, e.g. 3.3, 3.2, 3.1, 3.0, 3.3-rc, or 3.3-beta
           required: false
-          description: Compliance target to inspect, e.g. 3.2, 3.1, 3.0, 3.2-rc, or 3.2-beta
+          description: Compliance target to inspect, e.g. 3.3, 3.2, 3.1, 3.0, 3.3-rc, or 3.3-beta
           name: compliance_target
           in: query
       responses:

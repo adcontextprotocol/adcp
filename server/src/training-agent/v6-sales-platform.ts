@@ -1642,10 +1642,10 @@ export class TrainingSalesPlatform
         overrides: { ...overrides, media_buy: mediaBuy },
       };
     }
-    // @adcp/sdk 14.0.0 bundles only the 3.0, 3.1 and 3.2 GA releases, so it
-    // no longer derives the retained 3.2-rc.7 checkpoint on its own. Declare
-    // the served releases explicitly so exact prerelease pins negotiate to
-    // the checkpoint the agent advertises instead of downshifting to 3.1.
+    // A GA @adcp/sdk bundles only GA releases, so it does not derive the
+    // retained 3.2-rc.7 and 3.3-rc.3 checkpoints on its own. Declare the
+    // served releases explicitly so exact prerelease pins negotiate to the
+    // checkpoint the agent advertises instead of downshifting.
     // Only the preview's own registry negotiates the hosted preview.
     return {
       ...TRAINING_SALES_CAPABILITIES,

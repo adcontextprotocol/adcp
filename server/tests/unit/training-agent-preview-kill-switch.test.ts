@@ -1,9 +1,12 @@
 /**
- * #8181: TRAINING_AGENT_DISABLE_ADCP_PREVIEW turns the hosted 3.3 preview off
- * without a code change. The process then negotiates exactly as one that
- * never listed the preview: nothing advertises it, an exact pin is refused on
- * the v5 route and served the stable release on SDK tenant routes (as before
- * the preview existed), and the experimental tools are not registered.
+ * #8181: TRAINING_AGENT_DISABLE_ADCP_PREVIEW turns a hosted preview off
+ * without a code change. The 3.3 preview retired at 3.3 GA, so the switch has
+ * nothing left to disable: a process with it set negotiates exactly as one
+ * without it. The retained 3.3-rc.3 checkpoint is a stable-registry exact pin,
+ * not the preview, so the switch leaves it served, and the 3.3 surfaces are
+ * the stable 3.3 line. The pure-function behavior of the switch, and the
+ * preview selection it feeds, are covered in
+ * training-agent-preview-version.test.ts.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import express from 'express';
@@ -16,10 +19,15 @@ vi.hoisted(() => {
 
 import { TRAINING_AGENT_HOSTED_PREVIEW, TRAINING_AGENT_PREVIEW_ADCP_VERSION } from '../../src/training-agent/candidate-version.js';
 import { PREVIEW_SCHEMA_BUNDLE } from '../../src/training-agent/schema-compat.js';
-import { TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS } from '../../src/training-agent/types.js';
+import {
+  TRAINING_AGENT_CURRENT_ADCP_VERSION,
+  TRAINING_AGENT_RETAINED_PREVIEW_ADCP_VERSION,
+  TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS,
+} from '../../src/training-agent/types.js';
 import { stopSessionCleanup } from '../../src/training-agent/state.js';
 
-const PREVIEW = TRAINING_AGENT_HOSTED_PREVIEW.wireVersion;
+const RETAINED = TRAINING_AGENT_RETAINED_PREVIEW_ADCP_VERSION;
+const CURRENT = TRAINING_AGENT_CURRENT_ADCP_VERSION;
 
 describe('hosted 3.3 preview kill switch', () => {
   let server: http.Server;
@@ -58,39 +66,35 @@ describe('hosted 3.3 preview kill switch', () => {
     }
   });
 
-  it('removes the preview from the process', () => {
+  it('leaves the process as it is without the switch: no preview, 3.3 still listed', () => {
+    expect(TRAINING_AGENT_HOSTED_PREVIEW).toBeUndefined();
     expect(TRAINING_AGENT_PREVIEW_ADCP_VERSION).toBeUndefined();
     expect(PREVIEW_SCHEMA_BUNDLE).toBeUndefined();
-    expect(TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS.some(version => version.startsWith('3.3'))).toBe(false);
+    // The switch does not remove the 3.3 line or its retained checkpoint.
+    expect(TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS.filter(version => version.startsWith('3.3'))).toEqual([RETAINED, CURRENT]);
   });
 
-  it.each(['/mcp', '/sales/mcp', '/signals/mcp'])('neither advertises nor serves the preview on %s', async route => {
-    for (const args of [{}, { adcp_version: '3.2' }]) {
+  it.each(['/mcp', '/sales/mcp', '/signals/mcp'])('serves 3.3 and the retained pin on %s as it does without the switch', async route => {
+    for (const [args, expected] of [
+      [{}, route === '/mcp' ? '3.0' : CURRENT],
+      [{ adcp_version: '3.2' }, '3.2'],
+      [{ adcp_version: CURRENT }, CURRENT],
+      [{ adcp_version: RETAINED }, RETAINED],
+    ] as const) {
       const result = (await rpc(route, 'tools/call', { name: 'get_adcp_capabilities', arguments: args })).result?.structuredContent;
-      expect(result.adcp.supported_versions).not.toContain(PREVIEW);
-      expect(result.experimental_features ?? []).not.toContain('account.requests');
-    }
-    const pinned = (await rpc(route, 'tools/call', { name: 'get_adcp_capabilities', arguments: { adcp_version: PREVIEW } })).result?.structuredContent;
-    if (route === '/mcp') {
-      expect(pinned.adcp_error?.code, JSON.stringify(pinned).slice(0, 300)).toBe('VERSION_UNSUPPORTED');
-      expect(pinned.adcp_error.details.supported_versions).not.toContain(PREVIEW);
-    } else {
-      expect(pinned.adcp_version, JSON.stringify(pinned).slice(0, 300)).toBe('3.2');
-      expect(pinned.experimental_features ?? []).not.toContain('account.requests');
-      // Nor the experimental holds (holds/service.ts).
-      expect((pinned.experimental_features ?? []).filter((feature: string) => feature.includes('hold'))).toEqual([]);
-      expect(pinned.media_buy?.proposal_refinement?.hold_extension).toBeUndefined();
+      expect(result.adcp_version, `${route} ${JSON.stringify(args)}: ${JSON.stringify(result).slice(0, 300)}`).toBe(expected);
+      expect(result.adcp.supported_versions).toEqual(expect.arrayContaining([RETAINED, CURRENT]));
     }
   }, 60_000);
 
-  it('does not register the experimental account tool', async () => {
-    const list = await rpc('/sales/mcp', 'tools/list', { _meta: { adcp_version: PREVIEW } });
-    expect(list.result.tools.map((tool: { name: string }) => tool.name)).not.toContain('request_account');
+  it('still registers the 3.3 account tool, refusing it below 3.3', async () => {
+    const list = await rpc('/sales/mcp', 'tools/list', { _meta: { adcp_version: CURRENT } });
+    expect(list.result.tools.map((tool: { name: string }) => tool.name)).toContain('request_account');
     const called = await rpc('/sales/mcp', 'tools/call', {
       name: 'request_account',
-      arguments: { adcp_version: PREVIEW, brand: { domain: 'kill-switch.example' }, operator: 'kill-switch.example', idempotency_key: 'preview-kill-switch-request-1' },
+      arguments: { adcp_version: '3.2', brand: { domain: 'kill-switch.example' }, operator: 'kill-switch.example', idempotency_key: 'preview-kill-switch-request-1' },
     });
-    expect(called.result?.isError).toBe(true);
+    expect(called.result?.structuredContent?.adcp_error?.code, JSON.stringify(called).slice(0, 300)).toBe('UNSUPPORTED_FEATURE');
     expect(called.result?.structuredContent?.request).toBeUndefined();
   }, 60_000);
 });

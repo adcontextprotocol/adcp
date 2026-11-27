@@ -36,6 +36,36 @@ describe('hosted compliance target selection', () => {
     expect(target.version).not.toContain('-');
   });
 
+  // The v3.3.0 Version Packages PR registers 3.3.0 in published-versions.json.
+  // Until it lands, the stable '3.3' alias does not resolve, so selection skips
+  // it and a 3.3-advertising agent is graded on its newest registered line.
+  it('skips the 3.3 stable alias until 3.3.0 is registered', () => {
+    expect(() => hostedComplianceTarget('3.3')).toThrow(/No npm-published compliance version is registered for 3\.3/);
+
+    const target = selectCanonicalHostedComplianceTargetForSupportedVersions(['3.0', '3.1', '3.2', '3.3']);
+    expect(target.requested).toBe('3.2');
+    expect(target.version).toBe(hostedComplianceTarget('3.2').version);
+  });
+
+  it('keeps 3.2-only agents on the newest 3.2 bundle after the 3.3 line is added', () => {
+    const target = selectCanonicalHostedComplianceTargetForSupportedVersions(['3.1', '3.2']);
+
+    expect(target.requested).toBe('3.2');
+    expect(target.version).toBe(hostedComplianceTarget('3.2').version);
+  });
+
+  it('grades a 3.3 release candidate pin on its exact prerelease bundle', () => {
+    const target = selectHostedComplianceTargetForSupportedVersions(['3.0', '3.3-rc.3']);
+
+    expect(target.requested).toBe('3.3-rc');
+    expect(target.version).toBe('3.3.0-rc.3');
+    // Prereleases are diagnostic only, never badge eligible.
+    expect(badgeEligibleVersionsForHostedComplianceTarget(target)).toEqual([]);
+    expect(agentAdvertisesBadgeEligibleHostedComplianceTarget(['3.3-rc.3'], target)).toBe(false);
+    // Canonical selection keeps the public 3.0 default for a prerelease-only 3.3 pin.
+    expect(selectCanonicalHostedComplianceTargetForSupportedVersions(['3.0', '3.3-rc.3']).requested).toBe('3.0');
+  });
+
   it('keeps 3.1 agents that do not advertise 3.2 on the latest 3.1 GA bundle', () => {
     const target = selectCanonicalHostedComplianceTargetForSupportedVersions(['3.0', '3.1']);
 

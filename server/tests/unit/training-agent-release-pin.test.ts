@@ -16,19 +16,23 @@ import {
 } from '../../src/training-agent/types.js';
 import { TRAINING_AGENT_PREVIEW_ADCP_VERSION } from '../../src/training-agent/candidate-version.js';
 
-describe('training agent 3.2 release-line pin', () => {
+describe('training agent 3.3 release-line pin', () => {
   it('derives the release line from the current bundle', () => {
-    expect(TRAINING_AGENT_CURRENT_ADCP_RELEASE).toBe('3.2');
+    expect(TRAINING_AGENT_CURRENT_ADCP_RELEASE).toBe('3.3');
     expect(TRAINING_AGENT_CURRENT_ADCP_VERSION.startsWith(`${TRAINING_AGENT_CURRENT_ADCP_RELEASE}`)).toBe(true);
     // Unpinned callers keep the deliberate 3.0 default.
     expect(TRAINING_AGENT_DEFAULT_ADCP_VERSION).toBe('3.0');
   });
 
-  it('advertises the release line and keeps the exact rc.7 pin, without duplicates', () => {
+  it('advertises the release line and keeps the exact rc.7 and 3.3-rc.3 pins, without duplicates', () => {
     expect(TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS).toContain(TRAINING_AGENT_CURRENT_ADCP_VERSION);
+    // 3.2 stays listed explicitly after the 3.3 bump.
+    expect(TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS).toContain('3.2');
     expect(TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS).toContain('3.2-rc.7');
-    // The release line is the newest release; only the opt-in 3.3 preview
-    // (#8181), served to an exact pin alone, is listed after it.
+    // The last hosted preview is a retained exact pin, listed before its GA.
+    expect(TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS.slice(-3)).toEqual(['3.2', '3.3-rc.3', '3.3']);
+    // The release line is the newest release; only a hosted preview (#8181,
+    // retired at 3.3 GA), served to an exact pin alone, is listed after it.
     expect(TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS.at(TRAINING_AGENT_PREVIEW_ADCP_VERSION ? -2 : -1)).toBe(TRAINING_AGENT_CURRENT_ADCP_RELEASE);
     if (TRAINING_AGENT_PREVIEW_ADCP_VERSION) {
       expect(TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS.at(-1)).toBe(TRAINING_AGENT_PREVIEW_ADCP_VERSION);
@@ -44,8 +48,12 @@ describe('training agent 3.2 release-line pin', () => {
     [{ adcp_version: '3.2.1' }, '3.2'],
     [{ adcp_version: '3.2-rc.7' }, '3.2-rc.7'],
     [{ adcp_version: '3.1' }, '3.1'],
-    [{ adcp_version: '3.3' }, '3.2'],
-    [{ adcp_major_version: 3 }, '3.2'],
+    [{ adcp_version: '3.3' }, '3.3'],
+    [{ adcp_version: '3.3.0' }, '3.3'],
+    [{ adcp_version: '3.3-rc.3' }, '3.3-rc.3'],
+    // A release pin the agent does not list downshifts to the newest stable.
+    [{ adcp_version: '3.4' }, '3.3'],
+    [{ adcp_major_version: 3 }, '3.3'],
     [{}, '3.0'],
   ])('resolves %j to %s', (args, served) => {
     expect(resolveServedAdcpVersion(args)).toEqual({ ok: true, servedVersion: served });
@@ -56,18 +64,26 @@ describe('training agent 3.2 release-line pin', () => {
       ok: false,
       field: 'adcp_version',
     });
+    // Only the retained 3.3-rc.3 checkpoint is listed; its siblings are not.
+    for (const adcp_version of ['3.3-beta.1', '3.3-rc.0', '3.3-rc.2', '3.3-rc.4']) {
+      expect(resolveServedAdcpVersion({ adcp_version }), adcp_version).toMatchObject({ ok: false, field: 'adcp_version' });
+    }
   });
 
   it('never downshifts a release pin onto a prerelease when the release line is not advertised', () => {
     expect(resolveServedAdcpVersion({ adcp_version: '3.2' }, ['3.0', '3.1', '3.2-rc.7']))
       .toEqual({ ok: true, servedVersion: '3.1' });
+    expect(resolveServedAdcpVersion({ adcp_version: '3.3' }, ['3.0', '3.1', '3.2', '3.3-rc.3']))
+      .toEqual({ ok: true, servedVersion: '3.2' });
   });
 
   it('serves compact-lifecycle discovery tools at the release line', () => {
     expect(resolveServedAdcpVersionForTool('list_products', { adcp_version: '3.2' }))
       .toEqual({ ok: true, servedVersion: '3.2' });
+    expect(resolveServedAdcpVersionForTool('list_products', { adcp_version: '3.3' }))
+      .toEqual({ ok: true, servedVersion: '3.3' });
     expect(resolveServedAdcpVersionForTool('list_products', {}))
-      .toEqual({ ok: true, servedVersion: '3.2' });
+      .toEqual({ ok: true, servedVersion: '3.3' });
   });
 
   it('gates every 3.2 surface on for the release-line pin', () => {

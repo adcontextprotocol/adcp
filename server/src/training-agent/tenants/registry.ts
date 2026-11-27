@@ -214,7 +214,7 @@ function buildDefaultServerOptions(
       ? '3.3'
       : storyboardCompat?.version === '3.0'
         ? '3.0'
-        : preview
+        : preview && TRAINING_AGENT_HOSTED_PREVIEW
           ? TRAINING_AGENT_HOSTED_PREVIEW.wireVersion
           : TRAINING_AGENT_CANDIDATE_ADCP_VERSION ?? TRAINING_AGENT_CURRENT_ADCP_VERSION,
     ...(!identity33 && !preview && TRAINING_AGENT_CANDIDATE_ADCP_VERSION && storyboardCompat?.version !== '3.0' && {

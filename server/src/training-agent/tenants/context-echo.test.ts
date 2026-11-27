@@ -16,6 +16,7 @@ import { randomUUID } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import YAML from 'yaml';
 import { TRAINING_AGENT_PREVIEW_ADCP_VERSION } from '../candidate-version.js';
+import { TRAINING_AGENT_RETAINED_PREVIEW_ADCP_VERSION } from '../types.js';
 
 process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token';
 
@@ -24,12 +25,24 @@ const TENANTS = ['sales', 'signals', 'governance', 'creative', 'creative-builder
 const ROUTES = [...TENANTS, 'legacy'] as const;
 type Route = typeof ROUTES[number];
 
-/** Served releases each request is pinned to: the default, 3.1, and the opt-in preview. */
-const VERSIONS: ReadonlyArray<string | undefined> = [
+/**
+ * Served releases each request is pinned to: the default, 3.1, the current 3.3
+ * line, the retained 3.3-rc.3 exact pin (the last hosted preview), and a
+ * hosted preview when one is configured (none after 3.3 GA).
+ */
+const VERSIONS: ReadonlyArray<string | undefined> = [...new Set<string | undefined>([
   undefined,
   '3.1',
+  '3.3',
+  TRAINING_AGENT_RETAINED_PREVIEW_ADCP_VERSION,
   ...(TRAINING_AGENT_PREVIEW_ADCP_VERSION ? [TRAINING_AGENT_PREVIEW_ADCP_VERSION] : []),
-];
+])];
+
+/** Exact prerelease pins the legacy monolith does not serve. */
+const NOT_ON_LEGACY: ReadonlySet<string | undefined> = new Set([
+  TRAINING_AGENT_RETAINED_PREVIEW_ADCP_VERSION,
+  TRAINING_AGENT_PREVIEW_ADCP_VERSION,
+]);
 
 /** Opaque caller context: nested members out of key order, an array, every JSON type. */
 const CONTEXT = {
@@ -279,9 +292,10 @@ describe('training agent context echo', () => {
   });
 
   describe.each(['sales', 'legacy'] as const)('sync_accounts and get_media_buys on the %s route (adcp#8834)', route => {
-    // The legacy monolith does not serve the opt-in preview.
+    // The legacy monolith does not serve the opt-in preview or the retained
+    // 3.3-rc.3 checkpoint that preview left behind.
     const versions = route === 'legacy'
-      ? VERSIONS.filter(version => version !== TRAINING_AGENT_PREVIEW_ADCP_VERSION)
+      ? VERSIONS.filter(version => !NOT_ON_LEGACY.has(version))
       : VERSIONS;
     it.each(versions)('echo each call\'s own context at release %s', async version => {
       const url = routeUrl(route);

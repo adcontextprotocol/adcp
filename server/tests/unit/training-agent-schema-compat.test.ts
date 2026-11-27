@@ -30,13 +30,16 @@ describe('training-agent retained schema bundle resolution', () => {
     expect(existsSync(retainedSchemaRoot)).toBe(true);
   });
 
-  it('retains the beta.6 and last 3.2 RC checkpoints the installed SDK does not package', () => {
+  it('retains the beta.6, last 3.2 RC and last hosted preview checkpoints the installed SDK does not package', () => {
     expect(RETAINED_SCHEMA_BUNDLES).toEqual({
       '3.2-beta.6': '3.2.0-beta.6',
       '3.2-rc.7': '3.2.0-rc.7',
+      '3.3-rc.3': '3.3.0-rc.3',
     });
     expect(path.resolve(resolveRetainedSchemaRoot(undefined, undefined, '3.2.0-rc.7')))
       .toBe(path.join(repoRoot, 'dist/schemas/3.2.0-rc.7'));
+    expect(path.resolve(resolveRetainedSchemaRoot(undefined, undefined, '3.3.0-rc.3')))
+      .toBe(path.join(repoRoot, 'dist/schemas/3.3.0-rc.3'));
   });
 
   it('registers the built source tree only in a trusted candidate process', () => {

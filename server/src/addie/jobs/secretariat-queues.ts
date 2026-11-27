@@ -32,8 +32,10 @@ const CLAUDE_TRIAGING_LABEL = 'claude-triaging';
  *  clear-stuck-claude-triaging workflow already sweeps anything over 30
  *  minutes, so 1 hour here means "the sweep missed one too." */
 const CLAUDE_TRIAGING_STUCK_MS = 60 * 60_000;
-const BURNDOWN_MILESTONE_TITLE = '3.3.0';
-const CONTEXT_MILESTONE_TITLES = ['P0 Bugs', 'Spec Backlog', '4.0'];
+// After 3.3 the next release is 4.0; there is no 3.4. The 4.x milestone
+// holds the additive minors planned after 4.0.0.
+const BURNDOWN_MILESTONE_TITLE = '4.0';
+const CONTEXT_MILESTONE_TITLES = ['P0 Bugs', 'Spec Backlog', '4.x'];
 
 async function ghFetch(token: string, url: string): Promise<Response> {
   const controller = new AbortController();

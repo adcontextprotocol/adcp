@@ -157,6 +157,9 @@ const HISTORICAL_PRERELEASE_RANGES: Readonly<
   // Applies once the 3.2 channel selectors retire at GA; until then the live
   // 3.2-beta / 3.2-rc selectors own these documents.
   '3.2': Object.freeze({ beta: [0, 11] as const, rc: [0, 7] as const }),
+  // Applies once the v3.3.0 docs snapshot retires the 3.3-beta / 3.3-rc
+  // selectors. Widen rc if another release candidate ships before GA.
+  '3.3': Object.freeze({ beta: [0, 6] as const, rc: [0, 3] as const }),
 });
 
 /**
@@ -564,7 +567,7 @@ export const SCHEMA_TOOLS: AddieTool[] = [
         version: {
           type: 'string',
           description:
-            'Schema version to use. Omission means stable 3.2; pass 3.1 or 3.0 for an earlier stable release. Explicit channel, exact snapshot, and legacy aliases are also accepted.',
+            'Schema version to use. Omission means stable 3.3; pass 3.2, 3.1 or 3.0 for an earlier stable release. Explicit channel, exact snapshot, and legacy aliases are also accepted.',
         },
       },
       required: ['json'],
@@ -586,7 +589,7 @@ export const SCHEMA_TOOLS: AddieTool[] = [
         },
         version: {
           type: 'string',
-          description: 'Schema version. Match search_docs; omission means stable 3.2. Explicit channel, exact snapshot, and legacy aliases are also accepted.',
+          description: 'Schema version. Match search_docs; omission means stable 3.3. Explicit channel, exact snapshot, and legacy aliases are also accepted.',
         },
         property: {
           type: 'string',
@@ -607,7 +610,7 @@ export const SCHEMA_TOOLS: AddieTool[] = [
       properties: {
         version: {
           type: 'string',
-          description: 'Optional schema version. Defaults to stable 3.2.',
+          description: 'Optional schema version. Defaults to stable 3.3.',
         },
       },
     },
@@ -631,7 +634,7 @@ export const SCHEMA_TOOLS: AddieTool[] = [
         },
         to_version: {
           type: 'string',
-          description: 'Target version to compare to (default: stable 3.2)',
+          description: 'Target version to compare to (default: stable 3.3)',
         },
       },
       required: ['schema_path'],

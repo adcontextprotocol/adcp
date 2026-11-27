@@ -4,8 +4,9 @@
  * response validates against that release's schema and omits what the
  * release does not define.
  *
- * Every route is driven through the same read and lifecycle flow at 3.2, 3.1
- * and 3.0, and every response is held to three checks:
+ * Every route is driven through the same read and lifecycle flow at 3.3, 3.2,
+ * 3.1 and 3.0 and at the retained 3.3-rc.3 exact pin, and every response is
+ * held to three checks:
  *
  * - No field the source schemas mark as added after the served release
  *   (`x-added-in`). This catches a 3.3 field under an object 3.2 leaves open,
@@ -18,11 +19,11 @@
  *   or "Unknown tool" on /mcp) rather than answered with a payload that
  *   release cannot validate.
  *
- * The same flow runs at the opt-in 3.3 preview (#8181,
- * candidate-version.ts): an exact preview pin is echoed and every response
- * validates against the preview's published bundle, the release the preview
- * claims. The local candidate wire contract is covered in
- * tests/unit/training-agent-candidate-version.test.ts.
+ * The hosted preview (#8181, candidate-version.ts) retired at 3.3 GA, so 3.3
+ * is graded as the stable line. The last preview, 3.3-rc.3, is the retained
+ * checkpoint (types.ts): an exact pin is echoed and every response validates
+ * against its published bundle. The local candidate wire contract is covered
+ * in tests/unit/training-agent-candidate-version.test.ts.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -33,13 +34,20 @@ import { fieldsAddedAfterRelease } from '../served-release-fields.js';
 import { clearSessions, stopSessionCleanup } from '../state.js';
 import { clearAccountStore } from '../account-handlers.js';
 import { TRAINING_AGENT_HOSTED_PREVIEW, TRAINING_AGENT_PREVIEW_ADCP_VERSION } from '../candidate-version.js';
+import { TRAINING_AGENT_RETAINED_PREVIEW_ADCP_VERSION } from '../types.js';
 
 process.env.PUBLIC_TEST_AGENT_TOKEN = 'served-release-shape-token';
 
 const TOKEN = 'served-release-shape-token';
 
-/** Stable releases, then the opt-in preview this process serves. */
-const VERSIONS = ['3.2', '3.1', '3.0', TRAINING_AGENT_HOSTED_PREVIEW.wireVersion] as const;
+/** The last hosted preview, served only to an exact pin. */
+const RETAINED_PREVIEW = TRAINING_AGENT_RETAINED_PREVIEW_ADCP_VERSION;
+
+/** Stable releases, then the retained 3.3 preview checkpoint. */
+const VERSIONS = ['3.3', '3.2', '3.1', '3.0', RETAINED_PREVIEW] as const;
+
+/** Releases that carry the experimental 3.3 surfaces (holds, collections). */
+const SERVES_33_SURFACES: ReadonlySet<string> = new Set(['3.3', RETAINED_PREVIEW]);
 
 /** The source response schema each tool is graded against for `x-added-in`. */
 const RESPONSE_SCHEMAS: Record<string, string> = {
@@ -84,7 +92,7 @@ const MEDIA_BUY_FLOW = [
 /** Each route's tools, in call order (later calls read earlier results). */
 const ROUTES: Record<string, readonly string[]> = {
   // request_proposals then a finalizing refine_proposals: the experimental
-  // 3.3 hold fields reach the preview and never a stable caller (#8181).
+  // 3.3 hold fields reach 3.3 callers and never a 3.2 or older one (#8181).
   sales: [
     'get_adcp_capabilities', 'list_accounts', ...MEDIA_BUY_FLOW, 'request_proposals', 'refine_proposals',
     'list_tasks', 'sync_audiences', 'sync_event_sources',
@@ -322,13 +330,14 @@ describe('served-release response shape below 3.3 (#8487)', () => {
     await new Promise<void>(resolve => server.close(() => resolve()));
   });
 
-  it('serves the hosted preview in this process', () => {
-    expect(TRAINING_AGENT_PREVIEW_ADCP_VERSION).toBe(TRAINING_AGENT_HOSTED_PREVIEW.wireVersion);
+  it('serves no hosted preview in this process; 3.3-rc.3 is a retained exact pin', () => {
+    expect(TRAINING_AGENT_HOSTED_PREVIEW).toBeUndefined();
+    expect(TRAINING_AGENT_PREVIEW_ADCP_VERSION).toBeUndefined();
   });
 
   for (const [route, tools] of Object.entries(ROUTES)) {
     const label = route ? `/${route}/mcp` : '/mcp';
-    it(`serves ${label} callers pinned to 3.2, 3.1, 3.0 and the 3.3 preview their release's shape`, async () => {
+    it(`serves ${label} callers pinned to 3.3, 3.2, 3.1, 3.0 and retained 3.3-rc.3 their release's shape`, async () => {
       const url = `${baseUrl}${route ? `/${route}` : ''}/mcp`;
       await rpc(url, 1, 'initialize', {
         protocolVersion: '2025-03-26',
@@ -385,8 +394,8 @@ describe('served-release response shape below 3.3 (#8487)', () => {
           capture(tool, structured, state);
           const served = typeof structured.adcp_version === 'string' ? structured.adcp_version : version;
           expect(served.startsWith(version), `${label} ${tool} echoed ${served} for ${version}`).toBe(true);
-          // The preview is only ever served to an exact pin, and says so.
-          if (version === TRAINING_AGENT_HOSTED_PREVIEW.wireVersion && structured.adcp_version !== version) {
+          // The retained preview is only ever served to an exact pin, and says so.
+          if (version === RETAINED_PREVIEW && structured.adcp_version !== version) {
             failures.push(`${label} ${tool} @${version}: echoed ${String(structured.adcp_version)}`);
           }
 
@@ -426,13 +435,13 @@ describe('served-release response shape below 3.3 (#8487)', () => {
             if (!releaseShaped) failures.push(`${label} get_products @${version}: no product carries the ${version} product_card shape`);
           }
           // The experimental 3.3 holds: a draft carries its binding policy and
-          // a finalized hold its placement, at the preview only.
+          // a finalized hold its placement, at 3.3 and the retained rc.3 only.
           if (tool === 'request_proposals' || tool === 'refine_proposals') {
             const proposal = tool === 'request_proposals'
               ? (structured.proposals as Array<Record<string, unknown>> | undefined)?.[0]
               : ((structured.results as Array<Record<string, unknown>> | undefined)?.[0]?.proposal as Record<string, unknown> | undefined);
             const holdFields = ['hold_policy', 'hold_placed_at'].filter(field => proposal && field in proposal);
-            const expected = version !== TRAINING_AGENT_HOSTED_PREVIEW.wireVersion
+            const expected = !SERVES_33_SURFACES.has(version)
               ? []
               : tool === 'request_proposals' ? ['hold_policy'] : ['hold_policy', 'hold_placed_at'];
             if (holdFields.join() !== expected.join()) {
@@ -443,29 +452,32 @@ describe('served-release response shape below 3.3 (#8487)', () => {
         }
       }
       expect(failures).toEqual([]);
-      // Every listed tool was graded at 3.2 and at the preview.
+      // Every listed tool was graded at 3.3, 3.2 and the retained preview.
+      expect(graded.filter(entry => entry.endsWith('@3.3')).map(entry => entry.split('@')[0])).toEqual([...tools]);
       expect(graded.filter(entry => entry.endsWith('@3.2')).map(entry => entry.split('@')[0])).toEqual([...tools]);
-      expect(graded.filter(entry => entry.endsWith(`@${TRAINING_AGENT_HOSTED_PREVIEW.wireVersion}`)).map(entry => entry.split('@')[0])).toEqual([...tools]);
+      expect(graded.filter(entry => entry.endsWith(`@${RETAINED_PREVIEW}`)).map(entry => entry.split('@')[0])).toEqual([...tools]);
     }, 180_000);
   }
 
-  it('shows stable and major-only callers none of the experimental 3.3 collection surfaces (#8181)', async () => {
-    const preview = TRAINING_AGENT_HOSTED_PREVIEW.wireVersion;
+  it('shows callers served below 3.3 none of the experimental 3.3 collection surfaces (#8181)', async () => {
+    const preview = RETAINED_PREVIEW;
     const sales = `${baseUrl}/sales/mcp`;
     const brand = `${baseUrl}/brand/mcp`;
     const cardFeatures = ['media_buy.collection_cards', 'media_buy.collection_catalog', 'brand.collection_links'];
     const cardEvents = ['collection_card.updated', 'collection_card.removed', 'collection_catalog.bulk_change'];
     const brief = { buying_mode: 'brief', brief: 'Creator sponsored video integrations for a lifestyle audience', include_collections: true };
     const failures: string[] = [];
-    // Preview reads first: they must not leave anything behind that a later
-    // stable read of the shared catalog could see.
-    // get_products no longer returns cards even at the preview, but keeps the
+    // Retained-preview reads first: they must not leave anything behind that
+    // a later 3.2-or-older read of the shared catalog could see.
+    // get_products no longer returns cards even at 3.3, but keeps the
     // sample_content card projection (adcp#8501).
     const previewProducts = await call(sales, 'get_products', { adcp_version: preview, ...brief });
     expect(previewProducts.structured?.collections, JSON.stringify(previewProducts.raw).slice(0, 300)).toBeUndefined();
     expect(JSON.stringify(previewProducts.structured)).toContain('"sample_content"');
     await call(`${baseUrl}/mcp`, 'get_products', { adcp_version: preview, ...brief });
-    for (const pin of [{ adcp_version: '3.2' }, { adcp_version: '3.1' }, { adcp_version: '3.0' }, { adcp_major_version: 3 }, {}]) {
+    // Major-only and unpinned callers are served 3.3 on these routes, so they
+    // are covered with the 3.3 callers below.
+    for (const pin of [{ adcp_version: '3.2' }, { adcp_version: '3.1' }, { adcp_version: '3.0' }]) {
       const label = JSON.stringify(pin);
       for (const url of [sales, brand]) {
         const { structured } = await call(url, 'get_adcp_capabilities', pin);
@@ -490,7 +502,19 @@ describe('served-release response shape below 3.3 (#8487)', () => {
       if (flagged.length > 0) failures.push(`tools/list ${label}: advertises include_collections on ${flagged.map(tool => tool.name).join(', ')}`);
     }
     expect(failures).toEqual([]);
-    // The same calls at the preview pin reach every surface.
+    // The same calls at the retained preview pin and at 3.3 reach every surface.
+    for (const pin of [{ adcp_version: '3.3' }, { adcp_version: preview }, { adcp_major_version: 3 }, {}]) {
+      const label = JSON.stringify(pin);
+      const { structured } = await call(sales, 'get_adcp_capabilities', pin);
+      const features = (structured?.experimental_features as string[] | undefined) ?? [];
+      for (const feature of cardFeatures.filter(entry => entry !== 'brand.collection_links')) {
+        expect(features, `${label} ${feature}`).toContain(feature);
+      }
+    }
+    const stableIdentity = await call(brand, 'get_brand_identity', { adcp_version: '3.3', brand_id: 'juniper_vale' });
+    expect(Array.isArray(stableIdentity.structured?.collections)).toBe(true);
+    const stableListing = await rpc(sales, rpcId += 1, 'tools/list', { _meta: { adcp_version: '3.3' } });
+    expect((stableListing.result as { tools: Array<{ name: string }> }).tools.map(tool => tool.name)).toContain('list_collections');
     const previewIdentity = await call(brand, 'get_brand_identity', { adcp_version: preview, brand_id: 'juniper_vale' });
     expect(Array.isArray(previewIdentity.structured?.collections)).toBe(true);
     const previewListing = await rpc(sales, rpcId += 1, 'tools/list', { _meta: { adcp_version: preview } });

@@ -18,11 +18,13 @@ import express from 'express';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { clearSessions, stopSessionCleanup } from '../../src/training-agent/state.js';
 import { clearAccountStore } from '../../src/training-agent/account-handlers.js';
-import { TRAINING_AGENT_HOSTED_PREVIEW } from '../../src/training-agent/candidate-version.js';
+import { TRAINING_AGENT_CURRENT_ADCP_VERSION } from '../../src/training-agent/types.js';
 
 process.env.PUBLIC_TEST_AGENT_TOKEN = 'hold-vectors-token';
 const TOKEN = 'hold-vectors-token';
-const PREVIEW = TRAINING_AGENT_HOSTED_PREVIEW.wireVersion;
+// Holds are an experimental 3.3 surface; the hosted preview that carried them
+// retired at 3.3 GA, so the current 3.3 line serves them.
+const PREVIEW = TRAINING_AGENT_CURRENT_ADCP_VERSION;
 
 type Json = Record<string, any>;
 
