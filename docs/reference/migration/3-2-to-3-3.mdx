@@ -93,6 +93,9 @@ Everything else is an optional declaration or a clarification. Agent identity (D
 | 60 | Campaign governance agents (`governance.campaign`) | Accept a `sync_plans` plan that omits `human_review_required` and derive the flag from its resolved policies; keep rejecting an explicit `false`. Reject `flight.end` not after `flight.start`, and repeated or colliding policy IDs, with `INVALID_REQUEST` ([#9007](https://github.com/adcontextprotocol/adcp/pull/9007)). |
 | 61 | Buyers, sellers, SDKs, and registry and compliance tooling that use `binary-verdict`, `local_verdict`, the compliance `tracks` status, `RATE_LIMITED` `scope`, or signal `onboarder.match_keys` | Accept both spellings. Emit `passed`, `all`, and `full_name` only to a peer served 3.3 or later, and the deprecated `pass`, `global`, and `name` otherwise; keep the original in published files such as `adagents.json` through 3.x ([details](#reserved-word-safe-enum-replacements)). |
 | 62 | Sellers and buyers of `accept_proposal` | Sellers refuse a `proposal_terms_digest` that does not match the committed proposal's current `terms_digest`, accepting nothing, and SHOULD return `PROPOSAL_TERMS_CHANGED` with `field: "proposal_terms_digest"`. Buyers re-read the proposal: if it is `accepted`, find the existing MediaBuy through `get_media_buys`; otherwise accept the current terms with the current digest and a fresh `idempotency_key`. Key on `recovery` and `field`, since earlier sellers may use another code ([#9168](https://github.com/adcontextprotocol/adcp/issues/9168), [details](/docs/media-buy/task-reference/accept_proposal#terms-digest-mismatch)). |
+| 63 | Campaign governance agents (`governance.campaign`) | On `check_governance`, return a `denied` verdict in every governance mode for a failed `approved_sellers` or `delegations` evaluation, and `PLAN_NOT_FOUND` for a caller that cannot access the plan. Reject a `sync_plans` that cuts the budget below committed spend with `VALIDATION_ERROR`. Scope `plan_id` per owner principal, and key aggregated spend on `(owner_principal, seller_agent)` ([details](#campaign-governance-settles-authority-plan-access-and-validation)). |
+| 64 | Buyers that call `check_governance` or `sync_plans` | Handle a `denied` verdict where 3.2 listed `PERMISSION_DENIED` for an unapproved seller or an undelegated caller. Read `PLAN_NOT_FOUND` as "unknown or not accessible". Use globally unique plan IDs, and send region-level geography on a regions-restricted plan ([details](#campaign-governance-settles-authority-plan-access-and-validation)). |
+| 65 | Sellers that run governance execution checks | Expect `denied`, in every governance mode, when the caller is not the audience that the approved intent named, and when a purchase check on a regions-restricted plan states no region-level geography ([details](#campaign-governance-settles-authority-plan-access-and-validation)). |
 
 ## Withdrawn from 3.3, planned for 4.0
 
@@ -974,6 +977,30 @@ Before: with `status_retention_days: 30`, an exact read of a pacing snapshot sup
 After: once that snapshot has been compacted, the same read returns the nondisclosing `REFERENCE_NOT_FOUND` with `field: "reporting_revision_id"`, exactly as for an unknown ID. Its metadata still appears in `get_reporting_status`.
 
 **Buyers.** If you need a snapshot's rows after it is superseded, persist them when you read them, or record a receipt or status statement that names the revision. **Sellers.** Retaining the full chain stays conformant. A revision you still owe whose content you cannot serve is a `REVISION_UNREADABLE` issue, never a not-found. Each window starts at the revision's `created_at`, or at its successor's once superseded; an official revision's window restarts at its newest adjustment. See [revision retention](/docs/media-buy/task-reference/get_reporting_status#reliability-model).
+
+### Campaign governance settles authority, plan access, and validation
+
+([#9006](https://github.com/adcontextprotocol/adcp/pull/9006), rc.2; the aggregation key is [#8931](https://github.com/adcontextprotocol/adcp/pull/8931), beta.6.) Applies to governance agents that implement the experimental `governance.campaign` surface, and to the buyers and sellers that call them. No wire field, enum value, or `plan_hash` rule changes. What changes is what a governance agent returns, in cases where the 3.2 pages disagreed with each other or said nothing.
+
+| Case | Before (3.2) | After (3.3) |
+|---|---|---|
+| A caller fails the `approved_sellers` or `delegations` evaluation on `check_governance` | The task page listed `PERMISSION_DENIED`; the audit-trail page showed a `denied` verdict | `verdict: "denied"` with a finding and a `check_id`, in every governance mode. The attempt appears in the audit log |
+| A caller cannot access the plan | Not stated | `PLAN_NOT_FOUND`, the same response as for an unknown `plan_id`, and no audit entry |
+| A `sync_plans` cuts `budget.total`, or a period `amount`, below committed spend | The specification accepted the sync and flagged it on the next check; the task page rejected it | `VALIDATION_ERROR`, and the earlier plan stays in force |
+| A plan has `human_review_required: true` and the agent runs in audit or advisory mode | The specification said audit mode always returns `approved`, and also that such a plan MUST escalate | The plan escalates in every mode |
+| Two principals use the same `plan_id` | Not stated | Each owns its own plan. A `check_governance` caller that can access more than one plan with that ID gets `VALIDATION_ERROR` |
+| An action on a regions-restricted plan has no geography, or countries only | Not stated | Outside the plan: `conditions` on an intent check, `denied` on an execution check |
+| Trailing-window aggregation key | `(buyer_agent, seller_agent, account_id)` | `(owner_principal, seller_agent)` |
+
+A plan is accessible to its owner principal, to an agent named in a `delegations` entry that has not expired, and to a caller that presents a `governance_context` or `consultation_context` the governance agent issued for that plan. `owner_principal` is the authenticated buyer principal that synchronized the plan.
+
+**Governance agents.** Verify a presented `governance_context` before resolving plan access: one that is expired, fails verification, or was issued for another plan is `PERMISSION_DENIED`. Deny an intent check from an `execute_only` delegate that would create a new action or increase committed spend. Return `REFERENCE_NOT_FOUND` for a registry policy ID in `policy_ids` that cannot be resolved. An agent that partitioned aggregated spend by an account derived from the plan now aggregates across all of the owner's plans per seller, so thresholds are reached earlier.
+
+**Buyers.** If you branch on `PERMISSION_DENIED` for an unapproved seller or an undelegated caller, handle the `denied` verdict too. Do not read `PLAN_NOT_FOUND` as "the plan was never synced". Use globally unique plan IDs, such as UUIDs. Send region-level geography on a plan that sets `regions`.
+
+**Sellers.** An execution check is `denied` when the authenticated caller is not the audience that the approved intent named, or has since been removed from `approved_sellers`. Advisory and audit mode do not let it through.
+
+See [`check_governance`](/docs/governance/campaign/tasks/check_governance) and [`sync_plans`](/docs/governance/campaign/tasks/sync_plans).
 
 ## Clarifications
 
