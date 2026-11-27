@@ -74,7 +74,14 @@ the obligation tombstone table that the SDK 15.8.1 Core ledger reads before
 planning any period; it has the same namespace prerequisite. Migration 624 adds
 the destination authorization `pattern`/`transport` columns that the SDK 15.9.2
 Managed Delivery store reads on provisioning, binding installs and every worker
-pass, plus the 15.9 tombstone retry columns; same prerequisite. Core and Managed
+pass, plus the 15.9 tombstone retry columns; same prerequisite. Migration 630
+adds the configuration `history_start` column for reporting-storage 0.3.0-beta.1.
+Migration 637 adds the configuration `subscription_key` column that
+reporting-storage 0.3.0-beta.9 writes on every configuration install, widens the
+configuration unique key to include it, and drops the three-column unique
+constraint on Managed Delivery bindings; same prerequisite. Migration 638 adds
+the two partial obligation indexes that serve the SDK's live-first obligation
+claim, which migration 620 did not carry; same prerequisite. Core and Managed
 use the **same** pool on the application primary. Host tables freeze source
 facts, the destination, principal, bucket, namespace and trusted reader grants.
 The SDK's installation UUID survives migration replay and process reconstruction.
@@ -464,6 +471,35 @@ This directly requests each previously captured **native generation** using
 the saved reader grant. A 403, a current tombstone, or a synthesized response
 does not pass. Retain old-generation 404s and current tombstone/inventory
 evidence. Do not delete the bucket or schema to make a revocation test pass.
+
+### Suspending a subscriber that stops accepting deliveries
+
+A subscriber that answers with 5xx or 429, times out, or cannot be reached
+keeps each reporting notification on its account retrying until the SDK
+abandons it after 100 attempts, and every new notification starts again. An
+administrator can suspend it without the owning principal's credential:
+
+```bash
+# Subscribers, active state and outcomes of the account's latest 200 attempts.
+curl -sS -H "Authorization: Bearer $ADMIN_API_KEY" -H "X-Admin-Operator: <you>" \
+  https://<host>/api/admin/training-agent/reporting/subscribers
+curl -sS -X POST -H "Authorization: Bearer $ADMIN_API_KEY" -H "X-Admin-Operator: <you>" \
+  -H 'Content-Type: application/json' --data '{"reason":"<why>"}' \
+  https://<host>/api/admin/training-agent/reporting/subscribers/<account_id>/<subscriber_id>/suspend
+```
+
+`.../resume` turns it back on. Both need a `reason` of 5–500 characters and
+are idempotent. Each request writes an attributed `registry_audit_log` row
+(`training_reporting_subscriber_suspend_requested` or `_resume_requested`)
+before anything changes, then its result (`_suspended`, `_resumed` or
+`_failed`). Suspension only clears the subscription's `active` flag, so its
+destination generation and proof survive and resuming needs no new
+challenge. It works even when the destination no longer resolves. A
+suspended subscriber gets no new deliveries; a pending notification settles
+it as undelivered on its next claim instead of retrying, and its outbox
+retries are suppressed. Resuming revalidates every destination on the
+account, so if one no longer validates the route answers 422 and the owning
+principal must replace the set.
 
 ## Rollout and failure recovery
 

@@ -50,6 +50,23 @@ const STATIC_ADMIN_USER_ID = 'admin_api_key';
 const OWNER_ORG_ID = `org_verdict_owner_${RUN_SUFFIX}`;
 const CROSS_ORG_ID = `org_verdict_cross_${RUN_SUFFIX}`;
 const AGENT_URL = `https://verdict-source-${RUN_SUFFIX}.example.com/mcp`;
+const DEBUG_VERDICT_EXPLANATION = {
+  reason: 'controller_prerequisite_unmet',
+  detail: 'Required steps did not run because comply_test_controller or its seeding was unavailable: seed skipped (missing_test_controller).',
+  contributing: [
+    {
+      kind: 'step',
+      id: 'seed',
+      reason: 'controller_prerequisite_unmet',
+      status: 'skipped',
+      phase_id: 'lifecycle',
+      pass_index: null,
+      skip_reason: 'missing_test_controller',
+      requirement: null,
+      message: 'Not testable: requires comply_test_controller',
+    },
+  ],
+};
 const DEBUG_SKIPPED_STEP = {
   step_id: 'debug_followup',
   title: 'Debug follow-up',
@@ -241,11 +258,11 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
          agent_url, storyboard_id, status, last_tested_at, run_id,
          steps_passed, steps_total, failure_count, skipped_count,
          first_failed_step_id, first_failed_step_title, first_failed_step_task, first_failure_message,
-         skipped_steps_jsonb, triggered_by
+         skipped_steps_jsonb, verdict_explanation_jsonb, triggered_by
        ) VALUES (
          $1, 'debug_storyboard', 'failing', NOW(), $2, 1, 2, 1, 1,
          'debug_step', 'Debug step', 'get_products', 'debug failure',
-         $3::jsonb, 'owner_test'
+         $3::jsonb, $4::jsonb, 'owner_test'
        )
        ON CONFLICT (agent_url, storyboard_id) DO UPDATE
          SET status = EXCLUDED.status,
@@ -260,8 +277,9 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
              first_failed_step_task = EXCLUDED.first_failed_step_task,
              first_failure_message = EXCLUDED.first_failure_message,
              skipped_steps_jsonb = EXCLUDED.skipped_steps_jsonb,
+             verdict_explanation_jsonb = EXCLUDED.verdict_explanation_jsonb,
              triggered_by = EXCLUDED.triggered_by`,
-      [AGENT_URL, complianceRunId, JSON.stringify([DEBUG_SKIPPED_STEP])],
+      [AGENT_URL, complianceRunId, JSON.stringify([DEBUG_SKIPPED_STEP]), JSON.stringify(DEBUG_VERDICT_EXPLANATION)],
     );
     await pool.query(
       `INSERT INTO agent_compliance_step_diagnostics (
@@ -390,6 +408,9 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
         // callers still see the denormalized first-failure fields above.
         first_failure_validations: [],
         skipped_steps: options.includeDiagnostics ? [DEBUG_SKIPPED_STEP] : [],
+        // Owner-only, like the other diagnostics: the public view keeps
+        // "details are available to the owner or operator" (adcp#8576).
+        verdict_explanation: options.includeDiagnostics ? DEBUG_VERDICT_EXPLANATION : null,
       }),
     ]);
     expect(body.storyboards_passing).toBe(0);
@@ -822,6 +843,7 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
         first_failed_step_task: 'get_products',
         first_failure_message: 'debug failure',
         skipped_steps: [DEBUG_SKIPPED_STEP],
+        verdict_explanation: DEBUG_VERDICT_EXPLANATION,
       }),
     ]));
   });
@@ -843,6 +865,7 @@ describe('GET /api/registry/agents/:encodedUrl/compliance — owner-scope gate (
         first_failed_step_task: null,
         first_failure_message: null,
         skipped_steps: [],
+        verdict_explanation: null,
       }),
     ]));
   });

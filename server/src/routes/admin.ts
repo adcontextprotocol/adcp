@@ -31,6 +31,7 @@ import { setupDiscountRoutes } from "./admin/discounts.js";
 import { setupAccountRoutes } from "./admin/accounts.js";
 import { setupAccountsBillingRoutes } from "./admin/accounts-billing.js";
 import { setupBrandEnrichmentRoutes } from "./admin/brand-enrichment.js";
+import { setupBrandRegistryCleanupRoutes } from "./admin/brand-registry-cleanup.js";
 import { setupBanRoutes } from "./admin/bans.js";
 import { setupGeoRoutes } from "./admin/geo.js";
 import { setupAnnouncementsRoutes } from "./admin/announcements.js";
@@ -42,6 +43,7 @@ import { setupPromptMetricsRoutes } from "./admin/prompt-metrics.js";
 import { setupIntegrityRoutes } from "./admin/integrity.js";
 import { setupRegistryReviewRoutes } from "./admin/registry-review.js";
 import { setupAdminAgentsRoutes } from "./admin/agents.js";
+import { setupTrainingReportingRoutes } from "./admin/training-reporting.js";
 import { createAAOAdminRouter } from "./aao-admin.js";
 import { getAllNewsletters } from "../newsletters/registry.js";
 import { createNewsletterAdminRoutes } from "../newsletters/admin-routes.js";
@@ -163,6 +165,9 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
   // Brand registry enrichment routes (Brandfetch)
   setupBrandEnrichmentRoutes(apiRouter);
 
+  // Dry-run and audited removal of junk enrichment records (adcp#9024)
+  setupBrandRegistryCleanupRoutes(apiRouter);
+
   // Ban management and registry activity routes
   setupBanRoutes(pageRouter, apiRouter);
 
@@ -194,6 +199,9 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
 
   // Cross-org agent removal (rogue / disputed registrations)
   setupAdminAgentsRoutes(apiRouter);
+
+  // Training agent reporting webhook subscribers: suspend and resume
+  setupTrainingReportingRoutes(apiRouter);
 
   // Unified newsletter admin routes
   for (const nlConfig of getAllNewsletters()) {

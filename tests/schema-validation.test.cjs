@@ -2129,7 +2129,29 @@ async function runTests() {
       return 'semantic value_labels validation must reject labels for absent values';
     }
 
+    const metroSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'core/geo-metro.json'));
+    const metroLabelRule = metroSchema['x-adcp-validation']?.map_keys_subset_of_array;
+    if (metroLabelRule?.map_field !== 'value_labels' || metroLabelRule?.array_field !== 'values') {
+      return 'geo-metro must declare value_labels key membership validation';
+    }
+
     const targetingSchema = loadSchema(path.join(SCHEMA_BASE_DIR, 'core/targeting.json'));
+    const excludeMetroLabelRule = targetingSchema.properties.geo_metros_exclude.items['x-adcp-validation']?.map_keys_subset_of_array;
+    if (excludeMetroLabelRule?.map_field !== 'value_labels' || excludeMetroLabelRule?.array_field !== 'values') {
+      return 'geo_metros_exclude entries must declare value_labels key membership validation';
+    }
+    const isoLabelRule = targetingSchema.properties.geo_value_labels?.['x-adcp-validation']?.map_keys_subset_of_arrays;
+    if (JSON.stringify(isoLabelRule?.array_fields) !== JSON.stringify(['geo_countries', 'geo_countries_exclude', 'geo_regions', 'geo_regions_exclude'])) {
+      return 'geo_value_labels must declare key membership across the ISO country and region arrays';
+    }
+    const isoLabelsAreSubset = (overlay) => Object.keys(overlay.geo_value_labels || {}).every(code =>
+      isoLabelRule.array_fields.some(field => (overlay[field] || []).includes(code)));
+    if (!isoLabelsAreSubset({ geo_countries: ['DE'], geo_regions_exclude: ['US-CA'], geo_value_labels: { DE: 'Germany', 'US-CA': 'California' } })) {
+      return 'semantic geo_value_labels validation must accept labels for codes in any labelled array';
+    }
+    if (isoLabelsAreSubset({ geo_countries: ['DE'], geo_value_labels: { FR: 'France' } })) {
+      return 'semantic geo_value_labels validation must reject labels for absent codes';
+    }
     const disjointRule = targetingSchema['x-adcp-validation']?.disjoint_place_fields;
     if (disjointRule?.include !== 'geo_places' || disjointRule?.exclude !== 'geo_places_exclude') {
       return 'targeting schema must declare geo place include/exclude disjointness validation';

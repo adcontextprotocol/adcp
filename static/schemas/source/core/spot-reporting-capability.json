@@ -31,5 +31,5 @@
     }
   },
   "required": ["available_metrics"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

@@ -24,7 +24,7 @@
         }
       },
       "required": ["type", "brand"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "title": "AttestationAgentIssuer",
@@ -46,7 +46,7 @@
         }
       },
       "required": ["type", "agent_url"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "title": "AttestationOriginIssuer",
@@ -68,7 +68,7 @@
         }
       },
       "required": ["type", "origin"],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   ],
   "examples": [

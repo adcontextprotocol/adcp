@@ -99,9 +99,15 @@ export function timezoneChangesFor(doc: SandboxDocument, accountId: string): Tim
   return doc.timezone_changes.find(entry => entry.account_id === accountId)?.changes ?? [];
 }
 
+/** The session that holds the caller's sandbox document and everything else
+ * kept beside it, such as the inventory tenants' markets. */
+export function sandboxSessionKey(principal: string | undefined): string {
+  return sessionKeyFromArgs({}, 'open', undefined, undefined, principalKey(principal));
+}
+
 export async function loadSandbox(principal: string | undefined): Promise<LoadedSandbox> {
   const caller = principalKey(principal);
-  const session = await getSession(sessionKeyFromArgs({}, 'open', undefined, undefined, caller));
+  const session = await getSession(sandboxSessionKey(principal));
   const key = `${SANDBOX_DOC_PREFIX}${caller}`;
   const stored = session.principalConfigurations.get(key) as SandboxDocument | undefined;
   const doc: SandboxDocument = stored
@@ -127,9 +133,17 @@ export async function resetSandbox(principal: string | undefined): Promise<void>
   loaded.session.principalConfigurations.delete(loaded.key);
 }
 
+let wallClock: () => number = () => Date.now();
+
+/** Tests only: the wall clock an unpinned sandbox clock reads. Omit to
+ * restore `Date.now`. */
+export function setSandboxWallClockForTesting(clock?: () => number): void {
+  wallClock = clock ?? (() => Date.now());
+}
+
 export function sandboxNowMs(doc: SandboxDocument): number {
   const simulated = doc.simulated_now ? Date.parse(doc.simulated_now) : Number.NaN;
-  return Number.isFinite(simulated) ? simulated : Date.now();
+  return Number.isFinite(simulated) ? simulated : wallClock();
 }
 
 export function sandboxNowIso(doc: SandboxDocument): string {

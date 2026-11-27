@@ -79,13 +79,15 @@
       "type": "array",
       "minItems": 1,
       "items": {
+        "description": "Rejects `unit`: sizes are in pixels, and a unit would change what they mean.",
         "type": "object",
         "required": ["width", "height"],
         "properties": {
           "width": { "type": "integer", "minimum": 1 },
           "height": { "type": "integer", "minimum": 1 }
         },
-        "additionalProperties": false
+        "additionalProperties": true,
+        "not": { "required": ["unit"] }
       },
       "description": "Selectable entry-canvas sizes in logical pixels at which the same representation can render, rather than placement constraints or expanded states. Mutually exclusive with width/height. Omit all size fields for an unsized or responsive asset; absence does not establish compatibility with a size-constrained option."
     },

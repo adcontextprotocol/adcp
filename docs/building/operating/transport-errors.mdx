@@ -340,6 +340,7 @@ const CODE_RECOVERY = {
   PRODUCT_UNAVAILABLE: 'correctable',
   PROPOSAL_EXPIRED: 'correctable',
   PROPOSAL_NOT_FOUND: 'correctable',
+  PROPOSAL_TERMS_CHANGED: 'correctable',
   MULTI_FINALIZE_UNSUPPORTED: 'correctable',
   REQUOTE_REQUIRED: 'correctable',
   BUDGET_TOO_LOW: 'correctable',
@@ -432,7 +433,7 @@ The `details` field is an open object. To prevent interoperability divergence, s
 | `limit` | number | Maximum requests allowed in the window |
 | `remaining` | number | Requests remaining in the current window |
 | `window_seconds` | number | Duration of the rate-limit window |
-| `scope` | string | What the limit applies to: `account`, `tool`, or `global` |
+| `scope` | string | What the limit applies to: `account`, `tool`, or `all` (all traffic the agent receives, from every caller). `global` is the deprecated spelling of `all`: deprecated in 3.3 and removed in 4.0 ([#8791](https://github.com/adcontextprotocol/adcp/issues/8791)). Receivers accept both through 3.x; a 3.2 receiver treats `all` as an unknown value. `all` is not `agent` from `enums/error-scope.json`, which means the calling buyer agent. |
 
 ### `BUDGET_TOO_LOW`
 

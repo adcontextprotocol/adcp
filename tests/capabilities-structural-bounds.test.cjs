@@ -27,8 +27,8 @@ const read = (...p) => fs.readFileSync(path.join(ROOT, ...p), 'utf8');
 const security = read('docs/building/by-layer/L1/security.mdx');
 
 // The documented worst case. Update security.mdx with this number.
-const DOCUMENTED_WORST_CASE_BYTES = 99_101_026;
-const DOCUMENTED_OPEN_POSITIONS = 108;
+const DOCUMENTED_WORST_CASE_BYTES = 99_198_584;
+const DOCUMENTED_OPEN_POSITIONS = 193;
 
 const rows = bounds.coverage();
 const KEYWORD_BY_KIND = { array: 'maxItems', string: 'maxLength', map: 'maxProperties' };

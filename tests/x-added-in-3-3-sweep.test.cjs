@@ -44,6 +44,9 @@ const WHOLE_FILE_3_3 = [
   'enums/reporting-dimension.json',
   'core/match-key.json',
   'enums/match-key-use.json',
+  // DOOH impression basis (media_buy.dooh_impression_basis, RFC #7253).
+  'enums/impression-estimation-basis.json',
+  'core/impression-basis-breakdown-entry.json',
 ];
 
 const PROPERTIES_3_3 = [
@@ -75,11 +78,30 @@ const PROPERTIES_3_3 = [
   ['core/canonical-product.json', ['properties', 'dooh_inventory_summary']],
   ['core/product.json', ['properties', 'dooh_inventory_summary']],
   ['core/delivery-metrics.json', ['properties', 'print_metrics']],
+  // DOOH impression basis (media_buy.dooh_impression_basis, RFC #7253).
+  ['core/delivery-metrics.json', ['properties', 'dooh_metrics', 'properties', 'impression_basis']],
+  ['core/delivery-metrics.json', ['properties', 'dooh_metrics', 'properties', 'audience_multiplier']],
+  ['core/delivery-metrics.json', ['properties', 'dooh_metrics', 'properties', 'basis_metric']],
+  ['core/delivery-metrics.json', ['properties', 'dooh_metrics', 'properties', 'impression_basis_breakdown']],
+  ['core/delivery-metrics.json', ['properties', 'dooh_metrics', 'properties', 'venue_breakdown', 'items', 'properties', 'impression_basis']],
+  ['core/delivery-metrics.json', ['properties', 'dooh_metrics', 'properties', 'venue_breakdown', 'items', 'properties', 'plays']],
+  ['core/forecast-point.json', ['properties', 'impression_basis']],
+  ['core/forecast-point.json', ['properties', 'audience_multiplier']],
+  ['core/forecast-point.json', ['properties', 'impression_basis_breakdown']],
+  ['core/canonical-forecast-point.json', ['properties', 'impression_basis']],
+  ['core/canonical-forecast-point.json', ['properties', 'audience_multiplier']],
+  ['core/canonical-forecast-point.json', ['properties', 'impression_basis_breakdown']],
+  ['core/placement.json', ['definitions', 'ProductDoohPlacementAttributes', 'properties', 'impression_basis']],
+  ['core/placement.json', ['definitions', 'ProductDoohPlacementAttributes', 'properties', 'audience_multiplier']],
+  ['core/canonical-placement.json', ['definitions', 'CanonicalDoohPlacementAttributes', 'properties', 'impression_basis']],
+  ['core/canonical-placement.json', ['definitions', 'CanonicalDoohPlacementAttributes', 'properties', 'audience_multiplier']],
   ['core/reporting-webhook.json', ['properties', 'operation_id']],
   ['governance/sync-plans-request.json', ['properties', 'plans', 'items', 'properties', 'budget', 'properties', 'periods']],
   ['protocol/get-adcp-capabilities-response.json', ['properties', 'governance', 'properties', 'supports_budget_periods']],
   ['protocol/get-adcp-capabilities-response.json', ['properties', 'request_signing', 'properties', 'operation_sources']],
   ['formats/canonical/video_hosted.json', ['properties', 'loudness']],
+  ['formats/canonical/image_carousel.json', ['properties', 'card_image_sizes']],
+  ['formats/canonical/image_carousel.json', ['properties', 'cta_values']],
   ['core/installment-deadlines.json', ['properties', 'change_cutoff']],
   ['core/reporting-status-issue.json', ['properties', 'reporting_revision_id']],
   ['governance/check-governance-request.json', ['properties', 'budget_period_id']],
@@ -97,7 +119,6 @@ const PROPERTIES_3_3 = [
   ['core/notification-config.json', ['properties', 'signing_profile']],
   ['core/push-notification-config.json', ['properties', 'signing_profile']],
   ['core/reporting-webhook.json', ['properties', 'signing_profile']],
-  ['media-buy/create-media-buy-request.json', ['properties', 'artifact_webhook', 'properties', 'signing_profile']],
   ['protocol/get-adcp-capabilities-response.json', ['properties', 'request_signing', 'properties', 'profiles']],
   ['protocol/get-adcp-capabilities-response.json', ['properties', 'webhook_signing', 'properties', 'profiles']],
   ['protocol/get-adcp-capabilities-response.json', ['properties', 'media_buy', 'properties', 'event_source_archive']],
@@ -117,9 +138,6 @@ const PROPERTIES_3_3 = [
   ['core/targeting-overlay-requirements.json', ['properties', 'collection_lists_exclude']],
   ['core/targeting-overlay-support.json', ['properties', 'collection_lists']],
   ['core/targeting-overlay-support.json', ['properties', 'collection_lists_exclude']],
-  ['core/performance-standard.json', ['properties', 'metric_id']],
-  ['core/canonical-performance-standard.json', ['properties', 'metric_id']],
-  ['core/product-offer-filters.json', ['properties', 'required_performance_standards', 'items', 'properties', 'metric_id']],
   ['protocol/sync-principal-request.json', ['properties', 'configuration', 'properties', 'reporting_subscriptions']],
   ['core/principal-state.json', ['properties', 'reporting_subscriptions']],
   ['media-buy/get-reporting-status-response.json', ['properties', 'subscription_coverage']],
@@ -152,6 +170,7 @@ const PROPERTIES_3_3 = [
   ['core/product-identity.json', ['properties', 'match_keys']],
   ['trusted-match/provider-registration.json', ['properties', 'match_keys']],
   ['protocol/get-adcp-capabilities-response.json', ['properties', 'media_buy', 'properties', 'supported_match_keys']],
+  ['protocol/get-adcp-capabilities-response.json', ['properties', 'creative', 'properties', 'assignment_operations']],
 ];
 
 // Task request schemas are deliberately absent: `x-added-in` on a request makes the
@@ -188,10 +207,14 @@ test('by_spot lifecycle fields carry x-added-in 3.3.0', () => {
 
 test('added enum values are noted in the enum description', () => {
   assert.match(load('enums/demographic-system.json').description, /`nmo` and `videoamp`.*3\.3/);
+  assert.match(load('enums/distribution-identifier-type.json').description, /`instagram_account_id`.*`x_handle` values were added in AdCP 3\.3/);
   const video = load('formats/canonical/video_hosted.json').properties;
   assert.match(video.video_codecs.description, /`mpeg2`, `avc_intra`, and `xavc`.*3\.3/);
   assert.match(video.containers.description, /`mxf`.*3\.3/);
   assert.match(load('core/requirements/video-asset-requirements.json').properties.containers.description, /`3gp`, `mpeg`, and `m4v`.*3\.3/);
+  const definition = load('core/reporting-report-definition.json');
+  assert.match(definition.properties.contract_version.description, /`1\.2`.*3\.3/);
+  assert.equal(definition.allOf.find(branch => branch.if?.properties?.contract_version?.const === '1.2')['x-added-in'], '3.3.0');
 });
 
 test('surfaces shipped in 3.2 are not marked 3.3', () => {

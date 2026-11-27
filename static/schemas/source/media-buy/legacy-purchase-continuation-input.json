@@ -54,7 +54,7 @@
     "accepted_losses",
     "legacy_create_request"
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "x-adcp-sdk-local": true,
   "x-adcp-validation": {
     "verifier_constraints": {

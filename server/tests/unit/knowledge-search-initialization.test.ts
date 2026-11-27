@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   docsReady: false,
@@ -53,6 +53,48 @@ describe('knowledge search initialization', () => {
     mocks.externalReady = false;
     mocks.initializeDocsIndex.mockReset();
     mocks.initializeExternalRepos.mockReset();
+  });
+
+  afterEach(async () => {
+    const { stopKnowledgeSearchRetry } = await import('../../src/addie/mcp/knowledge-search.js');
+    stopKnowledgeSearchRetry();
+    vi.useRealTimers();
+  });
+
+  it('retries a failed docs index on its own, so readiness recovers without another caller', async () => {
+    vi.useFakeTimers();
+    const { initializeKnowledgeSearch, isKnowledgeReady, getKnowledgeReadiness } = await import(
+      '../../src/addie/mcp/knowledge-search.js'
+    );
+    mocks.initializeDocsIndex
+      .mockRejectedValueOnce(new Error('docs index failed at boot'))
+      .mockRejectedValueOnce(new Error('docs index failed again'))
+      .mockImplementationOnce(async () => {
+        mocks.docsReady = true;
+      });
+    mocks.initializeExternalRepos.mockImplementation(async () => {
+      mocks.externalReady = true;
+    });
+
+    await initializeKnowledgeSearch();
+    expect(isKnowledgeReady()).toBe(false);
+    expect(getKnowledgeReadiness()).toMatchObject({ ready: false, docs: false, externalRepos: true, retryAttempts: 1 });
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(mocks.initializeDocsIndex).toHaveBeenCalledTimes(2);
+    expect(isKnowledgeReady()).toBe(false);
+
+    // The second retry waits longer.
+    await vi.advanceTimersByTimeAsync(14_999);
+    expect(mocks.initializeDocsIndex).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(mocks.initializeDocsIndex).toHaveBeenCalledTimes(3);
+    expect(isKnowledgeReady()).toBe(true);
+    expect(getKnowledgeReadiness()).toMatchObject({ ready: true, retryAttempts: 0 });
+
+    // Nothing further is scheduled once ready.
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(mocks.initializeDocsIndex).toHaveBeenCalledTimes(3);
   });
 
   it('deduplicates concurrent calls and retries an incomplete initialization', async () => {

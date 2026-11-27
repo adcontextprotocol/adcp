@@ -1,7 +1,7 @@
 {
   "name": "human_review_required explicitly null",
   "spec_reference": "#plan-state-binding (JCS preserves omitted vs null)",
-  "description": "Paired with 004a. Expected hash differs from 004a — explicit null is a distinct encoding.",
+  "description": "Paired with 004a. Expected hash differs from 004a — explicit null is a distinct encoding. Canonicalization only: plan_as_supplied is not a schema-valid sync_plans plan item, because human_review_required is typed boolean and null fails that type. A harness that validates plans against sync-plans-request.json before hashing should skip that validation for this vector.",
   "cross_reference": {
     "differs_from": "004a-human-review-omitted",
     "rationale": "Explicit null produces \"human_review_required\":null in JCS output; omitted produces no key at all. Distinct preimages → distinct hashes."

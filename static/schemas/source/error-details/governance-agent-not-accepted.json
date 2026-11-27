@@ -19,7 +19,7 @@
         "accepted_governance_agents": { "$ref": "/schemas/governance/accepted-governance-agents.json" }
       },
       "required": ["disclosure", "attempted_agent_origin", "accepted_governance_agents"],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "properties": {
@@ -32,7 +32,7 @@
         }
       },
       "required": ["disclosure"],
-      "additionalProperties": false
+      "additionalProperties": true
     }
   ]
 }

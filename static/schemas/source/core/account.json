@@ -154,7 +154,7 @@
         "required": [
           "url"
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minItems": 1,
       "maxItems": 1
@@ -237,7 +237,7 @@
         "bucket",
         "file_retention_days"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "sandbox": {
       "type": "boolean",

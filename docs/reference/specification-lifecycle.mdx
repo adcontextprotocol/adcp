@@ -69,9 +69,9 @@ Once Final, a section is protected by the full [3.x stability guarantees](/docs/
 
 ### Deprecated
 
-A section is Deprecated when a formal deprecation notice has been published in the release notes and changelog, and the 6-month countdown to removal has started. The section remains fully functional and under the 3.x stability guarantees during the deprecation window.
+A section is Deprecated when a formal deprecation notice has been published in the release notes and changelog. The section remains fully functional and under the 3.x stability guarantees until the next major at the earliest. Its removal target is recorded in the schema with `x-removed-in` (for example, `"x-removed-in": "4.0.0"`).
 
-The deprecation policy — 6-month minimum notice, feature persists through at least one full release cycle after deprecation, never removed within the same major version — is specified in [Versioning — Deprecation policy](/docs/reference/versioning#deprecation-policy).
+The deprecation policy is specified in [Versioning — Deprecation policy](/docs/reference/versioning#deprecation-policy). A deprecated feature is never removed within the major that deprecated it. A major may remove it with no minimum notice period, and the previous major's support window protects implementers.
 
 **Entry**: Deprecation notice lands in the release notes and changelog for a 3.x release. The replacement (if any) ships in the same release. The architecture committee confirms the removal target (always a major-version boundary).
 
@@ -95,8 +95,8 @@ A section is Sunset (removed) once the major-version boundary it was targeted fo
 
 ```
 Draft  ──→  Proposed  ──→  Final  ──→  Deprecated  ──→  Sunset
-  └──→ (abandoned)          (stable)    (6-mo notice)    (removed at
-                                                          major boundary)
+  └──→ (abandoned)          (stable)    (kept until      (removed at
+                                        next major)      major boundary)
 ```
 
 Draft may also be abandoned without reaching Proposed. A Final section may be Deprecated directly (no intermediate stage). There is no path from Sunset back to any prior stage — removed features are not restored; they are re-proposed from scratch if needed.

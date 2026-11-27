@@ -46,7 +46,7 @@ Call it only when [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities
 | --- | --- | --- |
 | `idempotency_key` | Yes | Makes retries of this call safe. A replayed key returns the original request; see [deduplication](#deduplication). |
 | `brand` | To open | BrandKey: `domain`, optional `brand_id`, optional `countries[]`. With `account_id`, send it only to change countries; `domain` and `brand_id` must equal the account's. |
-| `operator` | To open | Domain of the entity operating for the brand; the brand's own domain when it buys direct. |
+| `operator` | To open | Registrable domain (eTLD+1) of the organization operating for the brand, not a subdomain of it; the brand's own domain when it buys direct. A seller MAY refuse an operator that is neither a registrable domain nor the brand's domain; see [Account identity](/docs/accounts/overview#account-identity). |
 | `operator_unit` | No | Operator-owned unit or seat. `id` is an account attribute; `name` is display metadata. |
 | `currency` | No | ISO 4217 currency for a currency-bound advertiser object. An account attribute set when the account opens. |
 | `timezone` | Conditional | Buyer-selected timezone, as in [`sync_accounts`](/docs/accounts/tasks/sync_accounts). An account attribute set when the account opens. |

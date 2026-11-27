@@ -490,7 +490,7 @@ Same governance pattern that produced the original 12 canonicals from the v1 aud
 3. **`promotion_status` lifecycle**: the registry entry's `promotion_status` updates from `tracking — see adcp#3666` to `promoted to <format_kind> in <version>; transition ends <date>` when the working group schedules promotion. SDKs MAY read this at codegen / runtime.
 4. **Post-transition**: sellers SHOULD drop the legacy `format_kind: "custom"` declaration. Buyers MAY then assume `format_kind == "custom"` is a long-tail / non-promoted shape.
 
-The producer must project the response to the negotiated protocol version; open-enum parsing in generated SDKs is a resilience recommendation, not permission to send 3.2 kinds in a 3.1 response. Within 3.2, the deprecation warning is the early migration signal during the transition window.
+The producer must project the response to the negotiated protocol version. In a product format declaration, `format_kind` is the discriminator, so open-enum parsing in generated SDKs is a resilience recommendation, not permission to send a declaration with a 3.2 kind in a 3.1 response. Everywhere else, a newer `format_kind` is a new enum value: it is exempt from projection ([Serving an older pin](/docs/reference/versioning#serving-an-older-pin)), and clients tolerate it under the [Enums](/docs/reference/versioning#3-x-stability-guarantees) rule. Within 3.2, the deprecation warning is the early migration signal during the transition window.
 
 ## Asset group vocabulary
 
@@ -584,6 +584,14 @@ Technical constraints are explicit; canonical prose, examples, common practice, 
 - The resolved product/placement contract is complete only when every applicable declaration layer asserts `technical_requirements_complete: true`. A seller making that effective assertion commits that a creative satisfying the published technical contract will not later be rejected for an undisclosed technical constraint.
 
 Completeness is not general creative approval. Policy, legal, security, malware, transport/fetch failure, corrupt bytes, or a material mismatch between declared metadata and inspected content can still cause rejection. For custom formats and platform extensions, a completeness assertion includes the technical constraints in the referenced schema artifacts.
+
+Completeness governs what an option leaves undeclared. It never weakens what the option declares:
+
+- A declared parameter is the whole constraint for its slot. A seller MUST NOT refuse, with a conformance code, a creative on the grounds of a declared parameter that the creative satisfies, and MUST NOT enforce a narrower value. An option declaring `main_image_sizes: [{ "width": 600, "height": 400 }]` accepts a 600×400 `main_image`.
+- A closed set narrows a slot only when declared. With no `cta_values`, the `cta` slot takes free text within any declared `cta_max_chars`, and `CREATIVE_VALUE_NOT_ALLOWED` does not apply.
+- Any other narrowing parameter the option omits sets no limit through that parameter. Under `technical_requirements_complete: true` the seller holds no undeclared limit either, so a creative that conforms to every parameter is not refused with a conformance code. Without the assertion, the omitted constraint is undeclared as described above.
+
+The task-level rule, including how sellers code refusals outside format conformance, is in [`sync_creatives`: format conformance](/docs/creative/task-reference/sync_creatives#format-conformance).
 
 Creative file-size units are decimal and exact throughout AdCP: a field ending in `_kb` uses **1 KB = 1,000 bytes**, a field ending in `_mb` uses **1 MB = 1,000,000 bytes**, and a field ending in `_bytes` is an exact byte count. Implementations MUST NOT substitute binary KiB/MiB units for these fields.
 
@@ -1325,7 +1333,7 @@ Buyer's manifest, targeting the html5 option:
 **Routing rule for multi-element `format_options`** (normative):
 
 - `format_kind` selects the canonical and its slot vocabulary.
-- `format_option_ref` is **REQUIRED** on the manifest when the target product's `format_options` contains two or more declarations sharing the same `format_kind` — without it, the seller can't disambiguate which option the buyer is shipping against.
+- `format_option_ref` is **REQUIRED** on the manifest when the target product's `format_options` contains two or more declarations sharing the same `format_kind` — without it, the seller can't disambiguate which option the buyer is shipping against. This holds however many of those declarations the manifest's assets would satisfy. A seller MUST NOT infer the option from which declaration the assets fit.
 - `format_option_ref` is **OPTIONAL** when each `format_kind` in the product's `format_options` is unique (the example above: one html5 entry, one display_tag entry) — `format_kind` alone routes the manifest. Buyers MAY still send `format_option_ref` as a clarity hint.
 
 In this example each option carries a distinct `format_kind`, so `format_option_ref` is optional. Including it (as shown) is a recommended habit — it makes the manifest unambiguous to logs, replays, and downstream tooling, and it keeps the buyer-side codepath identical regardless of whether the seller's product has one or many options sharing a kind.

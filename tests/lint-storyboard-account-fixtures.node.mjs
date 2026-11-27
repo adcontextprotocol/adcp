@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { getDomain } from 'tldts';
 import YAML from 'yaml';
 
 import {
@@ -18,6 +19,13 @@ import {
 const require = createRequire(import.meta.url);
 const sdkLib = path.dirname(require.resolve('@adcp/sdk'));
 const { enrichRequest } = require(path.join(sdkLib, 'testing', 'storyboard', 'request-builder.js'));
+
+// Runner-filled values such as `$context.operator` or `<runner-supplied operator>` are not domains.
+const OPERATOR_PLACEHOLDER = /[$<{]/u;
+// Trust records and Web Bot Auth compute eTLD+1 with both Public Suffix List sections in scope.
+// `detectSpecialUse` is left out on purpose: Account identity gives the reserved `.example` TLD
+// the list's default rule, so `pinnacle-agency.example` is registrable for this check.
+const PUBLIC_SUFFIX_OPTIONS = { allowPrivateDomains: true };
 
 function temporaryRoot(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'adcp-account-fixtures-'));
@@ -63,6 +71,32 @@ function accountNaturalKey(account) {
   });
 }
 
+function accountsWithOperator(value, found = []) {
+  if (Array.isArray(value)) {
+    value.forEach((entry) => accountsWithOperator(entry, found));
+  } else if (value && typeof value === 'object') {
+    if (value.brand && typeof value.operator === 'string') found.push(value);
+    Object.values(value).forEach((entry) => accountsWithOperator(entry, found));
+  }
+  return found;
+}
+
+function checkAccountOperators(root) {
+  const operators = [];
+  const refusable = new Set();
+  for (const absolutePath of sourceYamlFiles(root)) {
+    const relativePath = path.relative(root, absolutePath).split(path.sep).join('/');
+    for (const account of accountsWithOperator(YAML.parse(fs.readFileSync(absolutePath, 'utf8')))) {
+      const { operator } = account;
+      if (OPERATOR_PLACEHOLDER.test(operator)) continue;
+      operators.push(operator);
+      if (operator === account.brand.domain) continue;
+      if (getDomain(operator, PUBLIC_SUFFIX_OPTIONS) !== operator) refusable.add(`${relativePath}: ${operator}`);
+    }
+  }
+  return { operators, refusable: [...refusable] };
+}
+
 function canonicalAccounts(value, found = []) {
   if (Array.isArray(value)) {
     value.forEach((entry) => canonicalAccounts(entry, found));
@@ -99,6 +133,40 @@ phases:
 
 test('source storyboards declare every canonical account prerequisite', () => {
   assert.deepEqual(findAccountFixtureEdits(DEFAULT_SOURCE_ROOT), []);
+});
+
+// A seller MAY refuse an operator that is neither a registrable domain nor the
+// brand's domain, so a storyboard sending one could fail a conformant seller.
+test('source storyboards name each account operator by a registrable domain or the brand domain', () => {
+  const { operators, refusable } = checkAccountOperators(DEFAULT_SOURCE_ROOT);
+  assert.ok(operators.length > 0, 'expected the sweep to find storyboard account operators');
+  assert.deepEqual(refusable, []);
+});
+
+test('operator check refuses a subdomain operator and accepts a self-operated subdomain brand', (t) => {
+  const root = temporaryRoot(t);
+  writeStoryboard(root, 'operators', `
+id: operator_shapes
+phases:
+  - id: exercise
+    steps:
+      - id: agency
+        sample_request:
+          account: { brand: { domain: acmeoutdoor.example }, operator: pinnacle-agency.example }
+      - id: agency_subdomain
+        sample_request:
+          account: { brand: { domain: acmeoutdoor.example }, operator: team.pinnacle-agency.example }
+      - id: self_operated_subdomain_brand
+        sample_request:
+          account: { brand: { domain: team.novamotors.example }, operator: team.novamotors.example }
+      - id: runner_supplied
+        sample_request:
+          account: { brand: { domain: acmeoutdoor.example }, operator: $context.operator }
+`);
+  assert.deepEqual(checkAccountOperators(root), {
+    operators: ['pinnacle-agency.example', 'team.pinnacle-agency.example', 'team.novamotors.example'],
+    refusable: ['operators.yaml: team.pinnacle-agency.example'],
+  });
 });
 
 test('canonical map covers kit, self-operated signal, and both sandbox identities', () => {

@@ -3,6 +3,15 @@
 const { execFileSync } = require('child_process');
 
 const CHANGESET_FILE_RE = /^\.changeset\/[^/]+[.]md$/;
+// Changesets v3 moves each changeset a prerelease cut consumes into
+// .changeset/pre/, and the stable cut after `changeset pre exit` consumes the
+// whole archive again into the GA changelog. Guard the whole subtree, so no
+// file name (nested, or with a literal backslash) slips past the guard.
+const CHANGESET_ARCHIVE_PATH_RE = /^\.changeset\/pre\//;
+const RELEASE_AUDIT_BRANCH_PREFIX = 'release-audit/';
+// Version Packages PRs. changeset-check.yml already skips them; this keeps local
+// runs on the release branch from flagging the archive moves Changesets makes.
+const VERSION_PACKAGES_BRANCH_PREFIX = 'changeset-release/';
 const PROTOCOL_CHANGESET_RE = /^["']adcontextprotocol["']\s*:\s*(major|minor|patch)\s*$/m;
 const PROTOCOL_BUMP_RANK = new Map([
   [null, 0],
@@ -17,6 +26,11 @@ const REGISTRY_RELEASE_SCOPED_PATHS = [
   /^docs\/registry\//,
   /^mintlify-docs\/registry\//,
 ];
+
+const NORMATIVE_PROTOCOL_DOC_PATHS = new Set([
+  'docs/trusted-match/specification.mdx',
+  'docs/trusted-match/router-architecture.mdx',
+]);
 
 const PROTOCOL_SCOPED_PATHS = [
   /^static\/schemas\/source\//,
@@ -57,7 +71,23 @@ function normalizePath(filePath) {
   return String(filePath || '').replace(/\\/g, '/').replace(/^\.\//, '');
 }
 
+// `git diff --name-status -z` output: NUL-separated status and paths, with no
+// quoting, so non-ASCII, quote, tab and backslash file names arrive literally.
+function parseNameStatusZ(output) {
+  const fields = String(output || '').split('\0');
+  const changes = [];
+  for (let i = 0; i < fields.length && fields[i]; ) {
+    const status = fields[i++];
+    const pathCount = status.startsWith('R') || status.startsWith('C') ? 2 : 1;
+    const paths = fields.slice(i, i + pathCount).filter(Boolean).map(normalizePath);
+    i += pathCount;
+    changes.push({ status, paths });
+  }
+  return changes;
+}
+
 function parseNameStatus(output) {
+  if (String(output || '').includes('\0')) return parseNameStatusZ(output);
   return String(output || '')
     .trim()
     .split('\n')
@@ -74,6 +104,10 @@ function parseNameStatus(output) {
 
 function isChangesetFile(filePath) {
   return CHANGESET_FILE_RE.test(normalizePath(filePath));
+}
+
+function isChangesetArchivePath(filePath) {
+  return CHANGESET_ARCHIVE_PATH_RE.test(normalizePath(filePath));
 }
 
 function changesetTargetsProtocol(content) {
@@ -93,7 +127,8 @@ function isProtocolScopedPath(filePath) {
   const normalized = normalizePath(filePath);
   if (isChangesetFile(normalized)) return false;
   if (REGISTRY_RELEASE_SCOPED_PATHS.some(pattern => pattern.test(normalized))) return false;
-  return PROTOCOL_SCOPED_PATHS.some(pattern => pattern.test(normalized));
+  return NORMATIVE_PROTOCOL_DOC_PATHS.has(normalized)
+    || PROTOCOL_SCOPED_PATHS.some(pattern => pattern.test(normalized));
 }
 
 function isStoryboardBranchRegistrationOnly(headContent, baseContent) {
@@ -205,6 +240,30 @@ function isChangesetDeleteOnlyCleanup(changes) {
   return deletedChangeset;
 }
 
+// Release managers correct pending and archived changesets on main before each
+// cut (.agents/shortcuts/cut-beta.md, cut-minor-ga.md), which can mean rewording
+// text or changing a misclassified bump. Allow that only from release-audit/
+// branches whose diff edits or deletes existing changesets and nothing else.
+function isReleaseAuditChangesetMaintenance(changes, headRef) {
+  if (!String(headRef || '').startsWith(RELEASE_AUDIT_BRANCH_PREFIX)) return false;
+  if (changes.length === 0) return false;
+
+  return changes.every(change => (change.status === 'M' || change.status === 'D')
+    && (change.paths || []).length > 0
+    && change.paths.every(filePath => isChangesetFile(filePath) || isChangesetArchivePath(filePath)));
+}
+
+// Archived prerelease changesets are release history. Outside Version Packages
+// and changeset-only release-audit/ PRs, any add, edit, delete or rename of one
+// is a violation, whatever else the PR changes.
+function findArchivedChangesetViolations(changes, headRef) {
+  if (String(headRef || '').startsWith(VERSION_PACKAGES_BRANCH_PREFIX)) return [];
+
+  return changes.flatMap(change => (change.paths || [])
+    .filter(isChangesetArchivePath)
+    .map(filePath => ({ kind: 'archived', filePath: normalizePath(filePath), status: change.status })));
+}
+
 function isChangesetStatusExemptMaintenance(changes) {
   let exemptChange = false;
 
@@ -235,7 +294,19 @@ function changedPathForHead(change) {
   return change.paths[change.paths.length - 1] || null;
 }
 
-function findChangesetProtocolScopeViolations(changes, readFileAtHead, readFileAtBase = () => '') {
+function findChangesetProtocolScopeViolations(changes, readFileAtHead, readFileAtBase = () => '', { headRef = '' } = {}) {
+  if (isReleaseAuditChangesetMaintenance(changes, headRef)) return [];
+
+  // The archive rule alone grades archived changesets, so a pending-changeset
+  // verdict reads only the rest of the diff.
+  const pendingChanges = changes.filter(change => !(change.paths || []).some(isChangesetArchivePath));
+  return [
+    ...findArchivedChangesetViolations(changes, headRef),
+    ...findPendingChangesetViolations(pendingChanges, readFileAtHead, readFileAtBase),
+  ];
+}
+
+function findPendingChangesetViolations(changes, readFileAtHead, readFileAtBase) {
   const changesetFiles = [];
   const protocolScopedFiles = [];
 
@@ -292,21 +363,55 @@ function defaultBaseRef() {
   return 'origin/main';
 }
 
-function formatViolationMessage(violations) {
+function defaultHeadRef() {
+  // changeset-check.yml sets this, empty for a fork head, so a fork branch name
+  // never earns the release-audit/ or changeset-release/ exemptions.
+  if (process.env.CHANGESET_SCOPE_HEAD_REF !== undefined) return process.env.CHANGESET_SCOPE_HEAD_REF;
+  if (process.env.GITHUB_EVENT_NAME === 'pull_request' && process.env.GITHUB_HEAD_REF) {
+    return process.env.GITHUB_HEAD_REF;
+  }
+  // Local runs (prep-for-pr) should grade a release-audit branch the way CI will.
+  try {
+    return git(['rev-parse', '--abbrev-ref', 'HEAD']).trim();
+  } catch {
+    return '';
+  }
+}
+
+function formatArchivedViolationMessage(violations) {
   return [
-    'Non-protocol changeset detected:',
-    ...violations.map(v => `  - ${v.filePath}`),
+    'Archived prerelease changeset changed:',
+    ...violations.map(v => `  - ${v.filePath} (${v.status})`),
     '',
-    'Do not add .changeset files for app, site, billing, admin, or operational-only changes.',
-    violations[0]?.message,
-  ]
-    .filter(Boolean)
-    .join('\n');
+    'Files in .changeset/pre/ are release history: the stable cut after `changeset pre exit` consumes every one of them into the GA changelog.',
+    'Edit or delete them only from a release-audit/<version> branch whose diff changes nothing but existing .changeset/*.md and .changeset/pre/*.md files. Never add or rename one by hand; Version Packages owns the archive.',
+  ].join('\n');
+}
+
+function formatViolationMessage(violations) {
+  const archived = violations.filter(v => v.kind === 'archived');
+  const pending = violations.filter(v => v.kind !== 'archived');
+  const sections = [];
+
+  if (archived.length > 0) sections.push(formatArchivedViolationMessage(archived));
+  if (pending.length > 0) {
+    sections.push([
+      'Non-protocol changeset detected:',
+      ...pending.map(v => `  - ${v.filePath}`),
+      '',
+      'Do not add .changeset files for app, site, billing, admin, or operational-only changes.',
+      pending[0]?.message,
+    ]
+      .filter(Boolean)
+      .join('\n'));
+  }
+
+  return sections.join('\n\n');
 }
 
 function run(argv = process.argv.slice(2)) {
   const baseRef = argv[0] || defaultBaseRef();
-  const diffOutput = git(['diff', '--name-status', '--find-renames', `${baseRef}...HEAD`]);
+  const diffOutput = git(['diff', '--name-status', '-z', '--find-renames', `${baseRef}...HEAD`]);
   const changes = parseNameStatus(diffOutput);
 
   if (argv.includes('--is-delete-only-cleanup')) {
@@ -346,7 +451,8 @@ function run(argv = process.argv.slice(2)) {
   const violations = findChangesetProtocolScopeViolations(
     changes,
     readFileAtHead,
-    filePath => readFileAtRef(baseRef, filePath)
+    filePath => readFileAtRef(baseRef, filePath),
+    { headRef: defaultHeadRef() }
   );
 
   if (violations.length > 0) {
@@ -365,10 +471,12 @@ if (require.main === module) {
 module.exports = {
   changesetProtocolBump,
   changesetTargetsProtocol,
+  findArchivedChangesetViolations,
   findChangesetProtocolScopeViolations,
   formatViolationMessage,
   hasProtocolScopedChanges,
   isStoryboardBranchRegistrationOnly,
+  isChangesetArchivePath,
   isChangesetBumpDowngradeOrRemoval,
   isChangesetBumpEscalation,
   isChangesetClassificationMaintenance,
@@ -376,6 +484,8 @@ module.exports = {
   isChangesetEditOnlyMaintenance,
   isChangesetStatusExemptMaintenance,
   isProtocolScopedPath,
+  isReleaseAuditChangesetMaintenance,
   parseNameStatus,
+  parseNameStatusZ,
   run,
 };

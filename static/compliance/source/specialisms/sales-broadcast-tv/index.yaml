@@ -1,5 +1,5 @@
 id: sales_broadcast_tv
-version: "1.1.0"
+version: "1.2.0"
 title: "Broadcast linear TV seller agent"
 protocol: media-buy
 category: sales_broadcast_tv
@@ -122,7 +122,7 @@ fixtures:
       fixture:
         brand:
           domain: "novamotors.example"
-        operator: "broadcast-tv.pinnacle-agency.example"
+        operator: "pinnacle-broadcast-tv.example"
         billing: "operator"
         status: "active"
         sandbox: true
@@ -306,6 +306,10 @@ phases:
             path: "specialisms[*]"
             value: "sales-broadcast-tv"
             description: "Agent declares sales-broadcast-tv specialism"
+          - check: field_contains
+            path: "creative.assignment_operations[*]"
+            value: "assign"
+            description: "Agent lists assign in creative.assignment_operations (3.3), so the creative_sync phase may send its assign operations"
 
           - check: field_present
             path: "context"
@@ -372,7 +376,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "broadcast-tv.pinnacle-agency.example"
+            operator: "pinnacle-broadcast-tv.example"
             sandbox: true
 
           context:
@@ -487,7 +491,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "broadcast-tv.pinnacle-agency.example"
+            operator: "pinnacle-broadcast-tv.example"
             sandbox: true
           context:
             correlation_id: "sales_broadcast_tv--get_guaranteed_products"
@@ -535,7 +539,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "broadcast-tv.pinnacle-agency.example"
+            operator: "pinnacle-broadcast-tv.example"
             sandbox: true
           agency_estimate_number: "PNNL-NM-2026-Q4-0847"
           start_time: "asap"
@@ -633,7 +637,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "broadcast-tv.pinnacle-agency.example"
+            operator: "pinnacle-broadcast-tv.example"
             sandbox: true
           agency_estimate_number: "PNNL-NM-2026-Q4-0847"
           start_time: "asap"
@@ -720,7 +724,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "broadcast-tv.pinnacle-agency.example"
+            operator: "pinnacle-broadcast-tv.example"
             sandbox: true
           media_buy_ids:
             - "$context.media_buy_id"
@@ -786,7 +790,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "broadcast-tv.pinnacle-agency.example"
+            operator: "pinnacle-broadcast-tv.example"
             sandbox: true
           creatives:
             - creative_id: "volta_ev_launch_30s"
@@ -896,7 +900,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "broadcast-tv.pinnacle-agency.example"
+            operator: "pinnacle-broadcast-tv.example"
             sandbox: true
           scenario: "seed_product"
           params:
@@ -949,7 +953,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "broadcast-tv.pinnacle-agency.example"
+            operator: "pinnacle-broadcast-tv.example"
             sandbox: true
           scenario: "seed_pricing_option"
           params:
@@ -982,7 +986,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "broadcast-tv.pinnacle-agency.example"
+            operator: "pinnacle-broadcast-tv.example"
             sandbox: true
           agency_estimate_number: "PNNL-NM-2026-Q4-0848"
           start_time: "asap"
@@ -1034,7 +1038,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "broadcast-tv.pinnacle-agency.example"
+            operator: "pinnacle-broadcast-tv.example"
             sandbox: true
           media_buy_ids:
             - "$context.spot_media_buy_id"
@@ -1081,7 +1085,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "broadcast-tv.pinnacle-agency.example"
+            operator: "pinnacle-broadcast-tv.example"
             sandbox: true
           scenario: "simulate_delivery"
           params:
@@ -1123,7 +1127,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "broadcast-tv.pinnacle-agency.example"
+            operator: "pinnacle-broadcast-tv.example"
             sandbox: true
           media_buy_ids:
             - "$context.spot_media_buy_id"
@@ -1189,7 +1193,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "broadcast-tv.pinnacle-agency.example"
+            operator: "pinnacle-broadcast-tv.example"
             sandbox: true
           scenario: "simulate_delivery"
           params:
@@ -1244,7 +1248,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "broadcast-tv.pinnacle-agency.example"
+            operator: "pinnacle-broadcast-tv.example"
             sandbox: true
           media_buy_ids:
             - "$context.media_buy_id"
@@ -1316,7 +1320,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "broadcast-tv.pinnacle-agency.example"
+            operator: "pinnacle-broadcast-tv.example"
             sandbox: true
           scenario: "simulate_delivery"
           params:
@@ -1368,7 +1372,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "broadcast-tv.pinnacle-agency.example"
+            operator: "pinnacle-broadcast-tv.example"
             sandbox: true
           media_buy_ids:
             - "$context.media_buy_id"
@@ -1451,7 +1455,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "broadcast-tv.pinnacle-agency.example"
+            operator: "pinnacle-broadcast-tv.example"
             sandbox: true
           context:
             correlation_id: "sales_broadcast_tv--get_fixed_price_products"
@@ -1523,7 +1527,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "broadcast-tv.pinnacle-agency.example"
+            operator: "pinnacle-broadcast-tv.example"
             sandbox: true
           agency_estimate_number: "PNNL-NM-2026-Q4-0849"
           start_time: "asap"
@@ -1596,7 +1600,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "broadcast-tv.pinnacle-agency.example"
+            operator: "pinnacle-broadcast-tv.example"
             sandbox: true
           scenario: "force_media_buy_confirmation"
           params:
@@ -1624,7 +1628,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "broadcast-tv.pinnacle-agency.example"
+            operator: "pinnacle-broadcast-tv.example"
             sandbox: true
           agency_estimate_number: "PNNL-NM-2026-Q4-0850"
           start_time: "asap"
@@ -1664,7 +1668,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "broadcast-tv.pinnacle-agency.example"
+            operator: "pinnacle-broadcast-tv.example"
             sandbox: true
           scenario: "force_media_buy_confirmation"
           params:
@@ -1691,7 +1695,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "broadcast-tv.pinnacle-agency.example"
+            operator: "pinnacle-broadcast-tv.example"
             sandbox: true
           media_buy_ids:
             - "$context.held_media_buy_id"
@@ -1730,7 +1734,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "broadcast-tv.pinnacle-agency.example"
+            operator: "pinnacle-broadcast-tv.example"
             sandbox: true
           scenario: "simulate_delivery"
           params:
@@ -1764,7 +1768,7 @@ phases:
           account:
             brand:
               domain: "novamotors.example"
-            operator: "broadcast-tv.pinnacle-agency.example"
+            operator: "pinnacle-broadcast-tv.example"
             sandbox: true
           media_buy_ids:
             - "$context.fixed_media_buy_id"

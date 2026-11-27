@@ -1,10 +1,12 @@
 /**
  * Serializer-shape regression guard for GET /api/public/discover-agent (#4256).
  *
- * Pins two invariants:
+ * Pins three invariants:
  *  1. The response always includes `tools_count` (int) and `tools` (array).
  *  2. `inputSchema` is never leaked — tools are stripped to {name, description}
  *     before serialization, regardless of what getAgentInfo returns.
+ *  3. `protocols` lists A2A next to MCP when the origin serves its agent card
+ *     at /.well-known/agent-card.json (#7875).
  *
  * Uses a mock `getAgentInfo` so no live MCP agent or database is required.
  */
@@ -15,12 +17,12 @@ import express from 'express';
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
 // vi.hoisted runs before vi.mock factories — lets factory closures reference
 // shared control variables without temporal-dead-zone issues.
-const { mockGetAgentInfo } = vi.hoisted(() => {
+const { mockGetAgentInfo, mockSdkSafeFetch } = vi.hoisted(() => {
   // WorkOS initializes at auth.ts module load time; set env vars before any
   // imports so new WorkOS(...) succeeds without a real key.
   process.env.WORKOS_API_KEY = process.env.WORKOS_API_KEY ?? 'sk_test';
   process.env.WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID ?? 'client_test';
-  return { mockGetAgentInfo: vi.fn() };
+  return { mockGetAgentInfo: vi.fn(), mockSdkSafeFetch: vi.fn() };
 });
 
 // Mock SingleAgentClient so no live MCP connection is attempted.
@@ -47,6 +49,15 @@ vi.mock('@adcp/sdk/testing', async () => {
 
 // Stub global fetch so the A2A well-known check returns a non-OK response.
 vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false }));
+
+// The A2A agent card probe goes through sdkSafeFetch. Each test sets what the
+// card URL answers; the SDK transport wrapper stays real.
+vi.mock('../../src/utils/sdk-safe-fetch.js', async () => {
+  const actual = await vi.importActual<typeof import('../../src/utils/sdk-safe-fetch.js')>(
+    '../../src/utils/sdk-safe-fetch.js',
+  );
+  return { ...actual, sdkSafeFetch: mockSdkSafeFetch };
+});
 
 // ── App factory ────────────────────────────────────────────────────────────
 import { createRegistryApiRouter, type RegistryApiConfig } from '../../src/routes/registry-api.js';
@@ -80,6 +91,8 @@ describe('GET /api/public/discover-agent — serializer shape (#4256)', () => {
 
   beforeEach(() => {
     mockGetAgentInfo.mockReset();
+    mockSdkSafeFetch.mockReset();
+    mockSdkSafeFetch.mockResolvedValue(new Response('not found', { status: 404 }));
     app = buildApp();
   });
 
@@ -141,5 +154,19 @@ describe('GET /api/public/discover-agent — serializer shape (#4256)', () => {
     expect(res.status).toBe(200);
     expect(res.body.tools_count).toBe(0);
     expect(res.body.tools).toEqual([]);
+  });
+
+  it('lists a2a in protocols when the origin serves /.well-known/agent-card.json', async () => {
+    mockGetAgentInfo.mockResolvedValue({ name: 'Acme Ad Agent', protocol: 'mcp', tools: [] });
+    mockSdkSafeFetch.mockImplementation(async (url: string) =>
+      url === 'https://agent.example.com/.well-known/agent-card.json'
+        ? new Response('{}', { status: 200 })
+        : new Response('not found', { status: 404 }),
+    );
+
+    const res = await request(app).get('/api/public/discover-agent?url=https://agent.example.com/mcp/');
+
+    expect(res.status).toBe(200);
+    expect(res.body.protocols).toEqual(['mcp', 'a2a']);
   });
 });

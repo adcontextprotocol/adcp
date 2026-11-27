@@ -23,6 +23,7 @@ requires_scenarios:
   - media_buy_seller/external_audience_source_binding
   - media_buy_seller/measurement_terms_rejected
   - media_buy_seller/measurement_terms_accepted
+  - media_buy_seller/unrecognized_terms_rejected
   - media_buy_seller/pending_creatives_to_start
   - media_buy_seller/inventory_list_targeting
   - media_buy_seller/inventory_list_no_match
@@ -52,6 +53,7 @@ requires_scenarios:
   - media_buy_seller/governance_agent_binding_acceptance
   - media_buy_seller/invalid_transitions
   - media_buy_seller/creative_fate_after_cancellation
+  - media_buy_seller/declared_format_option_acceptance
   - media_buy_seller/terminal_package_retention
   - media_buy_seller/inline_creatives_without_sync
   - media_buy_seller/create_media_buy_async
@@ -257,7 +259,7 @@ phases:
           accounts:
             - brand:
                 domain: "acmeoutdoor.example"
-              operator: "media-buy-lifecycle.pinnacle-agency.example"
+              operator: "pinnacle-media-buy-lifecycle.example"
               sandbox: true
               billing: "operator"
               payment_terms: "net_30"
@@ -324,7 +326,7 @@ phases:
           accounts:
             - brand:
                 domain: "acmeoutdoor.example"
-              operator: "media-buy-lifecycle.pinnacle-agency.example"
+              operator: "pinnacle-media-buy-lifecycle.example"
               timezone: "$context.account_timezone"
               billing: "operator"
               payment_terms: "net_30"
@@ -402,7 +404,7 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "media-buy-lifecycle.pinnacle-agency.example"
+            operator: "pinnacle-media-buy-lifecycle.example"
             sandbox: true
           context:
             correlation_id: "media_buy_seller--get_products_brief"
@@ -527,7 +529,7 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "media-buy-lifecycle.pinnacle-agency.example"
+            operator: "pinnacle-media-buy-lifecycle.example"
             sandbox: true
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
@@ -598,7 +600,7 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "media-buy-lifecycle.pinnacle-agency.example"
+            operator: "pinnacle-media-buy-lifecycle.example"
             sandbox: true
           media_buy_ids:
             - "$context.media_buy_id"
@@ -682,7 +684,7 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "media-buy-lifecycle.pinnacle-agency.example"
+            operator: "pinnacle-media-buy-lifecycle.example"
             sandbox: true
           media_buy_ids:
             - "$context.media_buy_id"
@@ -731,7 +733,7 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "media-buy-lifecycle.pinnacle-agency.example"
+            operator: "pinnacle-media-buy-lifecycle.example"
             timezone: "$context.account_timezone"
             sandbox: true
           context:
@@ -800,7 +802,7 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "media-buy-lifecycle.pinnacle-agency.example"
+            operator: "pinnacle-media-buy-lifecycle.example"
             timezone: "$context.account_timezone"
             sandbox: true
           start_time: "asap"
@@ -850,7 +852,7 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "media-buy-lifecycle.pinnacle-agency.example"
+            operator: "pinnacle-media-buy-lifecycle.example"
             timezone: "$context.account_timezone"
             sandbox: true
           media_buy_ids:
@@ -912,7 +914,7 @@ phases:
           account:
             brand:
               domain: "acmeoutdoor.example"
-            operator: "media-buy-lifecycle.pinnacle-agency.example"
+            operator: "pinnacle-media-buy-lifecycle.example"
             timezone: "$context.account_timezone"
             sandbox: true
           media_buy_ids:

@@ -19,7 +19,7 @@
     }
   },
   "required": ["agent_url"],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     { "agent_url": "https://agent.acme.example" }
   ]

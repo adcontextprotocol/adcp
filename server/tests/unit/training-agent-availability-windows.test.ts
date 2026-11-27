@@ -144,7 +144,7 @@ describe('flexible-window availability discovery (training agent)', () => {
       });
     });
 
-    it('leaves products without seeded availability untouched', async () => {
+    it('answers catalog products in an unseeded session with one open availability window', async () => {
       const discovery = await callTool(server, 'get_products', {
         buying_mode: 'wholesale',
         account: ACCOUNT,
@@ -154,16 +154,16 @@ describe('flexible-window availability discovery (training agent)', () => {
       const products = (discovery as { products?: Array<Record<string, unknown>> }).products ?? [];
       expect(products.length).toBeGreaterThan(0);
       for (const product of products) {
-        // Catalog products keep whatever forecast shape product-factory.ts baked in
-        // (never an availability_horizon-scoped window) since none has seeded
-        // availability data.
-        const forecast = product.forecast as Record<string, unknown> | undefined;
-        if (forecast) {
-          expect(
-            forecast.forecast_range_unit !== 'availability'
-            || !Array.isArray((forecast.points as unknown[])[0] && (forecast.points as Array<{ dimensions?: unknown }>)[0]?.dimensions),
-          ).toBe(true);
-        }
+        // The demonstration catalog has no booked windows, so the horizon is
+        // one available span rather than an untimed forecast.
+        const forecast = product.forecast as Record<string, unknown>;
+        expect(forecast.forecast_range_unit, String(product.product_id)).toBe('availability');
+        const points = forecast.points as Array<Record<string, unknown>>;
+        expect(points).toHaveLength(1);
+        expect(points[0]).toMatchObject({
+          dimensions: [{ kind: 'time', start_time: HORIZON.start_time, end_time: HORIZON.end_time }],
+          availability_status: 'available',
+        });
       }
     });
   });

@@ -53,7 +53,7 @@
     "performance_standards": { "$ref": "/schemas/media-buy/product-purchase.json#/properties/performance_standards" }
   },
   "required": ["product_id", "pricing_option_id"],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "not": {
     "anyOf": [
       { "required": ["creatives"] },

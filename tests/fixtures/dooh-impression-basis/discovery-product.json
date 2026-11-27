@@ -1,0 +1,72 @@
+{
+  "product_id": "metro_concourse_and_platform_loop",
+  "name": "Metro concourse and platform loop",
+  "description": "Landscape screens across fictional metro concourses, where on-site sensors count the audience at each play, and platforms, where the seller declares an hourly audience per screen.",
+  "channels": ["dooh"],
+  "delivery_type": "non_guaranteed",
+  "publisher_properties": [{
+    "publisher_domain": "metro-media.example",
+    "selection_type": "by_tag",
+    "property_tags": ["transit_venues"]
+  }],
+  "placements": [
+    {
+      "kind": "seller_inline",
+      "publisher_domain": "metro-media.example",
+      "placement_id": "concourse_screens",
+      "name": "Concourse screens",
+      "mode": "included",
+      "tags": ["transit", "concourse"],
+      "dooh_placement_attributes": {
+        "slot_duration_seconds": 10,
+        "loop_duration_seconds": 120,
+        "screen_resolution": { "width": 1920, "height": 1080 },
+        "motion": "full_motion",
+        "impression_basis": "sensor_measured",
+        "audience_multiplier": 18.6
+      }
+    },
+    {
+      "kind": "seller_inline",
+      "publisher_domain": "metro-media.example",
+      "placement_id": "platform_screens",
+      "name": "Platform screens",
+      "mode": "included",
+      "tags": ["transit", "platform"],
+      "dooh_placement_attributes": {
+        "slot_duration_seconds": 10,
+        "loop_duration_seconds": 120,
+        "screen_resolution": { "width": 1920, "height": 1080 },
+        "motion": "full_motion",
+        "impression_basis": "seller_modeled",
+        "audience_multiplier": 14.4
+      }
+    }
+  ],
+  "format_options": [{
+    "format_option_id": "landscape_image_1920x1080",
+    "format_kind": "image",
+    "params": {
+      "width": 1920,
+      "height": 1080,
+      "max_file_size_kb": 10240
+    }
+  }],
+  "pricing_options": [{
+    "pricing_option_id": "metro_loop_cpm",
+    "pricing_model": "cpm",
+    "currency": "USD",
+    "fixed_price": 8
+  }],
+  "reporting_capabilities": {
+    "available_reporting_frequencies": ["daily"],
+    "expected_delay_minutes": 240,
+    "timezone": "UTC",
+    "supports_webhooks": false,
+    "available_metrics": ["impressions", "spend", "plays", "dooh_metrics"],
+    "vendor_metrics": [
+      { "vendor": { "domain": "metro-media.example" }, "metric_id": "people_counted" }
+    ],
+    "date_range_support": "date_range"
+  }
+}

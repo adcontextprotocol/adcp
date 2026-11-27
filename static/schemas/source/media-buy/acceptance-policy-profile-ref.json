@@ -16,5 +16,5 @@
   "x-adcp-validation": {
     "resolver_integrity": "Resolve the exact policy_id/policy_version. The resolver returns canonical_content and content_digest; RFC 8785-canonicalize canonical_content, verify that its SHA-256 equals both content_digest and policy_digest, then select the embedded profile_id/profile_version and verify profile_digest before use. A null digest or canonical_content is not sufficient for a pinned registry profile."
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { AuthorizationIndex, type AuthorizationEntry } from '../../../src/registry-sync/authorization-index.js';
 import { CatalogPropertyIndex } from '../../../src/registry-sync/property-index.js';
+import {
+  AUTHORIZED_CASES,
+  SIGNING_KEY_CASES,
+  UNAUTHORIZED_CASES,
+} from '../../fixtures/authorized-agent-url-matching.js';
 
 function makeEntry(overrides: Partial<AuthorizationEntry>): AuthorizationEntry {
   return {
@@ -489,6 +494,142 @@ describe('AuthorizationIndex', () => {
       const result = index.check({ agent_url: 'https://agent.example.com', property_rid: 'rid-001' });
       expect(result.authorized).toBe(true);
       expect(result.signing_keys).toHaveLength(1);
+    });
+
+    // #9016: across the entries that authorize the query, pinned only if
+    // every one pins; then the union. getSigningKeysForScope agrees with
+    // check(); the scope-less getSigningKeys is unchanged.
+    const AGENT = 'https://agent.example.com';
+    const PUB = 'publisher.example.com';
+    const k = (public_key: string) => ({ algorithm: 'ed25519', public_key });
+
+    it.each([
+      ['unpinned first', [undefined, [k('key1')]]],
+      ['pinned first', [[k('key1')], undefined]],
+      ['empty array', [[], [k('key1')]]],
+    ] as const)('is unpinned when any authorizing entry is unpinned (%s)', (_label, pins) => {
+      for (const signing_keys of pins) {
+        index.addEntry(makeEntry({ signing_keys: signing_keys as AuthorizationEntry['signing_keys'] }));
+      }
+      const query = { agent_url: AGENT, property_rid: 'rid-001' };
+      const result = index.check(query);
+      expect(result.authorized).toBe(true);
+      expect(result.signing_keys).toBeUndefined();
+      expect(index.getSigningKeysForScope(query)).toEqual([]);
+    });
+
+    it('is the union of the keys when every authorizing entry pins', () => {
+      index.addEntry(makeEntry({ signing_keys: [k('key1')] }));
+      index.addEntry(makeEntry({ signing_keys: [k('key2'), k('key1')] }));
+      const query = { agent_url: AGENT, property_rid: 'rid-001' };
+      expect(index.check(query).signing_keys?.map(x => x.public_key)).toEqual(['key1', 'key2']);
+      expect(index.getSigningKeysForScope(query)?.map(x => x.public_key)).toEqual(['key1', 'key2']);
+    });
+
+    it('lets an unpinned entry for another country neither pin nor unpin it', () => {
+      index.addEntry(makeEntry({ countries: ['GB'] }));
+      index.addEntry(makeEntry({ signing_keys: [k('key1')] }));
+      const us = { agent_url: AGENT, property_rid: 'rid-001', country: 'US' };
+      expect(index.check(us).signing_keys?.map(x => x.public_key)).toEqual(['key1']);
+      expect(index.getSigningKeysForScope(us)?.map(x => x.public_key)).toEqual(['key1']);
+      const gb = { agent_url: AGENT, property_rid: 'rid-001', country: 'GB' };
+      expect(index.check(gb).signing_keys).toBeUndefined();
+      expect(index.getSigningKeysForScope(gb)).toEqual([]);
+    });
+
+    it('lets an expired unpinned entry neither pin nor unpin it', () => {
+      index.addEntry(makeEntry({ effective_until: '2020-01-01T00:00:00Z' }));
+      index.addEntry(makeEntry({ signing_keys: [k('key1')] }));
+      const query = { agent_url: AGENT, property_rid: 'rid-001' };
+      expect(index.getSigningKeysForScope(query)?.map(x => x.public_key)).toEqual(['key1']);
+      expect(index.check(query).signing_keys?.map(x => x.public_key)).toEqual(['key1']);
+    });
+
+    it('getSigningKeysForScope is null when no entry authorizes the query', () => {
+      index.addEntry(makeEntry({ countries: ['GB'], signing_keys: [k('key1')] }));
+      expect(index.getSigningKeysForScope({ agent_url: AGENT, property_rid: 'rid-001', country: 'US' })).toBeNull();
+    });
+
+    it('keeps the scope-less getSigningKeys unchanged (pre-3.3 behaviour)', () => {
+      index.addEntry(makeEntry({ countries: ['GB'] }));
+      index.addEntry(makeEntry({ signing_keys: [k('key1')] }));
+      index.addEntry(makeEntry({ signing_keys: [k('key2')] }));
+      expect(index.getSigningKeys(AGENT, PUB).map(x => x.public_key)).toEqual(['key1', 'key2']);
+    });
+  });
+
+  // ── Agent URL matching (#9014) ──────────────────────────────────
+
+  describe('agent URL matching (#9014)', () => {
+    // The shared fixture table the validator and the registry directory
+    // are checked against, run against this replica so the three cannot
+    // drift apart again (#7830).
+    it.each(AUTHORIZED_CASES)('authorizes: $why ($entry → $agent)', ({ entry, agent }) => {
+      index.addEntry(makeEntry({ agent_url: entry }));
+      const result = index.check({ agent_url: agent, property_rid: 'rid-001' });
+      expect(result.authorized).toBe(true);
+    });
+
+    it.each(UNAUTHORIZED_CASES)('does not authorize: $why ($entry → $agent)', ({ entry, agent }) => {
+      index.addEntry(makeEntry({ agent_url: entry }));
+      const result = index.check({ agent_url: agent, property_rid: 'rid-001' });
+      expect(result.authorized).toBe(false);
+    });
+
+    it('returns an origin-only entry\'s signing keys for an agent at a deeper path', () => {
+      index.addEntry(makeEntry({
+        signing_keys: [{ algorithm: 'ed25519', public_key: 'key1' }],
+      }));
+      const keys = index.getSigningKeys('https://agent.example.com/mcp', 'publisher.example.com');
+      expect(keys.map(k => k.public_key)).toEqual(['key1']);
+    });
+
+    it('does not return a path entry\'s signing keys for a deeper path', () => {
+      index.addEntry(makeEntry({
+        agent_url: 'https://agent.example.com/mcp',
+        signing_keys: [{ algorithm: 'ed25519', public_key: 'key1' }],
+      }));
+      const keys = index.getSigningKeys('https://agent.example.com/mcp/v2', 'publisher.example.com');
+      expect(keys).toEqual([]);
+    });
+
+    it('returns placements from an origin-only entry for an agent at a deeper path', () => {
+      index.addEntry(makeEntry({ placement_ids: ['pre_roll'] }));
+      const placements = index.getAuthorizedPlacements('https://agent.example.com/mcp', 'rid-001');
+      expect(placements).toEqual(['pre_roll']);
+    });
+
+    // The #9016 pin across every entry that matches the agent — an
+    // origin-only entry and the agent's full URL can both match — in
+    // document (insertion) order, per the shared fixture table.
+    it.each(SIGNING_KEY_CASES)('signing keys: $why', ({ agent, entries, expectedKids }) => {
+      for (const entry of entries) {
+        index.addEntry(makeEntry({
+          agent_url: entry.url,
+          signing_keys: entry.kids?.map(kid => ({ algorithm: 'ed25519', public_key: kid })),
+          effective_until: entry.effectiveUntil,
+        }));
+      }
+      const query = { agent_url: agent, property_rid: 'rid-001' };
+      const result = index.check(query);
+      expect(result.authorized).toBe(true);
+      expect(result.signing_keys?.map(k => k.public_key)).toEqual(expectedKids ?? undefined);
+      expect(index.getSigningKeysForScope(query)?.map(k => k.public_key)).toEqual(expectedKids ?? []);
+    });
+
+    it('removes an entry when the removal is spelled differently from the grant', () => {
+      index.addEntry(makeEntry({ agent_url: 'HTTPS://Agent.Example.COM:443/mcp' }));
+      expect(index.check({ agent_url: 'https://agent.example.com/mcp', property_rid: 'rid-001' }).authorized).toBe(true);
+      index.removeEntry('https://agent.example.com/mcp', 'publisher.example.com');
+      expect(index.size).toBe(0);
+      expect(index.check({ agent_url: 'https://agent.example.com/mcp', property_rid: 'rid-001' }).authorized).toBe(false);
+    });
+
+    it('removing a path agent does not remove the origin-only entry for its origin', () => {
+      index.addEntry(makeEntry({}));
+      index.removeAgent('https://agent.example.com/mcp');
+      expect(index.size).toBe(1);
+      expect(index.check({ agent_url: 'https://agent.example.com/mcp', property_rid: 'rid-001' }).authorized).toBe(true);
     });
   });
 

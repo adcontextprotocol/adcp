@@ -2,7 +2,7 @@
 "adcontextprotocol": minor
 ---
 
-Withdraw definition pins, purchase rights, and installment selection from 3.3 and plan them for 4.0 (adcp#8501). All three add terms to `commercial_terms`. The `commercial-terms` schema is closed on purpose: a buyer must not be bound by terms it cannot read, and `terms_digest` signs exactly those terms. If the object were open, a 3.2 buyer could accept a 3.3 term it silently ignored, and a minor release never changes a closed schema (DR-0036). 4.0 gives `commercial_terms` a declared extension point with must-understand, and the three features come back through it.
+Withdraw definition pins, purchase rights, and installment selection from 3.3 and plan them for 4.0 (adcp#8501). All three add terms to `commercial_terms`. The `commercial-terms` schema is held closed until 4.0 (DR-0036). 4.0 gives `commercial_terms` a declared extension point with must-understand, and the three features come back through it.
 
 **All three shipped in `3.3.0-beta.1` and are removed after it.** This is a beta-to-beta change, not a change to a stable release. Both betas are immutable, so a seller or SDK built from a beta bundle has the surfaces below to remove. The two experimental features also leave `experimental_features`: a seller stops listing `media_buy.purchase_rights` and `media_buy.installment_selection`.
 
@@ -12,4 +12,6 @@ Withdraw definition pins, purchase rights, and installment selection from 3.3 an
 
 **Installment selection (#8246, experimental, shipped in `3.3.0-beta.1`).** Removed: `purchases[].installments[]`, `installment_changes` on `proposal-refinement.json`, `unsatisfied_installment_changes` on `refine_proposals` result rows, `core/installment-change-set.json`, and the `installment_changes` value of `proposal_refinement.supported_dimensions`. Installments on the canonical product (`core/canonical-installment.json`) and the `holds[]` readback stay in 3.3.
 
-The consumed changesets for #7960, #8101, and #8246 stay in `.changeset/pre/` as history. The designs are preserved in the 4.0 compatibility registry (`definition_pins_required_in_4_0`, `purchase_rights_required_in_4_0`, `installment_selection_required_in_4_0`) and under Planned for 4.0 on the 4.0 compatibility page, with the merge commits that carry the schemas, vectors, and tests. The 3.3 release notes, What's new, the 3.2 to 3.3 migration guide, and the 3.3 beta page say what to remove.
+The designs are preserved in the 4.0 compatibility registry (`definition_pins_required_in_4_0`, `purchase_rights_required_in_4_0`, `installment_selection_required_in_4_0`) and under Planned for 4.0 on the 4.0 compatibility page, with the merge commits that carry the schemas, vectors, and tests. The 3.3 release notes, What's new, the 3.2 to 3.3 migration guide, and the 3.3 prerelease program page say what to remove.
+
+Later in 3.3 (beta.6, #8974), `installment_changes`, `unsatisfied_installment_changes`, `core/installment-change-set.json` and the `installment_changes` supported dimension return on `refine_proposals` as experimental `media_buy.installment_refinement`, which adds nothing to `commercial_terms`. `purchases[].installments[]` stays planned for 4.0.

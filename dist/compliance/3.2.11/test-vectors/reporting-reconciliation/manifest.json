@@ -1,0 +1,25 @@
+{
+  "manifest_version": "1.0",
+  "complete": true,
+  "reporting_revision_id": "revision-august-official",
+  "reporting_obligation_id": "obligation-billing",
+  "reporting_materialization_id": "materialization-billing",
+  "period": { "start": "2026-08-26T00:00:00Z", "end": "2026-08-27T00:00:00Z", "source_timezone": "UTC" },
+  "format": "jsonl",
+  "compression": "none",
+  "files": [
+    {
+      "object_ref": "rows.jsonl",
+      "size_bytes": 156,
+      "sha256": "735610f303d6d91aa618df3aa6d7f18bcf5dfa52bdbd9ef551293e6bd14c92d9",
+      "row_count": 2
+    }
+  ],
+  "total_size_bytes": 156,
+  "row_count": 2,
+  "control_totals": [
+    { "name": "impressions", "value": "5", "value_type": "integer", "unit": "impressions" },
+    { "name": "spend", "value": "8.00", "value_type": "decimal", "unit": "USD" }
+  ],
+  "created_at": "2026-08-27T04:00:01Z"
+}

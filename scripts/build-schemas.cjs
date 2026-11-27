@@ -38,10 +38,26 @@ const {
   generateMcpSchemaProjection,
 } = require('./mcp-schema-projection.cjs');
 
-const SOURCE_DIR = path.join(__dirname, '../static/schemas/source');
-const DIST_DIR = path.join(__dirname, '../dist/schemas');
-const PACKAGE_JSON = path.join(__dirname, '../package.json');
-const SKILLS_DIR = path.join(__dirname, '../skills');
+// The repository tree the build reads and writes. `--root <dir>` points a
+// command-line build at another tree with the same layout (tests build a
+// small fixture this way); it is honored only when this file is the entry
+// point, so modules that require it always see this repository.
+const DEFAULT_REPO_ROOT = path.join(__dirname, '..');
+function repoRootFromArgs(argv) {
+  const index = argv.indexOf('--root');
+  if (index === -1) return DEFAULT_REPO_ROOT;
+  if (!argv[index + 1]) throw new Error('--root requires a directory argument');
+  return path.resolve(argv[index + 1]);
+}
+const REPO_ROOT = require.main === module ? repoRootFromArgs(process.argv.slice(2)) : DEFAULT_REPO_ROOT;
+// scripts/built-schemas.cjs locks and stamps this repository's
+// dist/schemas/latest; a build of another tree must not touch either.
+const BUILDS_THIS_REPOSITORY = REPO_ROOT === DEFAULT_REPO_ROOT;
+
+const SOURCE_DIR = path.join(REPO_ROOT, 'static/schemas/source');
+const DIST_DIR = path.join(REPO_ROOT, 'dist/schemas');
+const PACKAGE_JSON = path.join(REPO_ROOT, 'package.json');
+const SKILLS_DIR = path.join(REPO_ROOT, 'skills');
 const SCHEMA_ORIGIN = 'https://adcontextprotocol.org';
 
 function resolveBuildTimestamp(env = process.env, now = new Date()) {
@@ -189,10 +205,14 @@ function transformPublishedSchemaText(content, version) {
 // artifacts remain available, but non-selectable releases must never win
 // latest/major/minor aliases. 3.2.0 is the permanently withdrawn June 2026
 // accidental cut; 3.2 GA ships as 3.2.1 (.changeset/withdrawn-release.json).
+// 3.2.0-rc.5 and 3.3.0-rc.1 are committed candidates that were superseded
+// without publication (RELEASING.md, "Superseding an unpublishable committed
+// prerelease").
 const RELEASE_STATUS_OVERRIDES = new Map([
   ['3.1.3', 'withdrawn'],
   ['3.2.0-rc.5', 'unpublished'],
   ['3.2.0', 'unpublished'],
+  ['3.3.0-rc.1', 'unpublished'],
 ]);
 
 function isSelectableRelease(version) {
@@ -858,7 +878,8 @@ function discoverExtensions(extensionsDir) {
         path: filePath
       });
     } catch (error) {
-      console.warn(`   ⚠️  Failed to parse extension ${file}: ${error.message}`);
+      // Dropping the extension would publish a registry without it.
+      throw new Error(`Extension ${file}: ${error.message}`);
     }
   }
 
@@ -878,10 +899,9 @@ function filterExtensionsForVersion(extensions, targetVersion) {
   return extensions.filter(ext => {
     const { valid_from, valid_until } = ext.schema;
 
-    // Must have valid_from
+    // Must have valid_from; without it the extension fits no version.
     if (!valid_from) {
-      console.warn(`   ⚠️  Extension ${ext.namespace} missing valid_from, skipping`);
-      return false;
+      throw new Error(`Extension ${ext.namespace} is missing valid_from`);
     }
 
     // Check valid_from <= targetVersion
@@ -1109,8 +1129,10 @@ function indexScenarioTasks(repoRoot) {
       }
       if (!entry.name.endsWith('.yaml')) continue;
       let doc;
+      // A storyboard that does not parse would drop its tasks from the
+      // manifest's specialisms, so it fails the build.
       try { doc = yaml.load(fs.readFileSync(p, 'utf8')); }
-      catch { continue; }
+      catch (error) { throw new Error(`Manifest generation: cannot parse ${path.relative(repoRoot, p)}: ${error.message}`); }
       if (!doc || typeof doc !== 'object' || typeof doc.id !== 'string') continue;
       if (!Array.isArray(doc.phases)) continue;
       index.set(doc.id, collectTasksFromPhases(doc.phases));
@@ -1666,8 +1688,12 @@ function resolveRefs(schema, sourceDir, ancestorRefs = new Set(), options = {}) 
         continue;
       }
 
+      // A `$ref` the bundler cannot resolve is a build failure: keeping it
+      // would publish a bundle that claims to be self-contained but points
+      // at a schema that does not exist.
+      let refContent;
       try {
-        let refContent = JSON.parse(fs.readFileSync(refPath, 'utf8'));
+        refContent = JSON.parse(fs.readFileSync(refPath, 'utf8'));
         if (fragment) {
           if (!fragment.startsWith('/')) throw new Error(`Unsupported schema fragment: ${value}`);
           refContent = fragment
@@ -1681,26 +1707,35 @@ function resolveRefs(schema, sourceDir, ancestorRefs = new Set(), options = {}) 
               return current[segment];
             }, refContent);
         }
-        // Create a new set including this ref for the recursive call
-        const newAncestors = new Set(ancestorRefs);
-        newAncestors.add(ancestorKey);
-        // Recursively resolve refs in the referenced schema
-        const resolvedRef = resolveRefs(refContent, sourceDir, newAncestors, options);
-        // Merge the resolved content. Drop `$schema` (only meaningful at
-        // document root). Preserve `$id` on the inlined subtree so SDK
-        // error reporting can name the deep sub-schema (#3868) — if the
-        // parent already declared its own `$id` (the deprecated-alias
-        // pattern: `{ $id: ".../signal-pricing-option.json", $ref: ".../vendor-pricing-option.json" }`),
-        // keep the parent's `$id` so the alias's identity wins over the
-        // target's.
-        const { $schema, $id: refId, ...rest } = resolvedRef;
-        Object.assign(result, rest);
-        if (refId !== undefined && result.$id === undefined) {
-          result.$id = refId;
-        }
       } catch (error) {
-        // If we can't resolve, keep the original $ref
-        result[key] = value;
+        throw new Error(`Cannot resolve $ref ${value}: ${error.message}`);
+      }
+      // Create a new set including this ref for the recursive call
+      const newAncestors = new Set(ancestorRefs);
+      newAncestors.add(ancestorKey);
+      // Recursively resolve refs in the referenced schema
+      const resolvedRef = resolveRefs(refContent, sourceDir, newAncestors, options);
+      // Merge the resolved content. Drop `$schema` (only meaningful at
+      // document root). Preserve `$id` on the inlined subtree so SDK
+      // error reporting can name the deep sub-schema (#3868) — if the
+      // parent already declared its own `$id` (the deprecated-alias
+      // pattern: `{ $id: ".../signal-pricing-option.json", $ref: ".../vendor-pricing-option.json" }`),
+      // keep the parent's `$id` so the alias's identity wins over the
+      // target's.
+      const { $schema, $id: refId, ...rest } = resolvedRef;
+      if (rest[HOIST_MARKER] === true && Object.keys(schema).some(k => k !== '$ref')) {
+        // The target is a canonical named type (`x-adcp-hoist`) and the
+        // call-site adds keys beside the `$ref` (e.g. `deprecated` and a
+        // `description` on one branch of a union). Merging would produce
+        // a second, different copy of the named type, so keep the target
+        // body intact for `hoistMarkedSchemas`, which turns this node
+        // into `{ $ref: "#/$defs/<Title>", ...call-site keys }`.
+        result[HOIST_TARGET_KEY] = refId === undefined ? rest : { ...rest, $id: refId };
+        continue;
+      }
+      Object.assign(result, rest);
+      if (refId !== undefined && result.$id === undefined) {
+        result.$id = refId;
       }
     } else {
       result[key] = resolveRefs(value, sourceDir, ancestorRefs, options);
@@ -1893,6 +1928,26 @@ function hoistNestedDefsToRoot(schema) {
 }
 
 /**
+ * Whether `key` names a definitions block (`$defs` or `definitions`).
+ *
+ * The content-based hoists below look inside such a block but never count or
+ * replace an entry itself: the entry is already a named definition. What an
+ * entry contains is ordinary schema, and a large one can be the bulk of a
+ * bundle. `hoistNestedDefsToRoot` moves an inlined document's `definitions`
+ * to the root (`creative-manifest.json#/definitions/...`, say), so skipping
+ * the block would leave its marked schemas and repeated enums inline.
+ */
+function isDefinitionsKey(key) {
+  return key === '$defs' || key === 'definitions';
+}
+
+/** Calls `visit` on each entry of a definitions block. */
+function forEachDefinition(block, visit) {
+  if (!block || typeof block !== 'object' || Array.isArray(block)) return;
+  for (const entry of Object.values(block)) visit(entry);
+}
+
+/**
  * After resolveRefs inlines every $ref, the same pure-enum schema can appear
  * at multiple paths in the bundled output. json-schema-to-typescript sees two
  * structurally identical inline shapes and emits both as Foo and Foo1, making
@@ -1900,13 +1955,60 @@ function hoistNestedDefsToRoot(schema) {
  *
  * This function detects pure-enum schemas (type === 'string', has enum,
  * ≤ 4 top-level keys — allows title, description alongside type+enum) that
- * appear at 2+ distinct non-$defs locations, hoists each into root $defs, and
+ * appear at 2+ locations, hoists each into root $defs, and
  * replaces every occurrence with a $ref pointer. Single-occurrence enums are
- * left inline — no change to those bundled schemas.
+ * left inline — no change to those bundled schemas. Occurrences that
+ * validate alike share one entry even when their annotations differ: an
+ * annotation that not every occurrence states alike (`deprecated` on one
+ * branch of a union, a field's own `description` or `default`) stays beside
+ * that occurrence's $ref, and the $defs body omits it; see
+ * `canonicalEnumBody`.
  *
  * Complex object schemas ($defs hoisting for objects) is intentionally out of
  * scope — see issue #3145 for the RFC on opt-in x-hoist markers.
  */
+// Keys that describe a schema without constraining what it accepts.
+// `resolveRefs` merges keys written beside a `$ref` into the inlined body, so
+// `{ "$ref": "enums/x.json", "deprecated": true, "description": "..." }`
+// reaches the hoist as an inline enum carrying the call-site's own
+// annotations. Such a key is part of the enum's own definition only when
+// every occurrence carries it with the same value.
+const ANNOTATION_KEYS = new Set([
+  'title', 'description', 'default', 'examples', 'deprecated', 'readOnly', 'writeOnly',
+  'enumDescriptions', '$comment',
+]);
+function isAnnotationKey(key) {
+  return ANNOTATION_KEYS.has(key) || key.startsWith('x-');
+}
+
+/**
+ * Pick the `$defs` body for a duplicated enum from its inline occurrences.
+ * Returns the body and the annotation keys that belong to call-sites, not to
+ * the enum: those some occurrences carry and others lack or carry with
+ * another value. The body keeps every other key, which all occurrences
+ * share. It is the first occurrence that carries none of the call-site keys,
+ * or the first occurrence with them removed. A `description` stays in the
+ * body only if every occurrence has one and, when no occurrence is free of
+ * call-site keys, all agree; `pointerFor` gives each occurrence whose
+ * description differs from the body's its own.
+ */
+function canonicalEnumBody(occurrences) {
+  const has = (o, key) => Object.prototype.hasOwnProperty.call(o, key);
+  const annotationKeys = new Set(occurrences.flatMap(o => Object.keys(o))
+    .filter(key => key !== 'description' && isAnnotationKey(key)));
+  const callSiteKeys = new Set([...annotationKeys].filter(key => {
+    const first = JSON.stringify(occurrences[0][key]);
+    return occurrences.some(o => !has(o, key) || JSON.stringify(o[key]) !== first);
+  }));
+  const annotated = o => Object.keys(o).some(key => callSiteKeys.has(key));
+  const unannotated = occurrences.find(o => !annotated(o));
+  const body = { ...(unannotated || occurrences[0]) };
+  for (const key of callSiteKeys) delete body[key];
+  if (!unannotated && occurrences.some(o => o.description !== body.description)) delete body.description;
+  if (occurrences.some(o => o.description === undefined)) delete body.description;
+  return { body, callSiteKeys };
+}
+
 function hoistDuplicateInlineEnums(schema) {
   if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
     return schema;
@@ -1924,18 +2026,26 @@ function hoistDuplicateInlineEnums(schema) {
   function fingerprint(s) {
     // Preserve enum value order — order-different arrays are distinct schemas.
     // Include title so two enums with same values but different titles are NOT
-    // collapsed into one $ref (would silently rename one of them).
-    return JSON.stringify({ type: s.type, enum: s.enum, title: s.title || null });
+    // collapsed into one $ref (would silently rename one of them). Include
+    // every other key that is not an annotation, so only occurrences that
+    // validate alike share an entry.
+    const validation = Object.keys(s)
+      .filter(key => !isAnnotationKey(key) && key !== '$id' && key !== '$schema')
+      .sort()
+      .map(key => [key, s[key]]);
+    return JSON.stringify({ title: s.title || null, validation });
   }
 
-  // Pass 1: count occurrences of each pure-enum shape, excluding $defs blocks.
-  // Check array elements directly (symmetry with Pass 2's array branch).
+  // Pass 1: count occurrences of each pure-enum shape. Inside a `$defs` or
+  // `definitions` block, only what the entries contain counts; an entry is
+  // already a definition. Check array elements directly (symmetry with
+  // Pass 2's array branch).
   const seen = new Map(); // fingerprint -> { schema, count }
 
   function track(s) {
     const fp = fingerprint(s);
     const entry = seen.get(fp);
-    if (entry) { entry.count++; } else { seen.set(fp, { schema: s, count: 1 }); }
+    if (entry) { entry.count++; entry.occurrences.push(s); } else { seen.set(fp, { schema: s, count: 1, occurrences: [s] }); }
   }
 
   function collect(node) {
@@ -1948,7 +2058,7 @@ function hoistDuplicateInlineEnums(schema) {
       return;
     }
     for (const [key, val] of Object.entries(node)) {
-      if (key === '$defs' || key === 'definitions') continue;
+      if (isDefinitionsKey(key)) { forEachDefinition(val, collect); continue; }
       if (isPureEnum(val)) track(val);
       collect(val);
     }
@@ -1978,29 +2088,53 @@ function hoistDuplicateInlineEnums(schema) {
 
   const rootDefs = { ...(schema.$defs || {}) };
   // Pre-populate $defs with all hoisted definitions before the replace pass.
+  // The body holds only what every occurrence shares, so a `$ref` that marks
+  // one use of the enum (the deprecated single-value branch of a
+  // scalar-or-list union, a field's own `default`) does not mark the named
+  // type.
+  const hoisted = new Map(); // fingerprint -> { ref, body, callSiteKeys }
   for (const [fp, defName] of hoistMap) {
-    rootDefs[defName] = seen.get(fp).schema;
+    const { body, callSiteKeys } = canonicalEnumBody(seen.get(fp).occurrences);
+    rootDefs[defName] = body;
+    hoisted.set(fp, { ref: `#/$defs/${defName}`, body, callSiteKeys });
   }
 
-  // Pass 2: replace duplicate inline occurrences with $ref pointers.
+  // An occurrence becomes a `$ref` that keeps its call-site annotations
+  // beside it, with its description when that differs from the hoisted one
+  // (a field's own description, or the deprecation note): the same form
+  // `hoistMarkedSchemas` writes. An occurrence that adds nothing to the
+  // hoisted body becomes a bare `$ref`.
+  function pointerFor(occurrence, { ref, body, callSiteKeys }) {
+    const pointer = { $ref: ref };
+    for (const key of Object.keys(occurrence)) {
+      if (callSiteKeys.has(key)) pointer[key] = occurrence[key];
+    }
+    if (occurrence.description !== undefined && occurrence.description !== body.description) {
+      pointer.description = occurrence.description;
+    }
+    return pointer;
+  }
+
+  // Pass 2: replace duplicate inline occurrences with $ref pointers, inside
+  // definitions entries too, leaving the entries themselves in place.
   function replace(node) {
     if (!node || typeof node !== 'object') return;
     if (Array.isArray(node)) {
       for (let i = 0; i < node.length; i++) {
         if (isPureEnum(node[i])) {
           const fp = fingerprint(node[i]);
-          if (hoistMap.has(fp)) { node[i] = { $ref: `#/$defs/${hoistMap.get(fp)}` }; continue; }
+          if (hoisted.has(fp)) { node[i] = pointerFor(node[i], hoisted.get(fp)); continue; }
         }
         replace(node[i]);
       }
       return;
     }
     for (const key of Object.keys(node)) {
-      if (key === '$defs' || key === 'definitions') continue;
       const val = node[key];
+      if (isDefinitionsKey(key)) { forEachDefinition(val, replace); continue; }
       if (isPureEnum(val)) {
         const fp = fingerprint(val);
-        if (hoistMap.has(fp)) { node[key] = { $ref: `#/$defs/${hoistMap.get(fp)}` }; continue; }
+        if (hoisted.has(fp)) { node[key] = pointerFor(val, hoisted.get(fp)); continue; }
       }
       replace(val);
     }
@@ -2022,8 +2156,8 @@ function hoistDuplicateInlineEnums(schema) {
  * Spec authors opt in per-schema by setting `x-adcp-hoist: true` on the
  * source schema's root. The marker is a build-time directive, not a wire
  * contract — it is stripped from the bundled output (both at canonical
- * `$defs` entries and anywhere a stray marker survived a pre-existing
- * `$defs` block).
+ * `$defs` entries and on a pre-existing `$defs` or `definitions` entry
+ * that is not itself hoisted).
  *
  * Name derivation: uses `title`, sanitized to PascalCase, suffixed with an
  * integer ONLY when colliding with a pre-existing `$defs` key. Two marked
@@ -2040,6 +2174,10 @@ function hoistDuplicateInlineEnums(schema) {
  * See issue #4557.
  */
 const HOIST_MARKER = 'x-adcp-hoist';
+// Build-time key set by `resolveRefs` on a `$ref` call-site whose target is
+// marked and which carries sibling keys. Holds the unmerged target body;
+// `hoistMarkedSchemas` replaces it with the `$ref` to the hoisted entry.
+const HOIST_TARGET_KEY = 'x-adcp-hoist-target';
 
 function hoistMarkedSchemas(schema) {
   if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
@@ -2068,8 +2206,9 @@ function hoistMarkedSchemas(schema) {
     return name.charAt(0).toUpperCase() + name.slice(1);
   }
 
-  // Pass 1: collect every marked schema, excluding existing $defs blocks
-  // (those are already canonical). Recurse into marked nodes too so nested
+  // Pass 1: collect every marked schema. An entry of a `$defs` or
+  // `definitions` block is already canonical and is not collected, but the
+  // marked schemas it contains are. Recurse into marked nodes too so nested
   // markers (a marked schema referenced inside another marked schema) are
   // also tracked.
   const seen = new Map(); // fingerprint -> { schema, title }
@@ -2089,7 +2228,7 @@ function hoistMarkedSchemas(schema) {
       return;
     }
     for (const [key, val] of Object.entries(node)) {
-      if (key === '$defs' || key === 'definitions') continue;
+      if (isDefinitionsKey(key)) { forEachDefinition(val, collect); continue; }
       if (isMarked(val)) track(val);
       collect(val);
     }
@@ -2099,9 +2238,10 @@ function hoistMarkedSchemas(schema) {
 
   if (seen.size === 0) {
     // No markers found at hoist-eligible sites. Still strip any stray
-    // markers that may live inside pre-existing $defs entries — the
-    // directive must not leak into the bundled output regardless of
-    // where it was authored.
+    // marker on a `$defs` or `definitions` entry itself — the directive
+    // must not leak into the bundled output regardless of where it was
+    // authored.
+    collapseHoistTargets(schema);
     stripStrayMarkers(schema);
     return schema;
   }
@@ -2184,12 +2324,42 @@ function hoistMarkedSchemas(schema) {
 
   replace(schema);
 
+  // Call-sites that carried keys beside a `$ref` to a marked schema now hold
+  // `{ [HOIST_TARGET_KEY]: { $ref }, ...siblings }`; fold them into
+  // `{ $ref, ...siblings }`.
+  collapseHoistTargets(schema);
+
   // Final sweep: delete any stray `x-adcp-hoist` keys that survived (e.g.
-  // markers authored inside a pre-existing $defs entry that Pass 1
-  // skipped). The directive must never appear in bundled output.
+  // the marker on a `$defs` or `definitions` entry that Pass 1 does not
+  // collect). The directive must never appear in bundled output.
   stripStrayMarkers(schema);
 
   return schema;
+}
+
+/**
+ * Fold every `HOIST_TARGET_KEY` left by `resolveRefs` back into its node.
+ * A hoisted target (now `{ $ref }`) becomes the node's `$ref`, so the
+ * call-site keeps its sibling keys next to the pointer, the same form
+ * `hoistBySourceIdentity` writes. A target that was not hoisted is merged
+ * as `resolveRefs` would have merged it, with the call-site keys winning.
+ */
+function collapseHoistTargets(node) {
+  if (!node || typeof node !== 'object') return;
+  if (Array.isArray(node)) {
+    for (const item of node) collapseHoistTargets(item);
+    return;
+  }
+  if (Object.prototype.hasOwnProperty.call(node, HOIST_TARGET_KEY)) {
+    const target = node[HOIST_TARGET_KEY];
+    delete node[HOIST_TARGET_KEY];
+    const siblings = { ...node };
+    for (const key of Object.keys(node)) delete node[key];
+    const hoisted = target && typeof target === 'object' && !Array.isArray(target)
+      && Object.keys(target).length === 1 && typeof target.$ref === 'string';
+    Object.assign(node, hoisted ? { $ref: target.$ref } : target, siblings);
+  }
+  for (const val of Object.values(node)) collapseHoistTargets(val);
 }
 
 function stripStrayMarkers(node) {
@@ -2329,13 +2499,16 @@ const IDENTITY_HOISTED_REFS = ['/schemas/core/provenance.json'];
 /**
  * Generate bundled (dereferenced) schemas
  * These have all $ref resolved inline for tools that can't handle references
+ * @returns {{ successCount: number, failures: Array<{ schema: string, message: string }> }}
  */
 async function generateBundledSchemas(sourceDir, bundledDir, version) {
   ensureDir(bundledDir);
 
   const schemaFiles = findSchemaFiles(sourceDir);
   let successCount = 0;
-  let errorCount = 0;
+  // Every root that fails to bundle, as { schema, message }. The loop keeps
+  // going so one build lists every failure; main() fails the build on any.
+  const failures = [];
 
   // Only bundle request/response schemas - these are the "root" schemas
   // that tools actually validate against. Core objects like product.json
@@ -2432,17 +2605,36 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
       fs.writeFileSync(outputPath, JSON.stringify(dereferenced, null, 2));
       successCount++;
     } catch (error) {
-      console.warn(`   ⚠️  Failed to bundle ${relativePath}: ${error.message}`);
-      errorCount++;
+      console.error(`   ❌ Failed to bundle ${relativePath}: ${error.message}`);
+      failures.push({ schema: relativePath, message: error.message });
     }
   }
 
-  return { successCount, errorCount };
+  return { successCount, failures };
+}
+
+/**
+ * Fails the build when any root failed to bundle. main() calls it after it
+ * writes every other output, so one run lists every failure.
+ * @param {Array<{ bundledDir: string, schema: string, message: string }>} failures
+ */
+function assertNoBundleFailures(failures) {
+  if (failures.length === 0) return;
+  const lines = failures.map(({ bundledDir, schema, message }) =>
+    `   ${path.relative(REPO_ROOT, path.join(bundledDir, schema))}: ${message}`);
+  throw new Error(`${failures.length} bundled schema(s) failed to build:\n${lines.join('\n')}`);
 }
 
 function generateMcpProjectionForVersion(versionDir, urlVersion) {
   const targetDir = path.join(versionDir, 'mcp', MCP_PROTOCOL_VERSION);
   const manifestPath = path.join(versionDir, 'manifest.json');
+  // The projection and its role profiles project the manifest's tools. A
+  // tree with none (a `--root` fixture; this repository's manifest schema
+  // requires at least one) has nothing to project.
+  if (Object.keys(JSON.parse(fs.readFileSync(manifestPath, 'utf8')).tools || {}).length === 0) {
+    console.log(`   ✓ No tools in manifest.json; MCP ${MCP_PROTOCOL_VERSION} projection skipped`);
+    return;
+  }
   const stats = generateMcpSchemaProjection({
     sourceDir: SOURCE_DIR,
     targetDir,
@@ -2707,6 +2899,9 @@ async function main() {
   // Ensure dist directory exists
   ensureDir(DIST_DIR);
 
+  // Roots that failed to bundle, across every tree this run builds.
+  const bundleFailures = [];
+
   if (isRelease) {
     // RELEASE MODE: Create a new versioned directory
     const versionDir = path.join(DIST_DIR, version);
@@ -2732,14 +2927,15 @@ async function main() {
     }
 
     // Generate the canonical tool/error/specialism manifest (adcp#3725).
-    const manifestStats = writeManifest(SOURCE_DIR, versionDir, version, version, path.join(__dirname, '..'));
+    const manifestStats = writeManifest(SOURCE_DIR, versionDir, version, version, REPO_ROOT);
     console.log(`📑 Generated manifest.json (${manifestStats.tools} tools, ${manifestStats.mutating} mutating, ${manifestStats.error_codes} error codes, ${manifestStats.specialisms} specialisms)`);
 
     // Generate bundled schemas for release
     const bundledDir = path.join(versionDir, 'bundled');
     console.log(`📦 Generating bundled schemas to dist/schemas/${version}/bundled/`);
-    const { successCount, errorCount } = await generateBundledSchemas(SOURCE_DIR, bundledDir, version);
-    console.log(`   ✓ Bundled ${successCount} schemas${errorCount > 0 ? ` (${errorCount} failed)` : ''}`);
+    const { successCount, failures } = await generateBundledSchemas(SOURCE_DIR, bundledDir, version);
+    bundleFailures.push(...failures.map(failure => ({ bundledDir, ...failure })));
+    console.log(`   ✓ Bundled ${successCount} schemas${failures.length > 0 ? ` (${failures.length} failed)` : ''}`);
     console.log(`🔀 Generating MCP ${MCP_PROTOCOL_VERSION} JSON Schema projection`);
     generateMcpProjectionForVersion(versionDir, version);
 
@@ -2761,11 +2957,12 @@ async function main() {
     buildExtensions(SOURCE_DIR, latestDir, version);
 
     // Manifest for latest/.
-    writeManifest(SOURCE_DIR, latestDir, 'latest', version, path.join(__dirname, '..'));
+    writeManifest(SOURCE_DIR, latestDir, 'latest', version, REPO_ROOT);
 
     // Generate bundled schemas for latest
     const latestBundledDir = path.join(latestDir, 'bundled');
-    await generateBundledSchemas(SOURCE_DIR, latestBundledDir, 'latest');
+    const latestBundled = await generateBundledSchemas(SOURCE_DIR, latestBundledDir, 'latest');
+    bundleFailures.push(...latestBundled.failures.map(failure => ({ bundledDir: latestBundledDir, ...failure })));
     generateMcpProjectionForVersion(latestDir, 'latest');
 
     // Generate skill schemas from the release version
@@ -2774,9 +2971,10 @@ async function main() {
     // Stage the new versioned directory for git commit
     // This is needed for the changesets workflow to include it in the version commit
     writeRootSchemaDiscovery();
+    assertNoBundleFailures(bundleFailures);
     console.log(`📝 Staging dist/schemas/${version}/ for git commit`);
     try {
-      execSync(`git add dist/schemas/${version}/ dist/schemas/index.json dist/schemas/latest.json`, { cwd: path.join(__dirname, '..'), stdio: 'inherit' });
+      execSync(`git add dist/schemas/${version}/ dist/schemas/index.json dist/schemas/latest.json`, { cwd: REPO_ROOT, stdio: 'inherit' });
     } catch (error) {
       // Not in a git repo or git add failed - that's okay for non-CI builds
       console.log(`   (git add skipped - not in git context or git not available)`);
@@ -2829,14 +3027,15 @@ async function main() {
     }
 
     // Generate the canonical tool/error/specialism manifest (adcp#3725).
-    const manifestStats = writeManifest(SOURCE_DIR, latestDir, 'latest', version, path.join(__dirname, '..'));
+    const manifestStats = writeManifest(SOURCE_DIR, latestDir, 'latest', version, REPO_ROOT);
     console.log(`📑 Generated manifest.json (${manifestStats.tools} tools, ${manifestStats.mutating} mutating, ${manifestStats.error_codes} error codes, ${manifestStats.specialisms} specialisms)`);
 
     // Generate bundled schemas for latest
     const bundledDir = path.join(latestDir, 'bundled');
     console.log(`📦 Generating bundled schemas to dist/schemas/latest/bundled/`);
-    const { successCount, errorCount } = await generateBundledSchemas(SOURCE_DIR, bundledDir, 'latest');
-    console.log(`   ✓ Bundled ${successCount} schemas${errorCount > 0 ? ` (${errorCount} failed)` : ''}`);
+    const { successCount, failures } = await generateBundledSchemas(SOURCE_DIR, bundledDir, 'latest');
+    bundleFailures.push(...failures.map(failure => ({ bundledDir, ...failure })));
+    console.log(`   ✓ Bundled ${successCount} schemas${failures.length > 0 ? ` (${failures.length} failed)` : ''}`);
     console.log(`🔀 Generating MCP ${MCP_PROTOCOL_VERSION} JSON Schema projection`);
     generateMcpProjectionForVersion(latestDir, 'latest');
 
@@ -2846,6 +3045,7 @@ async function main() {
     // Note: Version aliases (v2, v2.5, v1) are handled by HTTP middleware
     // No symlinks needed - the server rewrites URLs dynamically
     writeRootSchemaDiscovery();
+    assertNoBundleFailures(bundleFailures);
 
     // Show available paths
     const latestPerMinor = getLatestPatchPerMinor();
@@ -2873,7 +3073,7 @@ async function main() {
 
   // Record the inputs latest/ was built from, so tests and tooling that read
   // the built tree (scripts/built-schemas.cjs) rebuild only when they change.
-  require('./built-schemas.cjs').writeBuildStamp();
+  if (BUILDS_THIS_REPOSITORY) require('./built-schemas.cjs').writeBuildStamp();
 
   console.log('');
   console.log('📖 See docs/reference/versioning.mdx for guidance on which to use.');
@@ -2916,7 +3116,8 @@ module.exports = {
 
 if (require.main === module) {
   // One build of dist/schemas/latest at a time (scripts/built-schemas.cjs).
-  require('./built-schemas.cjs').withBuildLock(main).catch(err => {
+  const build = BUILDS_THIS_REPOSITORY ? require('./built-schemas.cjs').withBuildLock(main) : main();
+  build.catch(err => {
     console.error('❌ Build failed:', err.message);
     process.exit(1);
   });

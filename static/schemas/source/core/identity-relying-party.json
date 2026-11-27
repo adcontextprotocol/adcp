@@ -31,6 +31,6 @@
     "issuer",
     "relying_party_id"
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "x-added-in": "3.3.0"
 }

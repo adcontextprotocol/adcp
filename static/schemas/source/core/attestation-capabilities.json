@@ -105,7 +105,7 @@
                 }
               },
               "required": ["resolver_id", "url", "authentication"],
-              "additionalProperties": false
+              "additionalProperties": true
             },
             "minItems": 1,
             "x-max-items-4.0": 8
@@ -115,7 +115,7 @@
           }
         },
         "required": ["issuer"],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minItems": 1,
       "x-max-items-4.0": 32
@@ -156,7 +156,7 @@
           }
         },
         "required": ["agent_url"],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "minItems": 1,
       "x-max-items-4.0": 16
@@ -194,7 +194,7 @@
       }
     }
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "accepted_claim_types": [

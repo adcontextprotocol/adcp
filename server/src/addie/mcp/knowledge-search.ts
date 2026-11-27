@@ -101,6 +101,41 @@ let initialized = false;
 let initializationPromise: Promise<void> | null = null;
 
 /**
+ * Backoff between automatic retries of an incomplete initialization. Web chat
+ * readiness (/ready) waits on this index, and nothing else calls initialize
+ * again after boot, so without a retry one failed attempt would leave the
+ * machine unready for good. The last delay repeats until it succeeds.
+ */
+const RETRY_DELAYS_MS = [5_000, 15_000, 30_000, 60_000];
+let retryAttempt = 0;
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleRetry(): number {
+  const delay = RETRY_DELAYS_MS[Math.min(retryAttempt, RETRY_DELAYS_MS.length - 1)];
+  retryAttempt += 1;
+  if (!retryTimer) {
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      void initializeKnowledgeSearch();
+    }, delay);
+    retryTimer.unref?.();
+  }
+  return delay;
+}
+
+/** Cancel a pending automatic retry. For tests and shutdown. */
+export function stopKnowledgeSearchRetry(): void {
+  if (retryTimer) clearTimeout(retryTimer);
+  retryTimer = null;
+  retryAttempt = 0;
+}
+
+/** Which parts of knowledge search are ready, for readiness diagnostics. */
+export function getKnowledgeReadiness(): { ready: boolean; docs: boolean; externalRepos: boolean; retryAttempts: number } {
+  return { ready: initialized, docs: isDocsIndexReady(), externalRepos: isExternalReposReady(), retryAttempts: retryAttempt };
+}
+
+/**
  * Initialize knowledge search
  * - Indexes docs from filesystem
  * - Clones/updates and indexes external repos
@@ -129,7 +164,7 @@ export function initializeKnowledgeSearch(): Promise<void> {
           'Addie: Docs index ready'
         );
       } catch (error) {
-        logger.warn({ error }, 'Addie: Failed to index docs');
+        logger.warn({ err: error, memory: process.memoryUsage() }, 'Addie: Failed to index docs');
       }
     }
 
@@ -149,14 +184,17 @@ export function initializeKnowledgeSearch(): Promise<void> {
         );
       }
     } catch (error) {
-      logger.warn({ error }, 'Addie: Failed to index external repos');
+      logger.warn({ err: error }, 'Addie: Failed to index external repos');
     }
 
     initialized = isDocsIndexReady() && isExternalReposReady();
-    if (!initialized) {
+    if (initialized) {
+      stopKnowledgeSearchRetry();
+    } else {
+      const retryInMs = scheduleRetry();
       logger.warn(
-        { docsReady: isDocsIndexReady(), externalReposReady: isExternalReposReady() },
-        'Addie: Knowledge search initialization incomplete; a later caller will retry',
+        { docsReady: isDocsIndexReady(), externalReposReady: isExternalReposReady(), attempt: retryAttempt, retryInMs },
+        'Addie: Knowledge search initialization incomplete; retrying',
       );
     }
   })().finally(() => {

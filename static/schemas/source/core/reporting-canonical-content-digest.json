@@ -13,5 +13,5 @@
     "canonicalization_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" }
   },
   "required": ["algorithm", "value", "canonicalization_id", "canonicalization_uri", "canonicalization_sha256"],
-  "additionalProperties": false
+  "additionalProperties": true
 }

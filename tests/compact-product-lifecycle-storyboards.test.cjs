@@ -150,11 +150,51 @@ test("all compact lifecycle storyboards are deterministic and capability-gated",
   }
 });
 
+test("a mismatched terms digest is refused before the real acceptance", () => {
+  const storyboard = readStoryboard("compact_product_lifecycle");
+  const phaseIds = storyboard.phases.map((phase) => phase.id);
+  const phasesById = new Map(storyboard.phases.map((phase) => [phase.id, phase]));
+  const phase = phasesById.get("terms_digest_mismatch");
+
+  // The refusal runs after finalize and before the real acceptance, so the
+  // acceptance succeeding proves the refusal left the proposal unaccepted.
+  assert.ok(phaseIds.indexOf("terms_digest_mismatch") > phaseIds.indexOf("finalize_draft"));
+  assert.ok(phaseIds.indexOf("terms_digest_mismatch") < phaseIds.indexOf("accept_commitment"));
+  assert.deepEqual(phase.depends_on, ["finalize_draft"]);
+  assert.notEqual(phase.optional, true);
+  assert.equal(phase.branch_set, undefined);
+
+  const [step] = phase.steps;
+  assert.equal(phase.steps.length, 1);
+  assert.equal(step.task, "accept_proposal");
+  assert.equal(step.expect_error, true);
+  assert.equal(step.negative_path, "payload_well_formed");
+  assert.equal(step.sample_request.proposal_id, "$context.committed_proposal_id");
+  assert.match(step.sample_request.proposal_terms_digest, /^sha256:[A-Za-z0-9_-]{43}$/);
+
+  // No new MUST during the RC: refusal is required (expect_error), and the
+  // code, recovery and field are advisory SHOULDs on either error shape.
+  for (const validation of step.validations) {
+    assert.equal(validation.severity, "advisory", JSON.stringify(validation));
+    assert.ok(validation.permanent_advisory?.reason);
+  }
+  assert.deepEqual(
+    step.validations.map(({ check, path: p, value, allowed_values: allowed }) => [check, p, value ?? allowed]),
+    [
+      ["error_code", undefined, "PROPOSAL_TERMS_CHANGED"],
+      ["field_value_or_absent", "adcp_error.recovery", ["correctable"]],
+      ["field_value_or_absent", "errors[0].recovery", ["correctable"]],
+      ["field_value_or_absent", "adcp_error.field", "proposal_terms_digest"],
+      ["field_value_or_absent", "errors[0].field", "proposal_terms_digest"],
+    ]
+  );
+});
+
 test("accepted compact proposal is controlled and read back without legacy mutation tools", () => {
   const storyboard = readStoryboard("compact_product_lifecycle");
   const allSteps = steps(storyboard);
   const byTask = (task) => allSteps.find((step) => step.task === task);
-  const accept = byTask("accept_proposal");
+  const accept = allSteps.find((step) => step.id === "accept_product_proposal");
   const control = byTask("control_media_buy");
   const readback = byTask("get_media_buys");
   const phasesById = new Map(storyboard.phases.map((phase) => [phase.id, phase]));
@@ -332,7 +372,15 @@ test("compact direct-buy lifecycle threads versioned offers through control read
   const readback = byTask("get_media_buys");
   const phasesById = new Map(storyboard.phases.map((phase) => [phase.id, phase]));
 
-  assert.equal(storyboard.version, "1.0.1");
+  assert.equal(storyboard.version, "1.1.0");
+  // 3.3 (adcp#8933): a compact seller with a creative library lists assign.
+  const declared = phasesById.get("assignment_operations_declared");
+  assert.deepEqual(declared.depends_on, []);
+  assert.deepEqual(declared.requires_capability, { path: "creative.has_creative_library", equals: true });
+  assert.equal(
+    validation(declared.steps[0], "field_contains", "creative.assignment_operations[*]")?.value,
+    "assign"
+  );
   assert.deepEqual(storyboard.requires_capability, {
     path: "compliance_testing.scenarios",
     contains: "compact_direct_buy_lifecycle_probe",

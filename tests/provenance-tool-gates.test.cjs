@@ -10,7 +10,7 @@ const SCENARIOS = [
   'provenance_audit_observation',
 ];
 
-test('provenance scenarios gate every optional-tool step by that tool', () => {
+test('provenance scenarios gate every optional-tool step by the tool it depends on', () => {
   let creativeSteps = 0;
   let controllerSteps = 0;
 
@@ -21,14 +21,25 @@ test('provenance scenarios gate every optional-tool step by that tool', () => {
       `${scenarioName}.yaml`,
     );
     const scenario = YAML.parse(fs.readFileSync(scenarioPath, 'utf8'));
-    for (const step of scenario.phases.flatMap((phase) => phase.steps)) {
-      if (step.task === 'sync_creatives') {
-        creativeSteps++;
-        assert.equal(step.requires_tool, 'sync_creatives', `${scenario.id}/${step.id}`);
-      }
-      if (step.task === 'comply_test_controller') {
-        controllerSteps++;
-        assert.equal(step.requires_tool, 'comply_test_controller', `${scenario.id}/${step.id}`);
+    for (const phase of scenario.phases) {
+      for (const step of phase.steps) {
+        if (step.task === 'sync_creatives') {
+          creativeSteps++;
+          assert.equal(step.requires_tool, 'sync_creatives', `${scenario.id}/${step.id}`);
+        }
+        if (step.task === 'comply_test_controller') {
+          controllerSteps++;
+          // Audit reads consume the state sync_creatives creates, so they name
+          // that tool; the storyboard-level controller requirement covers the
+          // controller itself. A separate phase keeps a skipped sync from
+          // cascading onto them on runners that grade the cascade first.
+          assert.equal(step.requires_tool, 'sync_creatives', `${scenario.id}/${step.id}`);
+          assert.ok(scenario.requires.includes('controller'), scenario.id);
+          assert.ok(
+            !phase.steps.some(peer => peer.task === 'sync_creatives'),
+            `${scenario.id}/${step.id} shares a phase with the sync it depends on`
+          );
+        }
       }
     }
   }

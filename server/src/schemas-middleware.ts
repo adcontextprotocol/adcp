@@ -16,6 +16,7 @@ export const RELEASE_STATUS_OVERRIDES: ReadonlyMap<string, "withdrawn" | "unpubl
   ["3.1.3", "withdrawn"],
   ["3.2.0-rc.5", "unpublished"],
   ["3.2.0", "unpublished"],
+  ["3.3.0-rc.1", "unpublished"],
 ]);
 
 export function isSelectableRelease(version: string): boolean {

@@ -192,7 +192,7 @@ test('parent flow carries the correct complete natural AccountRef through each t
   const buyerLifecycle = doc.phases.filter(phase => phase.id.startsWith('buyer_selected_') && phase.id !== 'buyer_selected_account_setup');
   const defaultAccount = {
     brand: { domain: 'acmeoutdoor.example' },
-    operator: 'media-buy-lifecycle.pinnacle-agency.example',
+    operator: 'pinnacle-media-buy-lifecycle.example',
     sandbox: true,
   };
   const buyerAccount = { ...defaultAccount, timezone: '$context.account_timezone' };

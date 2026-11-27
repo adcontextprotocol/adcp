@@ -106,7 +106,7 @@ The exception is a signed insertion order: `io_acceptance.signatory` records the
 <Accordion title="How mature is the protocol?">
 AdCP **3.2** is the current stable release line (release `3.2.1`, wire pin `"3.2"`), and 3.1 remains supported. The protocol is stable and production-ready. See [What's new in AdCP 3.2](/docs/reference/whats-new-in-3-2), the [schema registry](https://adcontextprotocol.org/schemas/) for the latest patches, [Release notes](/docs/reference/release-notes) for the full change log, and [What's new in v3](/docs/reference/whats-new-in-v3) for the 2.5 → 3.0 migration summary.
 
-The next major version (4.0) is targeted for early 2027. Under the [release cadence policy](/docs/reference/versioning#release-cadence), majors are at least 18 months apart, the previous major receives security patches for at least 12 months after successor GA, and deprecation notices are published at least 6 months before removal. See [Versioning & Governance](/docs/reference/versioning) for the full policy and 3.x stability guarantees. AdCP 2.5 reached end of life on 2026-08-01 and no longer receives security patches — see the [v2 sunset page](/docs/reference/v2-sunset).
+The next major version (4.0) is targeted for early 2027. Under the [release cadence policy](/docs/reference/versioning#release-cadence), majors are at least 18 months apart, and the previous major receives security patches for at least 12 months after successor GA. A deprecated feature is never removed within its major, and the next major may remove it with no minimum notice period. See [Versioning & Governance](/docs/reference/versioning) for the full policy and 3.x stability guarantees. AdCP 2.5 reached end of life on 2026-08-01 and no longer receives security patches — see the [v2 sunset page](/docs/reference/v2-sunset).
 </Accordion>
 
 <Accordion title="I built against AdCP 2.5 — what changed?">
@@ -194,7 +194,7 @@ The full crosswalk is in [Why adagents.json instead of ads.txt](/docs/governance
 <Accordion title="Can an AI agent autonomously buy credit, insurance, housing, or employment ads?">
 These verticals fall under GDPR Art 22, EU AI Act Annex III, and US FHA / ECOA / EEOC. The policy-category mechanism already ships with `fair_housing`, `fair_lending`, and `fair_employment` entries in the registry.
 
-AdCP 3.0 GA will require campaigns declaring a regulated policy category to run with human review — `authority_level: agent_full` will not be accepted — with an Annex III category taxonomy and a data-subject contestation path added at the same time. Tracked in [#2310](https://github.com/adcontextprotocol/adcp/issues/2310). Until that ships, enforcement depends on the governance agent implementation, not a schema invariant. See the [governance overview](/docs/governance/overview) for the full model.
+Since AdCP 3.0 the `sync_plans` schema rejects `human_review_required: false` on a plan that declares `fair_housing`, `fair_lending`, `fair_employment` or `pharmaceutical_advertising` in `policy_categories`, or `eu_ai_act_annex_iii` in `policy_ids` ([#2310](https://github.com/adcontextprotocol/adcp/issues/2310)). Through 3.2.x the schema also required the flag to be `true` on such a plan. From 3.3 the flag may be omitted, and the governance agent then sets it. Other regulated categories depend on the governance agent implementation, not a schema invariant. See the [governance overview](/docs/governance/overview) for the full model.
 </Accordion>
 
 <Accordion title="Who governs AdCP?">

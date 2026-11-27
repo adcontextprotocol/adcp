@@ -1,5 +1,5 @@
 ---
-"adcontextprotocol": patch
+"adcontextprotocol": minor
 ---
 
 Compliance (experimental, `media_buy.reporting_subscriptions`): two storyboards exercise principal-level reporting subscriptions over the `reporting_subscription_probe` sandbox clock, and the runner contract gains the `owed_periods_match` check.

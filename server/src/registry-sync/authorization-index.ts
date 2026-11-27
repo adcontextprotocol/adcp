@@ -1,8 +1,19 @@
 /**
  * In-memory authorization index for TMP router hot-path checks.
  *
- * Primary index: agent_url -> publisher_domain -> AuthorizationEntry[]
+ * Primary index: canonical agent_url -> publisher_domain -> AuthorizationEntry[]
  * Reverse index: publisher_domain -> Set<agent_url>
+ *
+ * Agent URL matching follows the one shared rule, `agentUrlAuthorizedBy`
+ * (#9014, #8943, DR-0023): both sides are canonicalized with AdCP URL
+ * canonicalization, an origin-only entry authorizes every agent URL with
+ * the same canonical origin, and an entry with a path authorizes only its
+ * canonical URL (a non-root trailing slash stays significant). The primary
+ * index is keyed by the spec-exact canonical form of the entry's URL, so a
+ * lookup only has to visit two buckets — the agent's canonical URL and its
+ * canonical origin — and every entry found there is still passed through
+ * `agentUrlAuthorizedBy`, so this replica cannot disagree with the server
+ * validator or the registry directory.
  *
  * Evaluates the full adagents.json authorization model locally:
  * - 4 authorization types (property_ids, property_tags, publisher_properties, inline_properties)
@@ -16,6 +27,12 @@
 
 import type { CatalogPropertyIndex } from './property-index.js';
 import { canonicalizePublisherDomain } from '../services/publisher-domain.js';
+import { combinedSigningKeys } from '../services/matched-signing-keys.js';
+import {
+  agentUrlAuthorizedBy,
+  canonicalAgentOrigin,
+  specExactAgentUrl,
+} from '../db/registry-agent-url-key.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -75,10 +92,15 @@ export interface AuthorizationResult {
 // ─── Index ───────────────────────────────────────────────────────────────────
 
 export class AuthorizationIndex {
-  // agent_url -> publisher_domain -> entries
+  // canonical agent_url -> publisher_domain -> entries
   private primary = new Map<string, Map<string, AuthorizationEntry[]>>();
   // publisher_domain -> Set<agent_url> (reverse index for TMP router lookups)
   private reverse = new Map<string, Set<string>>();
+  // Insertion order of each entry, so entries gathered from the exact and
+  // origin buckets can be evaluated in the order they were added (the
+  // #9016 signing-key union is defined over document order).
+  private entryOrder = new WeakMap<AuthorizationEntry, number>();
+  private nextOrder = 0;
 
   private propertyIndex?: CatalogPropertyIndex;
 
@@ -86,46 +108,102 @@ export class AuthorizationIndex {
     this.propertyIndex = propertyIndex;
   }
 
-  // ── Index mutations ─────────────────────────────────────────────
+  // ── Agent URL keys ──────────────────────────────────────────────
 
-  addEntry(entry: AuthorizationEntry): void {
-    // Skip signal types — not relevant to TMP routing
-    if (entry.authorization_type === 'signal_ids' || entry.authorization_type === 'signal_tags') {
-      return;
-    }
-
-    // Primary index
-    let byDomain = this.primary.get(entry.agent_url);
-    if (!byDomain) {
-      byDomain = new Map();
-      this.primary.set(entry.agent_url, byDomain);
-    }
-
-    let entries = byDomain.get(entry.publisher_domain);
-    if (!entries) {
-      entries = [];
-      byDomain.set(entry.publisher_domain, entries);
-    }
-    entries.push(entry);
-
-    // Reverse index
-    let agents = this.reverse.get(entry.publisher_domain);
-    if (!agents) {
-      agents = new Set();
-      this.reverse.set(entry.publisher_domain, agents);
-    }
-    agents.add(entry.agent_url);
+  /**
+   * The primary-index key for a URL: its spec-exact canonical form
+   * (`specExactAgentUrl`, which keeps a non-root trailing slash significant
+   * — never `registryAgentUrlKey`, which folds it for identity). A URL the
+   * canonicalizer rejects keys as its raw self; `agentUrlAuthorizedBy`
+   * then matches it against nothing but the `'*'` sentinel, exactly as the
+   * validator decides.
+   */
+  private indexKey(agentUrl: string): string {
+    return specExactAgentUrl(agentUrl.trim()) ?? agentUrl;
   }
 
-  removeEntry(agentUrl: string, publisherDomain: string): void {
-    const byDomain = this.primary.get(agentUrl);
-    if (byDomain) {
-      byDomain.delete(publisherDomain);
-      if (byDomain.size === 0) {
-        this.primary.delete(agentUrl);
+  /**
+   * The buckets an agent URL can be authorized from: its own canonical
+   * URL, plus the canonical origin (where an origin-only entry lives).
+   * Those are the only two keys `agentUrlAuthorizedBy` can accept — an
+   * entry either canonicalizes to the agent's URL or is origin-only for
+   * the agent's origin.
+   */
+  private candidateKeys(agentUrl: string): string[] {
+    const keys = [this.indexKey(agentUrl)];
+    const origin = canonicalAgentOrigin(agentUrl);
+    if (origin !== null) {
+      const originKey = `${origin}/`;
+      if (!keys.includes(originKey)) keys.push(originKey);
+    }
+    return keys;
+  }
+
+  /**
+   * Every entry that authorizes `agentUrl` under `agentUrlAuthorizedBy`,
+   * grouped by publisher domain, each group in insertion order.
+   */
+  private matchingByDomain(agentUrl: string): Map<string, AuthorizationEntry[]> {
+    const byDomain = new Map<string, AuthorizationEntry[]>();
+    for (const key of this.candidateKeys(agentUrl)) {
+      const bucket = this.primary.get(key);
+      if (!bucket) continue;
+      for (const [domain, entries] of bucket) {
+        for (const entry of entries) {
+          if (!agentUrlAuthorizedBy(entry.agent_url, agentUrl)) continue;
+          let matched = byDomain.get(domain);
+          if (!matched) {
+            matched = [];
+            byDomain.set(domain, matched);
+          }
+          matched.push(entry);
+        }
       }
     }
+    for (const entries of byDomain.values()) {
+      entries.sort((a, b) => (this.entryOrder.get(a) ?? 0) - (this.entryOrder.get(b) ?? 0));
+    }
+    return byDomain;
+  }
 
+  /**
+   * The entries authorizing `agentUrl` for one known publisher domain, in
+   * insertion order. Scoped gather for the hot path: unlike
+   * `matchingByDomain`, this never materializes or sorts the agent's
+   * entries for other publishers (Ladon review on #9070).
+   */
+  private matchingForDomain(agentUrl: string, publisherDomain: string): AuthorizationEntry[] {
+    const matched: AuthorizationEntry[] = [];
+    for (const key of this.candidateKeys(agentUrl)) {
+      const entries = this.primary.get(key)?.get(publisherDomain);
+      if (!entries) continue;
+      for (const entry of entries) {
+        if (agentUrlAuthorizedBy(entry.agent_url, agentUrl)) matched.push(entry);
+      }
+    }
+    matched.sort((a, b) => (this.entryOrder.get(a) ?? 0) - (this.entryOrder.get(b) ?? 0));
+    return matched;
+  }
+
+  /** Whether any entry in the candidate buckets authorizes `agentUrl`. */
+  private hasAnyMatch(agentUrl: string): boolean {
+    for (const key of this.candidateKeys(agentUrl)) {
+      const bucket = this.primary.get(key);
+      if (!bucket) continue;
+      for (const entries of bucket.values()) {
+        for (const entry of entries) {
+          if (agentUrlAuthorizedBy(entry.agent_url, agentUrl)) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  private matchingEntries(agentUrl: string, publisherDomain: string): AuthorizationEntry[] {
+    return this.matchingForDomain(agentUrl, publisherDomain);
+  }
+
+  private removeFromReverse(agentUrl: string, publisherDomain: string): void {
     const agents = this.reverse.get(publisherDomain);
     if (agents) {
       agents.delete(agentUrl);
@@ -135,17 +213,68 @@ export class AuthorizationIndex {
     }
   }
 
-  removeAgent(agentUrl: string): void {
-    const byDomain = this.primary.get(agentUrl);
+  // ── Index mutations ─────────────────────────────────────────────
+
+  addEntry(entry: AuthorizationEntry): void {
+    // Skip signal types — not relevant to TMP routing
+    if (entry.authorization_type === 'signal_ids' || entry.authorization_type === 'signal_tags') {
+      return;
+    }
+    if (!this.entryOrder.has(entry)) {
+      this.entryOrder.set(entry, this.nextOrder++);
+    }
+
+    // Primary index, keyed by the entry URL's canonical form so that any
+    // canonically equal spelling of the same entry lands in one bucket.
+    const key = this.indexKey(entry.agent_url);
+    let byDomain = this.primary.get(key);
+    if (!byDomain) {
+      byDomain = new Map();
+      this.primary.set(key, byDomain);
+    }
+
+    let entries = byDomain.get(entry.publisher_domain);
+    if (!entries) {
+      entries = [];
+      byDomain.set(entry.publisher_domain, entries);
+    }
+    entries.push(entry);
+
+    // Reverse index, keyed by the entry's URL as declared.
+    let agents = this.reverse.get(entry.publisher_domain);
+    if (!agents) {
+      agents = new Set();
+      this.reverse.set(entry.publisher_domain, agents);
+    }
+    agents.add(entry.agent_url);
+  }
+
+  removeEntry(agentUrl: string, publisherDomain: string): void {
+    const key = this.indexKey(agentUrl);
+    const byDomain = this.primary.get(key);
     if (byDomain) {
-      for (const domain of byDomain.keys()) {
-        const agents = this.reverse.get(domain);
-        if (agents) {
-          agents.delete(agentUrl);
-          if (agents.size === 0) this.reverse.delete(domain);
+      // Clean the reverse index with the spellings actually stored, so a
+      // removal spelled differently from the grant still revokes it.
+      for (const entry of byDomain.get(publisherDomain) ?? []) {
+        this.removeFromReverse(entry.agent_url, publisherDomain);
+      }
+      byDomain.delete(publisherDomain);
+      if (byDomain.size === 0) {
+        this.primary.delete(key);
+      }
+    }
+  }
+
+  removeAgent(agentUrl: string): void {
+    const key = this.indexKey(agentUrl);
+    const byDomain = this.primary.get(key);
+    if (byDomain) {
+      for (const [domain, entries] of byDomain) {
+        for (const entry of entries) {
+          this.removeFromReverse(entry.agent_url, domain);
         }
       }
-      this.primary.delete(agentUrl);
+      this.primary.delete(key);
     }
   }
 
@@ -169,6 +298,13 @@ export class AuthorizationIndex {
   /**
    * Hot-path authorization check for TMP routers.
    * Resolves property to publisher domain, then evaluates scoping.
+   *
+   * `signing_keys` on an authorized result is the #9016 pin across every
+   * entry that authorizes the query: absent when any of them is unpinned,
+   * else the union of their keys. Entries are matched with
+   * `agentUrlAuthorizedBy` (#9014): an origin-only entry authorizes the
+   * agent at any path on its origin, and a path entry only its canonical
+   * URL — so the pin spans both when both match, as #9016 requires.
    */
   check(query: AuthorizationQuery): AuthorizationResult {
     // Resolve publisher domain from property_rid if needed
@@ -178,9 +314,10 @@ export class AuthorizationIndex {
     }
 
     if (!publisherDomain) {
+      // No known domain: the gather across domains is unavoidable here.
+      const byDomain = this.matchingByDomain(query.agent_url);
       // Try to find the agent in any domain
-      const byDomain = this.primary.get(query.agent_url);
-      if (!byDomain || byDomain.size === 0) {
+      if (byDomain.size === 0) {
         return { authorized: false, reason: 'agent not found in authorization index' };
       }
       // If no property specified, check if agent has any authorizations
@@ -192,13 +329,13 @@ export class AuthorizationIndex {
       return { authorized: false, reason: 'cannot resolve property to publisher domain' };
     }
 
-    const byDomain = this.primary.get(query.agent_url);
-    if (!byDomain) {
-      return { authorized: false, reason: 'agent not found in authorization index' };
-    }
-
-    const entries = byDomain.get(publisherDomain);
-    if (!entries || entries.length === 0) {
+    // Known domain: scope the gather to it instead of materializing the
+    // agent's entries for every publisher on this hot path.
+    const entries = this.matchingForDomain(query.agent_url, publisherDomain);
+    if (entries.length === 0) {
+      if (!this.hasAnyMatch(query.agent_url)) {
+        return { authorized: false, reason: 'agent not found in authorization index' };
+      }
       return { authorized: false, reason: `agent not authorized for publisher ${publisherDomain}` };
     }
 
@@ -229,11 +366,7 @@ export class AuthorizationIndex {
     }
     if (!publisherDomain) return [];
 
-    const byDomain = this.primary.get(agentUrl);
-    if (!byDomain) return [];
-
-    const entries = byDomain.get(publisherDomain);
-    if (!entries) return [];
+    const entries = this.matchingEntries(agentUrl, publisherDomain);
 
     const placements = new Set<string>();
     for (const entry of entries) {
@@ -245,14 +378,20 @@ export class AuthorizationIndex {
   }
 
   /**
-   * Get publisher-attested signing keys for an agent.
+   * Get publisher-attested signing keys for an agent: every key any entry
+   * that matches this agent URL and publisher pins, with no scope applied.
+   * Unchanged by #9016, so callers of the scope-less form keep the
+   * pre-3.3 behaviour for scope.
+   *
+   * Matching is `agentUrlAuthorizedBy` (#9014), as everywhere in this
+   * index: an origin-only entry's keys are returned for an agent at a
+   * deeper path, and a path entry's keys only for its canonical URL. To
+   * check a signature about a specific message, use
+   * `getSigningKeysForScope`, which applies the #9016 rule across the
+   * entries that authorize that message.
    */
   getSigningKeys(agentUrl: string, publisherDomain: string): SigningKey[] {
-    const byDomain = this.primary.get(agentUrl);
-    if (!byDomain) return [];
-
-    const entries = byDomain.get(publisherDomain);
-    if (!entries) return [];
+    const entries = this.matchingEntries(agentUrl, publisherDomain);
 
     const keys: SigningKey[] = [];
     for (const entry of entries) {
@@ -263,18 +402,45 @@ export class AuthorizationIndex {
     return keys;
   }
 
+  /**
+   * The publisher's signing-key pin for the message `query` describes
+   * (#9016). Only entries that authorize the query count (property, placement,
+   * country, collection, time window): the publisher pins the agent only if
+   * every one of them pins, and the pin is the union of their keys.
+   *
+   * Returns `null` when no entry authorizes the query (reject: the agent is
+   * not authorized for it), `[]` when the publisher does not pin the agent
+   * for it (fall back to the agent's own JWKS), else the pinned keys. Always
+   * agrees with `check(query).signing_keys`. Matched with
+   * `agentUrlAuthorizedBy`, like the rest of this index (#9014).
+   */
+  getSigningKeysForScope(query: AuthorizationQuery): SigningKey[] | null {
+    const result = this.check(query);
+    if (!result.authorized) return null;
+    return result.signing_keys ?? [];
+  }
+
   // ── Evaluation ──────────────────────────────────────────────────
 
   private evaluateEntries(entries: AuthorizationEntry[], query: AuthorizationQuery): AuthorizationResult {
-    // Find the first matching entry (most permissive wins)
+    // Every entry that authorizes the query counts (the scope union). The
+    // descriptive fields come from the first; `signing_keys` is the union of
+    // their pins, or absent when any of them is unpinned (#9016).
     let lastReason = 'no matching authorization entry';
+    const authorizing: AuthorizationEntry[] = [];
+    let first: AuthorizationResult | undefined;
     for (const entry of entries) {
       const result = this.evaluateEntry(entry, query);
-      if (result.authorized) return result;
-      if (result.reason) lastReason = result.reason;
+      if (result.authorized) {
+        authorizing.push(entry);
+        first ??= result;
+      } else if (result.reason) {
+        lastReason = result.reason;
+      }
     }
 
-    return { authorized: false, reason: lastReason };
+    if (!first) return { authorized: false, reason: lastReason };
+    return { ...first, signing_keys: combinedSigningKeys(authorizing) };
   }
 
   private evaluateEntry(entry: AuthorizationEntry, query: AuthorizationQuery): AuthorizationResult {

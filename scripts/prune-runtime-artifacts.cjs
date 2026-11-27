@@ -13,6 +13,34 @@ const semver = require("semver");
 
 const PROTOCOL_OFFLOAD_INDEX = ".runtime-offloaded-tarballs.json";
 const PROTOCOL_VERIFY_CONCURRENCY = 6;
+// Waits before the second and third attempt at one CDN request. Each attempt
+// keeps its own 60 s timeout.
+const PROTOCOL_FETCH_RETRY_DELAYS_MS = [2_000, 10_000];
+
+// The CDN answered, and its answer rules the offload out. Retrying cannot help.
+class OffloadRejected extends Error {}
+
+// A stalled, dropped or 5xx response from the image builder's network is
+// retried; a definitive answer (OffloadRejected) fails at once.
+async function withFetchRetries(label, attempt, retryDelaysMs) {
+  for (let tries = 0; ; tries += 1) {
+    try {
+      return await attempt();
+    } catch (error) {
+      if (error instanceof OffloadRejected || tries >= retryDelaysMs.length) throw error;
+      console.warn(`${label}: attempt ${tries + 1} failed (${error.message}); retrying in ${retryDelaysMs[tries]} ms`);
+      await new Promise((done) => setTimeout(done, retryDelaysMs[tries]));
+    }
+  }
+}
+
+function assertCdnResponse(response, unavailable) {
+  if (response.ok) return;
+  if (response.status >= 500 || response.status === 429) {
+    throw new Error(`${unavailable} (HTTP ${response.status})`);
+  }
+  throw new OffloadRejected(unavailable);
+}
 
 function readOffloadedTarballs(repoRoot) {
   const file = join(repoRoot, "dist", "protocol", PROTOCOL_OFFLOAD_INDEX);
@@ -42,46 +70,54 @@ function protocolOffloadCandidates(repoRoot) {
 // discovery/checksum metadata, before removing any local archive. The Worker
 // emits R2's strong object ETag; its optional Fly fallback preserves Fly's weak
 // static-file ETag and request ID. Reject that fallback even if bytes match.
-async function verifyProtocolOffloads(repoRoot, fetchArtifact = fetch) {
+async function verifyProtocolOffloads(
+  repoRoot, fetchArtifact = fetch, retryDelaysMs = PROTOCOL_FETCH_RETRY_DELAYS_MS,
+) {
   const candidates = protocolOffloadCandidates(repoRoot);
   if (!candidates.length) return candidates;
   const { schemaVersions } = runtimeArtifactManifest(repoRoot);
   // Worker protocol discovery lists R2 objects directly and has no Fly miss
   // fallback. A matching origin body alone cannot establish off-app storage.
-  const discovery = await fetchArtifact("https://adcontextprotocol.org/protocol/", {
-    redirect: "error", signal: AbortSignal.timeout(60_000),
-  });
-  if (!discovery.ok || discovery.headers.has("fly-request-id")) {
-    throw new Error("R2 protocol discovery unavailable");
-  }
-  const index = await discovery.json();
+  const index = await withFetchRetries("R2 protocol discovery", async () => {
+    const discovery = await fetchArtifact("https://adcontextprotocol.org/protocol/", {
+      redirect: "error", signal: AbortSignal.timeout(60_000),
+    });
+    assertCdnResponse(discovery, "R2 protocol discovery unavailable");
+    if (discovery.headers.has("fly-request-id")) throw new OffloadRejected("R2 protocol discovery unavailable");
+    return discovery.json();
+  }, retryDelaysMs);
   if (!Array.isArray(index?.versions)) throw new Error("Invalid R2 protocol discovery");
   const published = new Set(index.versions.map((entry) => entry?.tarball));
   // A release cut in this tree reaches R2 only after its tag is published, so
-  // a required archive that R2 does not list yet stays local. Any other archive
-  // must already be in R2.
+  // a required archive that R2 does not list yet stays local, as does a
+  // committed candidate superseded without publication, which never reaches
+  // R2. Any other archive must already be in R2.
+  const unpublished = unpublishedReleaseVersions(repoRoot);
   if (candidates.some((name) => !published.has(`/protocol/${name}`)
-    && !schemaVersions.has(name.slice(0, -4)))) {
+    && !schemaVersions.has(name.slice(0, -4)) && !unpublished.has(name.slice(0, -4)))) {
     throw new Error("Protocol offload candidate is absent from R2 discovery");
   }
   const files = candidates.filter((name) => published.has(`/protocol/${name}`));
   const verifyArchive = async (name) => {
     const bytes = readFileSync(join(repoRoot, "dist", "protocol", name));
     const expected = createHash("sha256").update(bytes).digest("hex");
-    const response = await fetchArtifact(`https://adcontextprotocol.org/protocol/${name}`, {
-      redirect: "error", signal: AbortSignal.timeout(60_000),
-    });
-    if (!response.ok || !response.body) throw new Error(`CDN protocol archive unavailable: ${name}`);
-    if (!/^"[a-f0-9]{32}(?:-[1-9][0-9]*)?"$/.test(response.headers.get("etag") ?? "")
-      || response.headers.has("fly-request-id")) {
-      throw new Error(`CDN protocol archive lacks R2 object evidence: ${name}`);
-    }
-    const hash = createHash("sha256");
-    let length = 0;
-    for await (const chunk of response.body) { hash.update(chunk); length += chunk.length; }
-    if (length !== bytes.length || hash.digest("hex") !== expected) {
-      throw new Error(`CDN protocol archive differs from committed bytes: ${name}`);
-    }
+    await withFetchRetries(`CDN protocol archive ${name}`, async () => {
+      const response = await fetchArtifact(`https://adcontextprotocol.org/protocol/${name}`, {
+        redirect: "error", signal: AbortSignal.timeout(60_000),
+      });
+      assertCdnResponse(response, `CDN protocol archive unavailable: ${name}`);
+      if (!response.body) throw new Error(`CDN protocol archive unavailable: ${name}`);
+      if (!/^"[a-f0-9]{32}(?:-[1-9][0-9]*)?"$/.test(response.headers.get("etag") ?? "")
+        || response.headers.has("fly-request-id")) {
+        throw new OffloadRejected(`CDN protocol archive lacks R2 object evidence: ${name}`);
+      }
+      const hash = createHash("sha256");
+      let length = 0;
+      for await (const chunk of response.body) { hash.update(chunk); length += chunk.length; }
+      if (length !== bytes.length || hash.digest("hex") !== expected) {
+        throw new OffloadRejected(`CDN protocol archive differs from committed bytes: ${name}`);
+      }
+    }, retryDelaysMs);
   };
   // Every image build downloads each offloaded body, so verify a few at a time.
   for (let start = 0; start < files.length; start += PROTOCOL_VERIFY_CONCURRENCY) {
@@ -179,6 +215,15 @@ function publishedComplianceVersions(repoRoot) {
     throw new Error(`${manifestPath} published_versions must be unique`);
   }
   return new Set(versions);
+}
+
+// Committed candidates that release discovery marks unpublished (RELEASING.md,
+// "Superseding an unpublishable committed prerelease").
+function unpublishedReleaseVersions(repoRoot) {
+  const index = readJson(join(repoRoot, "dist", "schemas", "index.json"));
+  return new Set((index?.versions ?? [])
+    .filter((entry) => entry?.published === false)
+    .map((entry) => assertVersion(entry.version, "dist/schemas/index.json")));
 }
 
 function schemaDiscoveryAliasTargets(repoRoot) {

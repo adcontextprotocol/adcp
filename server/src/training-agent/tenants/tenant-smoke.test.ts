@@ -1031,6 +1031,25 @@ describe('tenant routing smoke', () => {
       }) as { result?: { structuredContent?: { adcp_error?: { code?: string } } } };
       expect(crossAccountAccept.result?.structuredContent?.adcp_error?.code).toBe('PROPOSAL_NOT_FOUND');
 
+      // A digest that does not match the committed terms is refused with
+      // nothing booked; the accept below then succeeds with the real digest.
+      const staleDigest = 'sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+      expect(committed!.terms_digest).not.toBe(staleDigest);
+      const staleDigestAccept = await callTenantTool(url, 81, 'accept_proposal', {
+        idempotency_key: 'tenant-profile-stale-digest-0001',
+        account: {
+          brand: { domain: 'buyer.example' },
+          operator: 'buyer.example',
+        },
+        proposal_id: committed!.proposal_id,
+        proposal_terms_digest: staleDigest,
+      }) as { result?: { structuredContent?: { adcp_error?: { code?: string; field?: string; recovery?: string } } } };
+      expect(staleDigestAccept.result?.structuredContent?.adcp_error).toMatchObject({
+        code: 'PROPOSAL_TERMS_CHANGED',
+        field: 'proposal_terms_digest',
+        recovery: 'correctable',
+      });
+
       const accepted = await callTenantTool(url, 9, 'accept_proposal', {
         idempotency_key: 'tenant-profile-accept-0000001',
         account: {
@@ -1058,6 +1077,21 @@ describe('tenant routing smoke', () => {
           proposal_id: committed!.proposal_id,
           proposal_status: 'accepted',
         },
+      });
+
+      // Already accepted under a different digest is the same refusal.
+      const acceptedStaleDigest = await callTenantTool(url, 82, 'accept_proposal', {
+        idempotency_key: 'tenant-profile-stale-digest-0002',
+        account: {
+          brand: { domain: 'buyer.example' },
+          operator: 'buyer.example',
+        },
+        proposal_id: committed!.proposal_id,
+        proposal_terms_digest: staleDigest,
+      }) as { result?: { structuredContent?: { adcp_error?: { code?: string; field?: string } } } };
+      expect(acceptedStaleDigest.result?.structuredContent?.adcp_error).toMatchObject({
+        code: 'PROPOSAL_TERMS_CHANGED',
+        field: 'proposal_terms_digest',
       });
 
       const account = {
@@ -2292,7 +2326,7 @@ describe('tenant routing smoke', () => {
       expect(body.result?.structuredContent?.adcp_version).toBe('3.2');
       expect(body.result?.structuredContent?.adcp?.major_versions).toContain(3);
       // The opt-in 3.3 preview (#8181) is advertised last, served to an exact pin only.
-      expect(body.result?.structuredContent?.adcp?.supported_versions).toEqual(['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', '3.2-beta.6', '3.2-rc.0', '3.2-rc.7', '3.2', '3.3-beta.5']);
+      expect(body.result?.structuredContent?.adcp?.supported_versions).toEqual(['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', '3.2-beta.6', '3.2-rc.0', '3.2-rc.7', '3.2', '3.3-rc.3']);
       expect(mediaBuy?.features?.inline_creative_management).toBe(true);
       expect(mediaBuy?.supported_optimization_metrics).toContain('clicks');
       expect(mediaBuy?.vendor_metric_optimization?.supported_targets).toContain('threshold_rate');
@@ -3927,7 +3961,7 @@ describe('tenant routing smoke', () => {
         field: 'adcp_version',
         details: {
           adcp_version: '4.0',
-          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', '3.2-beta.6', '3.2-rc.0', '3.2-rc.7', '3.2', '3.3-beta.5'],
+          supported_versions: ['3.0', '3.1-beta.5', '3.1-beta.7', '3.1-rc.4', '3.1-rc.6', '3.1-rc.7', '3.1-rc.8', '3.1-rc.9', '3.1-rc.10', '3.1-rc.14', '3.1-rc.15', '3.1', '3.2-beta.6', '3.2-rc.0', '3.2-rc.7', '3.2', '3.3-rc.3'],
         },
       });
       expect(unsupportedBody.result?.structuredContent?.context?.correlation_id).toBe('tenant-local-version-unsupported');

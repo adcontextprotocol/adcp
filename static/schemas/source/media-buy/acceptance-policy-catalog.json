@@ -38,5 +38,5 @@
       }
     ]
   },
-  "additionalProperties": false
+  "additionalProperties": true
 }

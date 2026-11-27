@@ -58,7 +58,8 @@ import { sellerOptimizedDeclarationForVersion, sellerOptimizedFeatureFlags } fro
 import { supportsAccountChangeFeed, supportsAccountSurfaces33, TRAINING_AGENT_REGISTERS_ACCOUNT_SURFACES_33, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, supportsGetProductsRejected, supportsReliableReporting, supportsReportingStatus, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_STABLE_REGISTRY_VERSIONS, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext } from '../types.js';
 import { getIdentityBaseUrl } from '../config.js';
 import { complianceScenariosForServedVersion } from '../compliance-scenarios.js';
-import { omitFieldsAddedAfterRelease, servedReleaseEnum } from '../served-release-fields.js';
+import { omitFieldsAddedAfterRelease, servedLifecycleTools, servedReleaseEnum } from '../served-release-fields.js';
+import { toolsForTenant } from './tool-catalog.js';
 import { runWithReleaseLineEcho } from './release-line-echo.js';
 import { redactConflictEnvelopeInBody } from '../conflict-envelope.js';
 import { proposalCapabilitiesForProfile } from '../proposal-negotiation-profiles.js';
@@ -73,12 +74,15 @@ import {
   subscriptionOfferings,
 } from '../reporting-subscriptions.js';
 import { ACCOUNT_REQUESTS_CAPABILITY, ACCOUNT_REQUESTS_FEATURE } from '../account-requests.js';
+import { TRAINING_ASSIGNMENT_OPERATIONS } from '../assignment-operations.js';
 import { applyHoldCapabilities } from '../holds/capabilities.js';
 import { FORCE_HOLD_UNAVAILABLE, supportsHolds33 } from '../holds/service.js';
 import { grantFor, grantPermits, loadSandbox } from '../account-sandbox.js';
 import { projectCollectionCapabilities } from '../collections/capabilities.js';
 import { supportsCollections33 } from '../collections/card-catalog.js';
 import { SEED_COLLECTION_SCENARIO } from '../collections/seed-collection.js';
+import { INVENTORY_COMPLY_SCENARIOS, handleInventorySandboxClock, isInventoryTenant } from './inventory.js';
+import { SANDBOX_CLOCK_SCENARIO } from '../inventory-sim/sandbox-clock.js';
 
 const logger = createLogger('training-agent-tenant-router');
 const PRODUCT_WHOLESALE_EVENTS = ['product.created', 'product.updated', 'product.priced', 'product.removed'] as const;
@@ -99,6 +103,8 @@ const TENANT_PROTOCOLS: Readonly<Record<string, readonly string[]>> = {
   'creative-builder': ['creative'],
   brand: ['brand'],
   si: ['sponsored_intelligence'],
+  'inventory-adserver': ['media_buy'],
+  'inventory-content': ['media_buy'],
 };
 
 const OPERATOR_UNIT_BRIDGE_TENANTS = new Set([
@@ -222,16 +228,6 @@ const SALES_CURRENT_SCENARIOS = [
   'reliable_reporting_reconciled_billing_probe',
   'query_provenance_audit_observations',
   'evaluate_distributed_brand_resolution',
-] as const;
-
-const PRODUCT_DISCOVERY_LIFECYCLE_TOOL_NAMES = [
-  'list_products',
-  'request_proposals',
-  'refine_proposals',
-  'decline_proposals',
-  'buy_products',
-  'accept_proposal',
-  'control_media_buy',
 ] as const;
 
 function bearerToken(req: Request): string | undefined {
@@ -655,6 +651,9 @@ function tenantMcpHandler(
         else delete controllerArgs.ext;
       }
 
+      if (await tryHandleInventoryComplyScenario(req, res, resolved.tenantId, principal, routeVersions)) {
+        return;
+      }
       if (await tryHandleLocalComplyScenario(req, res, resolved.tenantId, principal, storyboardCompat, routeVersions)) {
         return;
       }
@@ -774,6 +773,65 @@ async function tryRefuseByAccountGrant(
     jsonrpc: '2.0',
     id: req.body.id ?? null,
     result: adcpError(code, rest, args.context),
+  });
+  return true;
+}
+
+/**
+ * Inventory tenants (#9025): `sandbox_clock`, and a `list_scenarios` that
+ * names it, answered here because the SDK's controller config has no slot
+ * for a scenario of our own. `reset_state` goes through the SDK.
+ */
+async function tryHandleInventoryComplyScenario(
+  req: Request,
+  res: Response,
+  tenantId: string,
+  principal: string | undefined,
+  routeVersions: readonly string[],
+): Promise<boolean> {
+  if (!isInventoryTenant(tenantId)) return false;
+  if (req.body?.method !== 'tools/call' || req.body?.params?.name !== 'comply_test_controller') return false;
+  const rawArgs = (req.body.params.arguments ?? {}) as Record<string, unknown>;
+  if (rawArgs.scenario !== SANDBOX_CLOCK_SCENARIO && rawArgs.scenario !== 'list_scenarios') return false;
+  const { context, ...handlerArgs } = rawArgs;
+  const versionResolution = resolveServedAdcpVersion(handlerArgs, routeVersions);
+  if (!versionResolution.ok) {
+    res.json({
+      jsonrpc: '2.0',
+      id: req.body.id ?? null,
+      result: adcpError('VERSION_UNSUPPORTED', {
+        message: versionResolution.message,
+        details: versionResolution.details,
+        field: versionResolution.field,
+      }, context),
+    });
+    return true;
+  }
+  const account = rawArgs.account as { sandbox?: unknown } | undefined;
+  const result = rawArgs.scenario === 'list_scenarios'
+    ? { success: true, scenarios: [...INVENTORY_COMPLY_SCENARIOS] }
+    : account && typeof account === 'object' && account.sandbox === false
+      ? { success: false, error: 'FORBIDDEN', error_detail: 'sandbox_clock is sandbox only' }
+      : await runWithSessionContext(async () => {
+        const params = rawArgs.params && typeof rawArgs.params === 'object' && !Array.isArray(rawArgs.params)
+          ? rawArgs.params as Record<string, unknown>
+          : {};
+        const body = await handleInventorySandboxClock(tenantId, params, principal);
+        await flushDirtySessions();
+        return body;
+      });
+  res.json({
+    jsonrpc: '2.0',
+    id: req.body.id ?? null,
+    result: {
+      content: [{ type: 'text', text: `Compliance scenario ${String(rawArgs.scenario)} completed.` }],
+      structuredContent: {
+        status: 'completed',
+        adcp_version: versionResolution.servedVersion,
+        ...result,
+        ...(context !== undefined && { context }),
+      },
+    },
   });
   return true;
 }
@@ -1069,13 +1127,15 @@ function projectTenantToolDiscovery(
       // Experimental 3.3 include_collections (#8181): only a listing served
       // at 3.3 or later advertises the flag. The SDK stamps the listing's
       // release on the result; under the `all` tool profile it does not shape
-      // input schemas to it.
+      // input schemas to it. get_products never advertises it: the flag was
+      // withdrawn from the deprecated task in 3.3 (adcp#8501).
       const listingMeta = (parsed.result as { _meta?: { adcp_version?: unknown } } | undefined)?._meta;
       for (const tool of tools) {
         const listedAt = listingMeta?.adcp_version ?? (tool as { _meta?: { adcp_version?: unknown } })._meta?.adcp_version;
         const properties = tool.inputSchema?.properties;
         if (!properties || !('include_collections' in properties)) continue;
-        if (supportsCollections33(typeof listedAt === 'string' ? listedAt : undefined)) continue;
+        if (tool.name !== 'get_products'
+          && supportsCollections33(typeof listedAt === 'string' ? listedAt : undefined)) continue;
         const { include_collections: _flag, ...rest } = properties;
         tool.inputSchema = { ...tool.inputSchema, properties: rest };
       }
@@ -1341,6 +1401,10 @@ function projectTenantCapabilities(
         delete mediaBuy.outcome_target;
       }
       const salesProjection = salesCapabilityProjection();
+      const lifecycleTools = servedLifecycleTools(
+        toolsForTenant(tenantId, { storyboardCompat, adcpVersion: servedVersion }),
+        servedVersion,
+      );
       structured.media_buy = {
         ...mediaBuy,
         ...salesProjection,
@@ -1366,7 +1430,8 @@ function projectTenantCapabilities(
           primary_countries: ['US', 'CA', 'GB'],
         },
         ...(supportsGetProductsRejected(servedVersion) && {
-          lifecycle_tools: [...PRODUCT_DISCOVERY_LIFECYCLE_TOOL_NAMES],
+          // Exactly the compact lifecycle tools this route lists (adcp#8981).
+          lifecycle_tools: lifecycleTools,
           // Flexible-window availability discovery: the platform parses
           // offer_filters.availability_horizon and answers with
           // time-dimensioned forecast points (see handleGetProductsUnlocked).
@@ -1433,8 +1498,12 @@ function projectTenantCapabilities(
           experimentalFeatures.push(REPORTING_SUBSCRIPTIONS_FEATURE);
         }
       }
-      if (!supportsGetProductsRejected(servedVersion)) {
+      if (!supportsGetProductsRejected(servedVersion) || lifecycleTools.length === 0) {
         delete structured.media_buy.lifecycle_tools;
+      }
+      // proposal_refinement describes refine_proposals, so the schema requires
+      // that tool among the declared lifecycle tools.
+      if (!(structured.media_buy.lifecycle_tools as string[] | undefined)?.includes('refine_proposals')) {
         delete structured.media_buy.proposal_refinement;
       }
       const creative = structured.creative && typeof structured.creative === 'object'
@@ -1449,6 +1518,9 @@ function projectTenantCapabilities(
         // shapes omit these 3.3 flags below.
         supports_provenance: true,
         supports_registry_policy_enforcement: true,
+        // sync_creatives assignment_operations the seller accepts (3.3). The
+        // list is exact; merge is refused. live_updates below requires replace.
+        assignment_operations: [...TRAINING_ASSIGNMENT_OPERATIONS],
         supported_formats: supportedFormats,
         preview: creativePreviewCapability(supportedFormats),
         canonical_catalog_version: '3.1',
@@ -1480,7 +1552,7 @@ function projectTenantCapabilities(
         }
         // Live creative updates (experimental, #8404) need the library and
         // the media buys that make a creative live, so only /sales declares.
-        structured.creative.live_updates = liveUpdatesCapability();
+        structured.creative.live_updates = liveUpdatesCapability(servedVersion);
         // Assignment-scoped trackers and landing pages (3.3): sync_creatives
         // assign/replace, create/update media buy rows, and readback.
         structured.creative.supports_assignment_trackers = true;
@@ -1510,6 +1582,12 @@ function projectTenantCapabilities(
       };
       // Experimental 3.3 holds: hold_policy, extend_hold, ranking, installment holds.
       applyHoldCapabilities(structured, servedVersion, proposalNegotiationProfile, storyboardCompat);
+    }
+    if (isInventoryTenant(tenantId)) {
+      structured.compliance_testing = {
+        ...(structured.compliance_testing && typeof structured.compliance_testing === 'object' ? structured.compliance_testing : {}),
+        scenarios: [...INVENTORY_COMPLY_SCENARIOS],
+      };
     }
     // Every tenant: a release whose capabilities schema closes the scenario
     // enum (3.0) never sees scenarios added after it, whichever projection

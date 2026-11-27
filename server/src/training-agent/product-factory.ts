@@ -55,6 +55,12 @@ type TrainingProduct = Omit<Product,
 };
 import { PUBLISHERS } from './publishers.js';
 import { productSellsSelectableProperties } from './property-list-targeting.js';
+import {
+  deliveryDeviceTypes,
+  KEYWORD_MATCH_TYPES,
+  sellsKeywordInventory,
+  TRAINING_GEO_BREAKDOWN_SUPPORT,
+} from './delivery-breakdowns.js';
 import { FORMAT_CHANNEL_MAP } from './formats.js';
 import { getAgentUrl } from './config.js';
 import { createLogger } from '../logger.js';
@@ -535,6 +541,9 @@ const CANONICAL_FORMAT_PROJECTION_BY_LEGACY_ID: Record<string, CanonicalFormatPr
   },
 };
 
+/** The format labels `formatOptionsForTrainingFormats` accepts. */
+export const TRAINING_FORMAT_LABELS: ReadonlySet<string> = new Set(Object.keys(CANONICAL_FORMAT_PROJECTION_BY_LEGACY_ID));
+
 /**
  * Canonical kinds the spec marks `v1_translatable: false`: no v1 named format
  * expresses them, so their options carry `canonical_formats_only` and no
@@ -572,6 +581,15 @@ function formatOptionsForFormatIds(formatIds: FormatID[]): ProductFormatDeclarat
         : { v1_format_ref: [formatId] }),
     } as ProductFormatDeclaration;
   });
+}
+
+/**
+ * Canonical format options for training format labels (the keys of the
+ * canonical projection table), for catalogues built outside this module such
+ * as the inventory tenants' seeds.
+ */
+export function formatOptionsForTrainingFormats(labels: readonly string[], agentUrl: string): ProductFormatDeclaration[] {
+  return formatOptionsForFormatIds(labels.map(id => ({ agent_url: agentUrl, id })));
 }
 
 function publisherPropertySelectors(pub: PublisherProfile, channels?: string[]): Product['publisher_properties'] {
@@ -980,6 +998,9 @@ function buildProduct(
       available_metrics: pub.reportingMetrics as NonNullable<Product['reporting_capabilities']>['available_metrics'],
       date_range_support: 'date_range' as const,
       supports_creative_breakdown: true,
+      ...(!offer && { supports_geo_breakdown: structuredClone(TRAINING_GEO_BREAKDOWN_SUPPORT) }),
+      ...(!offer && deliveryDeviceTypes(template.channels).length > 0 && { supports_device_type_breakdown: true }),
+      ...(!offer && sellsKeywordInventory(template.channels) && { supports_keyword_breakdown: true }),
       // vendor_metrics is in the published spec (#3492) but the @adcp/client Product
       // type used here lags pending an SDK rebuild; cast through unknown until the
       // type catches up.
@@ -998,6 +1019,12 @@ function buildProduct(
       // Broad legacy package-cap promise within the seller-wide
       // media_buy.frequency_capping limits, including update support.
       frequency_cap: true,
+      // Search and retail-media inventory is bought by keyword. Matches the
+      // seller-wide media_buy.execution.targeting declaration.
+      ...(sellsKeywordInventory(template.channels) && {
+        keyword_targets: { supported_match_types: [...KEYWORD_MATCH_TYPES] },
+        negative_keywords: { supported_match_types: [...KEYWORD_MATCH_TYPES] },
+      }),
     },
     ...(pub.catalogTypes?.length && { catalog_types: pub.catalogTypes as unknown as Product['catalog_types'] }),
     ...(metricOptimization && { metric_optimization: metricOptimization }),
@@ -1005,13 +1032,16 @@ function buildProduct(
     // auction-only. Guaranteed products can still steer allocation/pacing
     // toward the vendor signal, so do not gate this on delivery_type.
     ...(pub.vendorMetricOptimization && { vendor_metric_optimization: pub.vendorMetricOptimization }),
-    ...(forecast && { forecast }),
+    forecast,
     ...(conversionTracking && { conversion_tracking: conversionTracking }),
     ...(collectionSelectors && { collections: collectionSelectors }),
     ...(exclusivity && { exclusivity }),
     ...(installments && { installments }),
     ...(collectionTargetingAllowed && { collection_targeting_allowed: collectionTargetingAllowed }),
     ...(offer && { audience_evidence: structuredClone(offer.audienceEvidence) as unknown as Product['audience_evidence'] }),
+    // The same inventory facts controller-seeded fixtures carry, so the
+    // countries and metros discovery filters can evaluate built-in products.
+    ext: { training: { coverage: structuredClone(offer?.coverage ?? pub.coverage) } },
   };
 
   // Every catalog product can join one counter shared across a MediaBuy so

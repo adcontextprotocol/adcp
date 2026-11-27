@@ -8,6 +8,10 @@ on:
     # against an org-wide hosted-runner concurrency cap. `ready_for_review`
     # runs the full matrix when a draft is marked ready. This workflow is not
     # a required check, so skipped draft runs never block a merge.
+    # Version Packages PRs (changeset-release/*) stay drafts until they merge,
+    # so they run the matrix while still draft: release.yml's verified-merge
+    # step reuses the completed run on the exact release head instead of
+    # re-running the whole matrix serially (1.5-2.7 h for 3.3.0-rc.2).
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'server/src/training-agent/**'
@@ -55,8 +59,9 @@ concurrency:
 jobs:
   storyboards:
     name: Storyboards (${{ matrix.surface }} /${{ matrix.tenant }})
-    # Skip draft PRs; push events have no pull_request payload and always run.
-    if: github.event.pull_request.draft != true
+    # Skip draft PRs except Version Packages PRs (see above); push events have
+    # no pull_request payload and always run.
+    if: (github.event.pull_request.draft != true || startsWith(github.head_ref, 'changeset-release/'))
     # The storyboard matrix is about half of the repo's runner-minutes. Set the
     # STORYBOARD_RUNNER repository variable to a larger-runner label (for
     # example ubuntu-latest-m) to move it off the shared hosted pool; unset,
@@ -564,7 +569,7 @@ jobs:
 
   sales_storyboard_orchestrators:
     name: Sales storyboard orchestrator (${{ matrix.orchestrator }}/8)
-    if: github.event.pull_request.draft != true
+    if: (github.event.pull_request.draft != true || startsWith(github.head_ref, 'changeset-release/'))
     # Same runner selection as the storyboards matrix above.
     runs-on: ${{ vars.STORYBOARD_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 30
@@ -636,7 +641,7 @@ jobs:
 
   sales_storyboards:
     name: Storyboards (current /sales)
-    if: always() && github.event.pull_request.draft != true
+    if: always() && (github.event.pull_request.draft != true || startsWith(github.head_ref, 'changeset-release/'))
     needs: sales_storyboard_orchestrators
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -796,8 +801,10 @@ jobs:
           done
 
           required_exact=(
-            "media_buy_seller/compact_direct_buy_lifecycle:8:0"
-            "media_buy_seller/compact_product_lifecycle:10:0"
+            # 9 steps since 1.1.0 added the assignment_operations check (#8933).
+            "media_buy_seller/compact_direct_buy_lifecycle:9:0"
+            # 11 steps since 1.3.0 added the terms-digest mismatch refusal (#9168).
+            "media_buy_seller/compact_product_lifecycle:11:0"
             "media_buy_seller/declined_proposal_refinement:7:0"
             "media_buy_seller/declined_proposal_execution:9:0"
             "media_buy_seller/expired_proposal_execution:9:0"
@@ -837,15 +844,14 @@ jobs:
             "media_buy_seller/reporting_subscription_capacity:16:0"
             # Experimental 3.3 holds over seeded hold policies. terms_only:
             # the 4 skips are the hold_semantics inventory_hold-declared and
-            # terms_only phases (this seller declares none). hold_extension:
-            # the 10 skips are the extend_hold steps, which the @adcp/sdk
-            # runner cannot send yet (adcontextprotocol/adcp-client#3601),
-            # and the steps that depend on them.
+            # terms_only phases (this seller declares none). hold_extension
+            # runs every step: the @adcp/sdk runner sends extend_hold from
+            # 17.0.0-beta.33 (adcontextprotocol/adcp-client#3601).
             "media_buy_seller/hold_policy_bounds:18:0"
             "media_buy_seller/hold_policy_terms_only:19:4"
             "media_buy_seller/hold_policy_version_gate:11:0"
             "media_buy_seller/hold_unavailable_batch:12:0"
-            "media_buy_seller/hold_extension:22:10"
+            "media_buy_seller/hold_extension:32:0"
             "media_buy_seller/hold_ranking:11:0"
           )
           for requirement in "${required_exact[@]}"; do
@@ -861,3 +867,213 @@ jobs:
               exit 1
             fi
           done
+
+  # The simulated inventory tenants (#9025 part B) serve the current surface
+  # only. Each storyboard runs in its own bounded child (a monolithic run
+  # stalled after signed_requests), and one tenant runs about 180 of them, so
+  # each tenant splits across two orchestrators: alternate shards of eight,
+  # four at a time. Its aggregate keeps the single required check name.
+  inventory_storyboard_orchestrators:
+    name: Inventory storyboard orchestrator (/${{ matrix.tenant }} ${{ matrix.group }}/2)
+    if: (github.event.pull_request.draft != true || startsWith(github.head_ref, 'changeset-release/'))
+    # Same runner selection as the storyboards matrix above.
+    runs-on: ${{ vars.STORYBOARD_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        tenant: [inventory-adserver, inventory-content]
+        group: [0, 1]
+    env:
+      ADCP_COMPLIANCE_DIR: dist/compliance/latest
+      ADCP_SCHEMA_ROOT: dist/schemas/latest
+      ADCP_STORYBOARD_CANDIDATE_VERSION_MODE: ${{ ((github.event_name == 'pull_request' && github.base_ref == 'main') || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && '1' || '0' }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
+
+      - name: Build current compliance and schema bundles
+        run: |
+          node scripts/build-schemas.cjs
+          node scripts/build-compliance.cjs
+
+      - name: Run isolated /${{ matrix.tenant }} storyboards (group ${{ matrix.group }}/2)
+        env:
+          TENANT_PATH: ${{ matrix.tenant }}
+          ENABLE_ADCP_3_2_PROPOSAL_PROFILES: 'true'
+          PUBLIC_TEST_AGENT_TOKEN: storyboard-ci-token
+        run: |
+          set -uo pipefail
+          base="/tmp/storyboards-${{ matrix.tenant }}-${{ matrix.group }}"
+          status=0
+          bash scripts/run-storyboards-isolated-shards.sh \
+            --shard-count 8 --max-parallel 4 \
+            --shard-group "${{ matrix.group }}" --shard-groups 2 2>&1 \
+            | tee "${base}.log" || status=1
+          # The aggregate reads this, so one tenant's failure never fails the
+          # other tenant's check.
+          echo "${status}" > "${base}.status"
+          if ! grep -Eq '^[[:space:]]*storyboards: [0-9]+/[0-9]+ clean$' "${base}.log" ||
+             ! grep -Eq '^[[:space:]]*selection: [0-9]+ applicable \| [0-9]+ not applicable \| [0-9]+ quarantined \| [0-9]+ corpus$' "${base}.log" ||
+             ! grep -Eq '^[[:space:]]*steps: [0-9]+ passed \| [0-9]+ failed \| [0-9]+ skipped \| [0-9]+ not applicable$' "${base}.log"; then
+            echo "::error::/${{ matrix.tenant }} orchestrator ${{ matrix.group }}/2 did not emit a complete totals block"
+            exit 1
+          fi
+          exit "${status}"
+
+      - name: Upload /${{ matrix.tenant }} orchestrator artifacts
+        if: always()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: storyboards-current-${{ matrix.tenant }}-orchestrator-${{ matrix.group }}
+          path: |
+            /tmp/storyboards-${{ matrix.tenant }}-${{ matrix.group }}.log
+            /tmp/storyboards-${{ matrix.tenant }}-${{ matrix.group }}.status
+          retention-days: 14
+          if-no-files-found: error
+
+  inventory_storyboards:
+    name: Storyboards (current /${{ matrix.tenant }})
+    if: always() && (github.event.pull_request.draft != true || startsWith(github.head_ref, 'changeset-release/'))
+    needs: inventory_storyboard_orchestrators
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Floors are the CI result with the seed_* scenarios (#9150), the
+          # re-cancel code (#9163), seeded reporting_capabilities (#9164) and
+          # the required_metrics filter (#9169). Seeding runs storyboards that
+          # used to skip; those still failing are tenant gaps:
+          # simulate_delivery/simulate_budget_spend (#9151), creative formats
+          # outside the season (#9152), a past start_time (schema_validation),
+          # measurement terms, currency and targeting filters, total-budget
+          # redistribution, update-response assignment state, and an
+          # exclusive takeover booked twice in one buy. signed_requests is
+          # out of scope: it is graded on the /mcp-strict* routes, which these
+          # tenants do not mount.
+          - tenant: inventory-adserver
+            min_clean_storyboards: 164
+            min_passing_steps: 238
+          - tenant: inventory-content
+            min_clean_storyboards: 164
+            min_passing_steps: 220
+    steps:
+      - name: Download /${{ matrix.tenant }} orchestrator artifacts
+        uses: actions/download-artifact@v8.0.1
+        with:
+          pattern: storyboards-current-${{ matrix.tenant }}-orchestrator-*
+          path: /tmp/storyboards-orchestrators
+          merge-multiple: true
+
+      - name: Aggregate /${{ matrix.tenant }} storyboard results
+        id: aggregate
+        env:
+          TENANT: ${{ matrix.tenant }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          logs=(/tmp/storyboards-orchestrators/storyboards-"${TENANT}"-*.log)
+          if [ "${#logs[@]}" -ne 2 ]; then
+            echo "::error::Expected 2 /${TENANT} orchestrator logs, found ${#logs[@]}"
+            exit 1
+          fi
+          : > /tmp/storyboards.log
+          clean_sum=0
+          total_sum=0
+          passed_sum=0
+          failed_sum=0
+          skipped_sum=0
+          not_applicable_sum=0
+          selection_expected=""
+          orchestrator_failure=0
+          for log in "${logs[@]}"; do
+            if [ "$(cat "${log%.log}.status" 2>/dev/null)" != "0" ]; then
+              echo "::error::${log} orchestrator did not complete cleanly"
+              orchestrator_failure=1
+            fi
+            cat "${log}" >> /tmp/storyboards.log
+            echo >> /tmp/storyboards.log
+            storyboard_totals=$(sed -nE 's/^[[:space:]]*storyboards: ([0-9]+)\/([0-9]+) clean$/\1 \2/p' "${log}" | tail -1)
+            selection_totals=$(sed -nE 's/^[[:space:]]*selection: ([0-9]+) applicable \| ([0-9]+) not applicable \| ([0-9]+) quarantined \| ([0-9]+) corpus$/\1 \2 \3 \4/p' "${log}" | tail -1)
+            step_totals=$(sed -nE 's/^[[:space:]]*steps: ([0-9]+) passed \| ([0-9]+) failed \| ([0-9]+) skipped \| ([0-9]+) not applicable$/\1 \2 \3 \4/p' "${log}" | tail -1)
+            if [ -z "${storyboard_totals}" ] || [ -z "${selection_totals}" ] || [ -z "${step_totals}" ]; then
+              echo "::error::Incomplete totals in ${log}"
+              exit 1
+            fi
+            if [ -z "${selection_expected}" ]; then
+              selection_expected="${selection_totals}"
+            elif [ "${selection_totals}" != "${selection_expected}" ]; then
+              echo "::error::Inconsistent capability selection in ${log}"
+              exit 1
+            fi
+            read -r shard_clean shard_total <<< "${storyboard_totals}"
+            read -r shard_passed shard_failed shard_skipped shard_not_applicable <<< "${step_totals}"
+            clean_sum=$((clean_sum + shard_clean))
+            total_sum=$((total_sum + shard_total))
+            passed_sum=$((passed_sum + shard_passed))
+            failed_sum=$((failed_sum + shard_failed))
+            skipped_sum=$((skipped_sum + shard_skipped))
+            not_applicable_sum=$((not_applicable_sum + shard_not_applicable))
+          done
+          read -r applicable scope_not_applicable quarantined corpus <<< "${selection_expected}"
+          {
+            echo "--- Aggregate totals ---"
+            echo "  storyboards: ${clean_sum}/${total_sum} clean"
+            echo "  selection: ${applicable} applicable | ${scope_not_applicable} not applicable | ${quarantined} quarantined | ${corpus} corpus"
+            echo "  steps: ${passed_sum} passed | ${failed_sum} failed | ${skipped_sum} skipped | ${not_applicable_sum} not applicable"
+          } | tee -a /tmp/storyboards.log
+          {
+            echo "clean=${clean_sum}"
+            echo "passed=${passed_sum}"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "### Training agent · current /${TENANT}"
+            echo
+            echo '| Clean result rows | Result rows | Applicable storyboards | Out of scope | Quarantined | Passed steps | Failed steps | Skipped steps | N/A steps |'
+            echo '|---:|---:|---:|---:|---:|---:|---:|---:|---:|'
+            echo "| ${clean_sum} | ${total_sum} | ${applicable} | ${scope_not_applicable} | ${quarantined} | ${passed_sum} | ${failed_sum} | ${skipped_sum} | ${not_applicable_sum} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "${orchestrator_failure}" -ne 0 ]; then
+            echo "::error::One or more isolated /${TENANT} orchestrators failed. Counts above are diagnostic only."
+            exit 1
+          fi
+
+      - name: Upload aggregate /${{ matrix.tenant }} log on failure
+        if: failure()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: storyboards-log-current-${{ matrix.tenant }}
+          path: /tmp/storyboards.log
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Enforce /${{ matrix.tenant }} non-regression
+        env:
+          CLEAN: ${{ steps.aggregate.outputs.clean }}
+          PASSED: ${{ steps.aggregate.outputs.passed }}
+          MIN_CLEAN: ${{ matrix.min_clean_storyboards }}
+          MIN_PASSED: ${{ matrix.min_passing_steps }}
+        run: |
+          set -euo pipefail
+          echo "Clean storyboards: ${CLEAN} (floor: ${MIN_CLEAN})"
+          echo "Passing steps: ${PASSED} (floor: ${MIN_PASSED})"
+          if [ "${CLEAN}" -lt "${MIN_CLEAN}" ]; then
+            echo "::error::Regression: ${CLEAN} clean storyboards is below the ${MIN_CLEAN} floor (tenant: /${{ matrix.tenant }})."
+            exit 1
+          fi
+          if [ "${PASSED}" -lt "${MIN_PASSED}" ]; then
+            echo "::error::Regression: ${PASSED} passing steps is below the ${MIN_PASSED} floor (tenant: /${{ matrix.tenant }})."
+            exit 1
+          fi

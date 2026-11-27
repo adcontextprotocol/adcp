@@ -37,6 +37,19 @@ describe('schema release discovery status', () => {
       deprecated: false,
       published: false,
     });
+
+    expect(isSelectableRelease('3.3.0-rc.1')).toBe(false);
+    expect(getReleaseMetadata('3.3.0-rc.1')).toEqual({
+      stability: 'unpublished',
+      prerelease: true,
+      deprecated: false,
+      published: false,
+    });
+    expect(middleware.isSelectableRelease('3.3.0-rc.1')).toBe(false);
+    expect(worker.isSelectableRelease('3.3.0-rc.1')).toBe(false);
+    // The neighbouring candidates stay selectable.
+    expect(isSelectableRelease('3.3.0-rc.0')).toBe(true);
+    expect(isSelectableRelease('3.3.0-rc.2')).toBe(true);
   });
 
   it('marks v2 releases deprecated without removing them from aliases', () => {
@@ -59,10 +72,27 @@ describe('schema release discovery status', () => {
     const withdrawn = discovery.versions.find(({ version }: { version: string }) => version === '3.1.3');
     const aliasTargets = Object.values(discovery.aliases);
 
-    expect(['3.1.3', '3.2.0', '3.2.0-rc.5']).not.toContain(discovery.latest_stable);
+    expect(['3.1.3', '3.2.0', '3.2.0-rc.5', '3.3.0-rc.1']).not.toContain(discovery.latest_stable);
     expect(aliasTargets).not.toContain('3.1.3');
     expect(aliasTargets).not.toContain('3.2.0');
     expect(aliasTargets).not.toContain('3.2.0-rc.5');
+    expect(aliasTargets).not.toContain('3.3.0-rc.1');
+
+    // The committed file-based discovery document carries the same status.
+    const committed = require('../dist/schemas/index.json');
+    const supersededEntry = {
+      version: '3.3.0-rc.1',
+      stability: 'unpublished',
+      prerelease: true,
+      deprecated: false,
+      published: false,
+      path: '/schemas/3.3.0-rc.1/',
+      index: '/schemas/3.3.0-rc.1/index.json',
+    };
+    expect(discovery.versions.find(({ version }: { version: string }) => version === '3.3.0-rc.1'))
+      .toEqual(supersededEntry);
+    expect(committed.versions.find(({ version }: { version: string }) => version === '3.3.0-rc.1'))
+      .toEqual(supersededEntry);
     expect(withdrawn).toMatchObject({
       stability: 'withdrawn',
       deprecated: true,
@@ -81,6 +111,7 @@ describe('withdrawn 3.2.0 and the 3.2.1 GA', () => {
       ['3.1.3', 'withdrawn'],
       ['3.2.0', 'unpublished'],
       ['3.2.0-rc.5', 'unpublished'],
+      ['3.3.0-rc.1', 'unpublished'],
     ]);
     expect(sorted(worker.releaseStatusOverrides())).toEqual(build);
     expect(sorted(middleware.RELEASE_STATUS_OVERRIDES)).toEqual(build);

@@ -59,8 +59,8 @@ import { installmentFlightEnd, plannedHoldExpiry } from './holds/context.js';
 import { loadHoldDocument, saveHoldDocument } from './holds/store.js';
 import { TRAINING_AGENT_PREVIEW_ADCP_VERSION } from './candidate-version.js';
 import { parseAdcpReleaseVersion, type ParsedAdcpReleaseVersion, servesReleaseBefore, supportsAccountSurfaces33, supportsBiddingPolicyCapability, TRAINING_BIDDING_POLICY_CAPABILITY, TRAINING_CONVERSION_TRACKING_SUPPORTED_TARGETS, supportsGetProductsRejected, supportsReliableReporting, supportsSalesFixedRate, supportsSellerGovernanceDiscovery, TRAINING_AGENT_CURRENT_ADCP_VERSION, TRAINING_AGENT_DEFAULT_ADCP_VERSION, TRAINING_AGENT_SUPPORTED_RELEASE_VERSIONS, type TrainingContext, type CatalogProduct, type MediaBuyState, type MediaBuyAvailableActionState, type MediaBuyProductAllowedActionState, type PackageState, type SignalActivationState, type CreativeState, type CreativeManifest, type ToolArgs, type ListReference, type PackageTargeting, type AccountRef, type BrandRef, type SessionState, type SeededProductAvailability, TERMINAL_MEDIA_BUY_STATUSES, type PackageFrequencyCapEligibility, supportsAccountChangeFeed, atLeastAdcpVersion } from './types.js';
-import { planAssignmentOperations, commitAssignmentPlan, assignmentReadbackFields, assignmentRow, isTrackerSlot, trackerAllocationProblem } from './assignment-operations.js';
-import { isOpenMediaBuy, classifyCreativeChange, decideLiveUpdate, livePackageIds, servingContent, stagedUpdateWire, liveUpdatesCapability, type CreativeChangeKind, type LiveUpdateServingMode, type StagedCreativeContent, type StagedCreativeUpdate } from './live-creative-updates.js';
+import { planAssignmentOperations, commitAssignmentPlan, assignmentReadbackFields, assignmentRow, isTrackerSlot, trackerAllocationProblem, TRAINING_ASSIGNMENT_OPERATIONS } from './assignment-operations.js';
+import { isOpenMediaBuy, classifyCreativeChange, decideLiveUpdate, livePackageIds, servingContent, stagedUpdateWire, liveUpdatesCapability, servedChangeKind, type CreativeChangeKind, type LiveUpdateServingMode, type StagedCreativeContent, type StagedCreativeUpdate } from './live-creative-updates.js';
 import {
   AccountRefValidationError,
   accountScopeFromRef,
@@ -81,7 +81,7 @@ import {
   resolveReportingAccountDurably,
 } from './reporting-reliability.js';
 import { loadSourceSchema, validateSourceSchema } from './source-schema.js';
-import { omitFieldsAddedAfterRelease, propertiesAddedAfterRelease, servedReleaseEnum, toolAddedAfterRelease } from './served-release-fields.js';
+import { omitFieldsAddedAfterRelease, propertiesAddedAfterRelease, servedLifecycleTools, servedReleaseEnum, toolAddedAfterRelease, undeclaredMembers } from './served-release-fields.js';
 import {
   TRAINING_AGGREGATE_FREQUENCY_CAPPING,
   TRAINING_PACKAGE_FREQUENCY_CAPPING,
@@ -561,6 +561,17 @@ const SUPPORTED_CANONICAL_BUILD_CAPABILITIES = [
   { capabilityId: 'audio_30s', formatKind: 'audio_hosted' },
   { capabilityId: 'audio_vo', formatKind: 'audio_hosted' },
 ] as const;
+// Narrowing parameters a creative capability declares beyond its canonical
+// slots, published in creative.supported_formats[].format.params. A creative
+// synced with no product context (no format_option_ref, no package assignment)
+// is held to exactly these values, so the agent enforces only what it declares.
+const CANONICAL_CAPABILITY_PARAMS: Partial<Record<string, Record<string, unknown>>> = {
+  native_in_feed: {
+    title_max_chars: 80,
+    main_image_sizes: [{ width: 1200, height: 627 }, { width: 1080, height: 1080 }],
+    cta_values: ['LEARN_MORE', 'SHOP_NOW', 'SIGN_UP', 'DOWNLOAD', 'APPLY_NOW'],
+  },
+};
 const CANONICAL_PREVIEW_CAPABILITY_IDS = new Set([
   'training_image_generation',
   'native_in_feed',
@@ -772,6 +783,19 @@ type LegacyCreativeAssignmentRow = {
   placement_ids?: string[];
   [key: string]: unknown;
 };
+
+/** A create_media_buy or update_media_buy assignment row, as stored from a
+ * request and as returned in their responses. `trackers` and `landing_page_url`
+ * are not fields of that row in 3.3 (adcp#8501): they are set through
+ * sync_creatives `assign` and read back on get_media_buys and list_creatives, so
+ * a request value is ignored rather than stored, and an assign-set value is not
+ * echoed here. */
+function requestAssignmentRow<T extends Record<string, unknown>>(row: T): T {
+  const stored: Record<string, unknown> = structuredClone(row);
+  delete stored.trackers;
+  delete stored.landing_page_url;
+  return stored as T;
+}
 
 function inlineCreativeAssignmentRows(creatives: InlineCreativeInput[] | undefined): LegacyCreativeAssignmentRow[] {
   if (!Array.isArray(creatives)) return [];
@@ -1873,7 +1897,7 @@ function validateCreateAssignmentSemantics(
   session: SessionState,
   fieldPrefix: string,
   packageRequirements: CanonicalPackageFormat[] = [],
-  options: { declaresAssignmentSettings?: boolean } = {},
+  options: { storedAssignmentSettings?: boolean } = {},
 ): TaskError[] {
   const errors: TaskError[] = [];
   const effectiveModes = new Set(assignments.map(assignment => assignment.rotation_mode ?? 'weighted'));
@@ -1927,18 +1951,11 @@ function validateCreateAssignmentSemantics(
     const creative = typeof assignment.creative_id === 'string'
       ? session.creatives.get(assignment.creative_id)
       : undefined;
-    const settings = assignment as unknown as { trackers?: unknown; landing_page_url?: unknown };
-    if (options.declaresAssignmentSettings === false) {
-      for (const field of ['trackers', 'landing_page_url'] as const) {
-        if (settings[field] !== undefined) {
-          errors.push({
-            code: 'UNSUPPORTED_FEATURE',
-            message: `${fieldPrefix}[${index}].${field} requires creative.supports_assignment_${field === 'trackers' ? 'trackers' : 'landing_page'}`,
-            field: `${fieldPrefix}[${index}].${field}`,
-          });
-        }
-      }
-    } else if (Array.isArray(settings.trackers) && settings.trackers.length > 0) {
+    // Assignment trackers and landing pages are set only through sync_creatives
+    // assignment_operations (adcp#8501). Request rows never carry them (see
+    // requestAssignmentRow); rows stored through assign keep their tracker-slot check.
+    const settings = assignment as unknown as { trackers?: unknown };
+    if (options.storedAssignmentSettings && Array.isArray(settings.trackers) && settings.trackers.length > 0) {
       const slotProblem = assignmentTrackerSlotProblem(
         { formatsToProvide: packageRequirements },
         creative?.manifest,
@@ -2041,32 +2058,30 @@ function packageNeedsCreative(pkg: PackageState, session: SessionState, tracksCo
   return pkg.creativeAssignments.length === 0;
 }
 
-function packageReadinessFields(pkg: PackageState, session: SessionState): Record<string, unknown> {
+function packageReadinessFields(pkg: PackageState, session: SessionState, ctx: TrainingContext): Record<string, unknown> {
   if (!pkg.formatsToProvide?.length) return {};
+  const snapshot = 'core/package-format-snapshot.json';
   return {
-    formats_to_provide: pkg.formatsToProvide,
-    formats_pending: formatsPendingForPackage(pkg, session),
+    formats_to_provide: formatDeclarationsForServedRelease(pkg.formatsToProvide, snapshot, ctx.servedAdcpVersion),
+    formats_pending: formatDeclarationsForServedRelease(formatsPendingForPackage(pkg, session), snapshot, ctx.servedAdcpVersion),
   };
 }
 
 /** The reference seller serves approved assignments independently and does not
  * implement an initial all-creatives gate. Never acknowledge a requested hold
- * that delivery simulation would ignore. */
+ * that delivery simulation would ignore. The gate is set only through
+ * control_media_buy; create_media_buy and update_media_buy do not define it in
+ * 3.3 (adcp#8501), so they ignore it like any unknown field. */
 function unsupportedCreativeStartPolicyError(request: unknown): TaskError | undefined {
-  if (!isRecord(request)) return undefined;
-  for (const field of ['packages', 'new_packages'] as const) {
-    const packages = request[field];
-    if (!Array.isArray(packages)) continue;
-    const index = packages.findIndex(pkg => isRecord(pkg) && pkg.start_requires_all_creatives_approved === true);
-    if (index < 0) continue;
-    return {
-      code: 'UNSUPPORTED_FEATURE',
-      message: 'This seller does not support holding package startup until every assigned creative is approved.',
-      field: `${field}[${index}].start_requires_all_creatives_approved`,
-      recovery: 'correctable',
-    };
-  }
-  return undefined;
+  if (!isRecord(request) || !Array.isArray(request.packages)) return undefined;
+  const index = request.packages.findIndex(pkg => isRecord(pkg) && pkg.start_requires_all_creatives_approved === true);
+  if (index < 0) return undefined;
+  return {
+    code: 'UNSUPPORTED_FEATURE',
+    message: 'This seller does not support holding package startup until every assigned creative is approved.',
+    field: `packages[${index}].start_requires_all_creatives_approved`,
+    recovery: 'correctable',
+  };
 }
 
 function creativeStartPolicyForWire(ctx: TrainingContext): Record<string, boolean> {
@@ -2590,7 +2605,9 @@ const QUARTILE_LEAF_FIELDS = {
   quartile_100: 'q4_views',
 } as const;
 
-function reportingMetricIsAvailable(metricId: string, available: ReadonlySet<string>): boolean {
+/** Whether a declared metric set satisfies `metricId` under the container
+ * rule: `viewability` covers its numeric leaves, `quartile_data` its quartiles. */
+export function reportingMetricIsAvailable(metricId: string, available: ReadonlySet<string>): boolean {
   if (available.has(metricId)) return true;
   if (VIEWABILITY_NUMERIC_FIELDS.includes(metricId as typeof VIEWABILITY_NUMERIC_FIELDS[number])) {
     return available.has('viewability');
@@ -2827,12 +2844,36 @@ function applyPricingCurrenciesFilterToProducts(products: Product[], currencies:
     .filter((product): product is Product => product !== null);
 }
 
+const FORMAT_ID_PARAMETERS = ['width', 'height', 'duration_ms', 'pixel_ratio'] as const;
+
+// A parameterized format ID names one variant of a template. A declaration
+// that carries a different value for a requested parameter is a different
+// variant; a declaration without that parameter is the template, which
+// accepts it (specs/legacy-compact-lifecycle-compatibility.md, `filters.format_ids`).
+// `pixel_ratio` is the exception: a sized format ID that omits it is the 1x
+// variant, not a template (`core/format-id.json`).
+function formatIdParameter(formatId: FormatID, parameter: typeof FORMAT_ID_PARAMETERS[number]): unknown {
+  const value = (formatId as unknown as Record<string, unknown>)[parameter];
+  if (parameter === 'pixel_ratio' && value === undefined
+      && formatId.width !== undefined && formatId.height !== undefined) return 1;
+  return value;
+}
+
+function formatIdParametersMatch(actual: FormatID, wanted: FormatID): boolean {
+  return FORMAT_ID_PARAMETERS.every(parameter => {
+    const requested = formatIdParameter(wanted, parameter);
+    const declared = formatIdParameter(actual, parameter);
+    return requested === undefined || declared === undefined || declared === requested;
+  });
+}
+
 function productMatchesAnyFormatId(product: Product, requestedFormatIds: FormatID[]): boolean {
   if (!Array.isArray(product.format_ids) || product.format_ids.length === 0) return false;
   return product.format_ids.some(actual => {
     if (!actual?.id) return false;
     return requestedFormatIds.some(wanted => {
       if (!wanted?.id || actual.id !== wanted.id) return false;
+      if (!formatIdParametersMatch(actual, wanted)) return false;
       if (!wanted.agent_url || !actual.agent_url) return true;
       return canonicalizeAgentUrl(actual.agent_url) === canonicalizeAgentUrl(wanted.agent_url);
     });
@@ -3155,13 +3196,37 @@ function productForThreeZeroStoryboardCompat(product: Product): Product {
   return rest as Product;
 }
 
+/**
+ * Format declarations without the params a later release adds, such as the
+ * 3.3 `card_image_sizes` on `image_carousel`, for a buyer pinned to an earlier
+ * release (DR-0024). Each entry is graded against `schemaFile`.
+ */
+function formatDeclarationsForServedRelease<T>(
+  declarations: readonly T[],
+  schemaFile: string,
+  servedAdcpVersion: string | undefined,
+): T[] {
+  if (servedAdcpVersion === undefined) return declarations as T[];
+  return declarations.map(declaration => omitFieldsAddedAfterRelease(declaration, schemaFile, servedAdcpVersion));
+}
+
+function productFormatOptionsForServedRelease(product: Product, servedAdcpVersion: string | undefined): Product {
+  const declared = product.format_options;
+  if (!Array.isArray(declared)) return product;
+  const served = formatDeclarationsForServedRelease(declared, 'core/product-format-declaration.json', servedAdcpVersion);
+  return served.every((option, index) => option === declared[index])
+    ? product
+    : { ...product, format_options: served } as Product;
+}
+
 function productForServedAdcpVersion(product: Product, servedAdcpVersion: string | undefined): Product {
-  if (supportsGetProductsRejected(servedAdcpVersion)) return product;
+  const servedFormats = productFormatOptionsForServedRelease(product, servedAdcpVersion);
+  if (supportsGetProductsRejected(servedAdcpVersion)) return servedFormats;
   const {
     audience_activation: _audienceActivation,
     overlay_support: _overlaySupport,
     ...rest
-  } = product as Product & {
+  } = servedFormats as Product & {
     audience_activation?: unknown;
     overlay_support?: unknown;
   };
@@ -3219,8 +3284,10 @@ import {
   runWithSessionContext, flushDirtySessions, evictSessionFromRequestCache,
   getComplianceCreatives, getComplianceCreative,
   getComplianceMediaBuys, getComplianceMediaBuy,
+  getComplianceDeliverySimulation, getComplianceFixtureProductReporting,
   MAX_MEDIA_BUYS_PER_SESSION, MAX_CREATIVES_PER_SESSION, MAX_USAGE_RECORDS_PER_SESSION, SESSION_RETENTION_MS,
 } from './state.js';
+import { dimensionalDeliveryBreakdowns } from './delivery-breakdowns.js';
 import { getAgentUrl, getIdentityBaseUrl } from './config.js';
 import {
   GOVERNANCE_TOOLS,
@@ -3378,6 +3445,8 @@ export function acceptancePolicyDiscoveryCapability(
 export const MAX_PACKAGES_PER_BUY = 50;
 const MAX_CONFIGURED_PRODUCTS_PER_SESSION = 128;
 const MS_PER_HOUR = 60 * 60 * 1000;
+/** Offers in a request_proposals plan built from criteria rather than the registry. */
+const MAX_CRITERIA_PLAN_PRODUCTS = 3;
 
 interface VersionUnsupportedDetails {
   adcp_version?: string;
@@ -6090,8 +6159,9 @@ function requestedCreativeWireMode(
   return 'unknown';
 }
 
-function formatProjectionCatalogs(): ProjectionCatalogSnapshot[] {
+function formatProjectionCatalogs(extraDeclarations: readonly Record<string, unknown>[] = []): ProjectionCatalogSnapshot[] {
   const declarations = new Map<string, Record<string, unknown>>();
+  for (const declaration of extraDeclarations) declarations.set(JSON.stringify(declaration), declaration);
   for (const catalogProduct of getCatalog()) {
     for (const rawDeclaration of catalogProduct.product.format_options ?? []) {
       if (!isRecord(rawDeclaration)) continue;
@@ -6345,8 +6415,10 @@ type CreativeProjectionAdapters = {
   canonicalFormatLegacyResolver: ReturnType<typeof canonicalFormatLegacyResolverFromCatalogSnapshots>;
 };
 
-export function creativeProjectionAdapters(): CreativeProjectionAdapters {
-  const catalogs = formatProjectionCatalogs();
+/** `extraDeclarations` adds a tenant's own product format declarations (the
+ * inventory tenants') to the sales catalogue's. */
+export function creativeProjectionAdapters(extraDeclarations: readonly Record<string, unknown>[] = []): CreativeProjectionAdapters {
+  const catalogs = formatProjectionCatalogs(extraDeclarations);
   return {
     legacyFormatConverter: legacyFormatConverterFromCatalogSnapshots(catalogs),
     canonicalFormatLegacyResolver: canonicalFormatLegacyResolverFromCatalogSnapshots(
@@ -6990,14 +7062,25 @@ function applyAvailabilityHorizonForecasts(
     return products;
   }
   const { seededProductAvailability } = session.complyExtensions;
-  if (seededProductAvailability.size === 0) return products;
+  // A controller-seeded session describes the calendar under test. An
+  // ordinary session sells the demonstration catalog, which has no booked
+  // windows (create_media_buy never refuses a catalog flight), so the
+  // advertised capability answers with an open calendar instead of a
+  // forecast that says nothing about the horizon.
+  // No minimum duration either: create_media_buy books any future catalog
+  // flight, including one shorter than a day.
+  const openCatalogCalendar: SeededProductAvailability | undefined = seededProductAvailability.size === 0
+    && seededProductIds(session).size === 0
+    ? { min_bookable_days: 0, booked_windows: [] }
+    : undefined;
+  if (seededProductAvailability.size === 0 && !openCatalogCalendar) return products;
   const horizonRange = { start_time: horizon.start_time, end_time: horizon.end_time };
   const now = Date.now();
   const generatedAt = toUtcSecondsIso(now);
   const validUntil = toUtcSecondsIso(now + 5 * 60 * 1000);
   return products.map(product => {
     if (immutableConfiguredProductIds?.has(product.product_id)) return product;
-    const availability = seededProductAvailability.get(
+    const availability = openCatalogCalendar ?? seededProductAvailability.get(
       sourceProductIds?.get(product.product_id) ?? product.product_id,
     );
     if (!availability) return product;
@@ -7251,22 +7334,69 @@ function cacheScopeForWholesaleRequest(req: WholesaleFeedRequest): 'public' | 'a
     : 'public';
 }
 
-function stableMapDigest(map: Map<string, Record<string, unknown>>): string {
-  if (map.size === 0) return 'base';
-  const entries = [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
-  return createHash('sha256').update(JSON.stringify(entries)).digest('hex').slice(0, 16);
+function revisionDigest(value: unknown): string {
+  return createHash('sha256').update(canonicalJson(value)).digest('hex').slice(0, 16);
 }
 
-function productWholesaleFeedMeta(req: WholesaleFeedRequest, session: SessionState): WholesaleFeedMeta {
-  const seededProductsRevision = stableMapDigest(session.complyExtensions.seededProducts);
-  const seededPricingRevision = stableMapDigest(session.complyExtensions.seededPricingOptions);
+/**
+ * Digests of the whole served product feed: every built-in product as this
+ * context serves it, with the session's controller-seeded products and prices
+ * overlaid, before any filter, targeting configuration or pagination. Those
+ * per-request inputs are already part of the version's scope tuple, so one
+ * whole-feed digest is a valid version for every selection, and a change to
+ * any product moves it for all of them. Prices (product and nested signal
+ * targeting `pricing_options`) are digested separately, so a price-only
+ * change moves pricing_version alone (get-products-response.json#pricing_version).
+ * Forecasts are in neither: the version covers the durable offer definition,
+ * not forecast data (list_products.mdx, "Availability forecasts are a per-read
+ * overlay").
+ */
+function servedProductFeedRevisions(session: SessionState, ctx: TrainingContext): { feed: string; pricing: string } {
+  const productMap = new Map(getCatalog(ctx).map(entry => [entry.product.product_id, { ...entry.product }]));
+  overlaySeededProducts(session, productMap);
+  const structure: Array<[string, unknown]> = [];
+  const pricing: Array<[string, unknown]> = [];
+  for (const [productId, product] of [...productMap].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+    const {
+      pricing_options: pricingOptions,
+      signal_targeting_options: signalOptions,
+      forecast: _forecast,
+      ...rest
+    } = product as unknown as Record<string, unknown>;
+    const signals = Array.isArray(signalOptions) ? signalOptions : undefined;
+    structure.push([productId, {
+      ...rest,
+      ...(signals && {
+        signal_targeting_options: signals.map(option => {
+          if (!isRecord(option)) return option;
+          const { pricing_options: _pricing, ...optionRest } = option;
+          return optionRest;
+        }),
+      }),
+    }]);
+    pricing.push([productId, {
+      pricing_options: pricingOptions ?? null,
+      ...(signals && {
+        signal_targeting_options: signals.map(option => (isRecord(option) ? option.pricing_options ?? null : null)),
+      }),
+    }]);
+  }
+  return { feed: revisionDigest(structure), pricing: revisionDigest(pricing) };
+}
+
+function productWholesaleFeedMeta(
+  req: WholesaleFeedRequest,
+  session: SessionState,
+  ctx: TrainingContext,
+): WholesaleFeedMeta {
+  const revisions = servedProductFeedRevisions(session, ctx);
   const cacheScope = cacheScopeForWholesaleRequest(req);
   // Tokens are scope-keyed: the same feed state yields a distinct token per
   // cache_scope so a token minted under one scope never short-circuits a probe
   // the seller resolves to another. See media-buy/get-products-response.json#unchanged.
   return {
-    wholesale_feed_version: `${PRODUCT_WHOLESALE_FEED_VERSION}.${cacheScope}.${seededProductsRevision}`,
-    pricing_version: `${PRODUCT_WHOLESALE_PRICING_VERSION}.${cacheScope}.${seededPricingRevision}`,
+    wholesale_feed_version: `${PRODUCT_WHOLESALE_FEED_VERSION}.${cacheScope}.${revisions.feed}`,
+    pricing_version: `${PRODUCT_WHOLESALE_PRICING_VERSION}.${cacheScope}.${revisions.pricing}`,
     cache_scope: cacheScope,
   };
 }
@@ -7322,6 +7452,7 @@ export function supportedCanonicalFormatsCapability(): Array<Record<string, unkn
     format: {
       format_kind: formatKind,
       params: {
+        ...structuredClone(CANONICAL_CAPABILITY_PARAMS[capabilityId] ?? {}),
         slots: CANONICAL_FORMAT_SLOTS[formatKind].map(slot => ({ ...slot })),
       },
     },
@@ -7345,60 +7476,150 @@ export function creativePreviewCapability(
   };
 }
 
-function supportedCanonicalBuildCapability(formatId: string): { formatKind: string; slots: CanonicalSlot[] } | undefined {
+function supportedCanonicalBuildCapability(formatId: string): {
+  formatKind: string;
+  slots: CanonicalSlot[];
+  params: Record<string, unknown>;
+} | undefined {
   const capability = SUPPORTED_CANONICAL_BUILD_CAPABILITIES.find(item => item.capabilityId === formatId);
   if (!capability) return undefined;
   const { formatKind } = capability;
   const slots = CANONICAL_FORMAT_SLOTS[formatKind];
-  return slots ? { formatKind, slots } : undefined;
+  return slots ? { formatKind, slots, params: CANONICAL_CAPABILITY_PARAMS[capability.capabilityId] ?? {} } : undefined;
 }
 
-function nativeInFeedValidationError(creative: { format_id?: FormatID; format_kind?: string; assets?: Record<string, unknown> }): TaskError | null {
-  if (creative.format_kind !== 'native_in_feed' && creative.format_id?.id !== 'native_in_feed') return null;
-  const assets = creative.assets;
-  if (!assets || typeof assets !== 'object' || Array.isArray(assets)) return null;
+/** A format declaration a creative is held to: a product format option
+ * (resolved from format_option_ref or an assigned package) or this agent's own
+ * creative.supported_formats capability. */
+interface FormatOptionDeclaration {
+  params: Record<string, unknown>;
+  formatOptionId?: string;
+}
 
-  const title = assets.title as { content?: unknown } | undefined;
-  if (typeof title?.content === 'string' && title.content.length > 80) {
+/** One declared constraint a creative breaks. `field` is the path within the
+ * creative (`assets.title.content`, `assets.cards[2].cta`). */
+interface FormatOptionViolation {
+  code: 'VALIDATION_ERROR' | 'CREATIVE_VALUE_NOT_ALLOWED';
+  constraint: string;
+  field: string;
+  message: string;
+  expected: unknown;
+  predicted: unknown;
+}
+
+const NATIVE_IN_FEED_TEXT_LIMITS = [
+  ['title', 'title_max_chars'],
+  ['body_text', 'body_text_max_chars'],
+  ['cta', 'cta_max_chars'],
+] as const;
+
+function textAssetContent(asset: unknown): string | undefined {
+  return isRecord(asset) && typeof asset.content === 'string' ? asset.content : undefined;
+}
+
+/** Pixel ratios the effective slot declares; absence means 1x only. */
+function declaredSlotPixelRatios(params: Record<string, unknown>, slotId: string): number[] {
+  const slot = Array.isArray(params.slots)
+    ? params.slots.find(entry => isRecord(entry) && entry.asset_group_id === slotId)
+    : undefined;
+  const ratios = isRecord(slot) && Array.isArray(slot.pixel_ratios)
+    ? slot.pixel_ratios.filter((ratio): ratio is number => typeof ratio === 'number' && ratio > 0)
+    : [];
+  return ratios.length > 0 ? ratios : [1];
+}
+
+function declaredSizes(value: unknown): Array<{ width: number; height: number }> {
+  if (value === undefined) return [];
+  const sizes = Array.isArray(value) ? value : [value];
+  return sizes.flatMap(size => (
+    isRecord(size) && typeof size.width === 'number' && typeof size.height === 'number'
+      ? [{ width: size.width, height: size.height }]
+      : []
+  ));
+}
+
+function imageSizeViolation(
+  assets: Record<string, unknown>,
+  params: Record<string, unknown>,
+  slotId: 'main_image' | 'icon',
+  constraint: 'main_image_sizes' | 'icon_size',
+): FormatOptionViolation | null {
+  const sizes = declaredSizes(params[constraint]);
+  // An absent narrowing parameter leaves the slot unconstrained.
+  if (sizes.length === 0) return null;
+  const ratios = declaredSlotPixelRatios(params, slotId);
+  for (const [index, image] of slotValues(assets, slotId).entries()) {
+    // Only dimensions the creative states can be compared; an image that
+    // omits width/height is not refused on size here.
+    if (!isRecord(image) || typeof image.width !== 'number' || typeof image.height !== 'number') continue;
+    const { width, height } = image;
+    const fits = sizes.some(size => ratios.some(ratio => (
+      width === size.width * ratio && height === size.height * ratio
+    )));
+    if (fits) continue;
+    const declared = sizes.map(size => `${size.width}x${size.height}`).join(', ');
+    const indexSuffix = Array.isArray(assets[slotId]) ? `[${index}]` : '';
     return {
       code: 'VALIDATION_ERROR',
-      message: 'native_in_feed title exceeds title_max_chars (80).',
-      field: 'creatives[0].assets.title.content',
-      recovery: 'correctable',
+      constraint,
+      field: `assets.${slotId}${indexSuffix}`,
+      message: `native_in_feed ${slotId} is ${width}x${height}; the format option declares ${constraint} ${declared}.`,
+      expected: sizes,
+      predicted: { width, height },
     };
   }
+  return null;
+}
 
-  const mainImage = assets.main_image as { width?: unknown; height?: unknown } | undefined;
-  if (
-    mainImage
-    && !(
-      (mainImage.width === 1200 && mainImage.height === 627)
-      || (mainImage.width === 1080 && mainImage.height === 1080)
-    )
-  ) {
-    return {
-      code: 'VALIDATION_ERROR',
-      message: 'native_in_feed main_image size must be one of 1200x627 or 1080x1080.',
-      field: 'creatives[0].assets.main_image',
-      recovery: 'correctable',
-      details: { allowed_sizes: [{ width: 1200, height: 627 }, { width: 1080, height: 1080 }] },
-    };
-  }
-
-  const cta = assets.cta as { content?: unknown } | undefined;
-  if (typeof cta?.content === 'string') {
-    const allowed = ['LEARN_MORE', 'SHOP_NOW', 'SIGN_UP', 'DOWNLOAD', 'APPLY_NOW'];
-    if (!allowed.includes(cta.content)) {
+/**
+ * Check native_in_feed assets against exactly the parameters a declaration
+ * states. A parameter the declaration omits (no `cta_values`, no
+ * `*_max_chars`, no `icon_size`) does not narrow its slot, and optional slots
+ * (`icon`, `cta`, `body_text`) may be absent. Returns the first violation.
+ */
+function nativeInFeedParamViolation(
+  assets: Record<string, unknown>,
+  params: Record<string, unknown>,
+): FormatOptionViolation | null {
+  for (const [slotId, constraint] of NATIVE_IN_FEED_TEXT_LIMITS) {
+    const limit = params[constraint];
+    if (typeof limit !== 'number') continue;
+    const content = textAssetContent(assets[slotId]);
+    if (content !== undefined && content.length > limit) {
       return {
-        code: 'CREATIVE_VALUE_NOT_ALLOWED',
-        message: `native_in_feed cta value "${cta.content}" is not allowed.`,
-        field: 'creatives[0].assets.cta.content',
-        recovery: 'correctable',
-        details: { allowed_values: allowed },
+        code: 'VALIDATION_ERROR',
+        constraint,
+        field: `assets.${slotId}.content`,
+        message: `native_in_feed ${slotId} is ${content.length} characters; the format option declares ${constraint} ${limit}.`,
+        expected: limit,
+        predicted: content.length,
       };
     }
   }
 
+  const sizeViolation = imageSizeViolation(assets, params, 'main_image', 'main_image_sizes')
+    ?? imageSizeViolation(assets, params, 'icon', 'icon_size');
+  if (sizeViolation) return sizeViolation;
+
+  if (Array.isArray(params.cta_values) && params.cta_values.length > 0) {
+    const allowed = params.cta_values.filter((value): value is string => typeof value === 'string');
+    const cta = textAssetContent(assets.cta);
+    if (cta !== undefined && !allowed.includes(cta)) {
+      return {
+        code: 'CREATIVE_VALUE_NOT_ALLOWED',
+        constraint: 'cta_values',
+        field: 'assets.cta.content',
+        message: `native_in_feed cta value "${cta}" is not in the format option's declared cta_values.`,
+        expected: allowed,
+        predicted: cta,
+      };
+    }
+  }
+
+  return null;
+}
+
+function nativeInFeedTrackerError(assets: Record<string, unknown>, fieldPrefix: string): TaskError | null {
   for (const [assetName, asset] of Object.entries(assets)) {
     const record = asset as { asset_type?: unknown; event?: unknown; custom_event_name?: unknown };
     if (
@@ -7409,13 +7630,234 @@ function nativeInFeedValidationError(creative: { format_id?: FormatID; format_ki
       return {
         code: 'VALIDATION_ERROR',
         message: 'native_in_feed pixel_tracker event=custom requires custom_event_name.',
-        field: `creatives[0].assets.${assetName}.custom_event_name`,
+        field: `${fieldPrefix}.assets.${assetName}.custom_event_name`,
         recovery: 'correctable',
       };
     }
   }
-
   return null;
+}
+
+/** A format declaration that takes a buyer-supplied asset bundle. Options
+ * with buyer_asset_acceptance: rejected (creator briefs) are produced by the
+ * seller, so they are never an alternative a synced bundle satisfies. */
+function isBuyerAssetDeclaration(value: unknown, formatKind: string): value is Record<string, unknown> {
+  return isRecord(value)
+    && value.format_kind === formatKind
+    && !(isRecord(value.params) && value.params.buyer_asset_acceptance === 'rejected');
+}
+
+function toFormatOptionDeclaration(declaration: Record<string, unknown>): FormatOptionDeclaration {
+  return {
+    params: isRecord(declaration.params) ? declaration.params : {},
+    ...(typeof declaration.format_option_id === 'string' && { formatOptionId: declaration.format_option_id }),
+  };
+}
+
+function productDeclarationsOfKind(product: Product | undefined, formatKind: string): Record<string, unknown>[] {
+  const options = (product as unknown as { format_options?: unknown[] } | undefined)?.format_options;
+  return Array.isArray(options) ? options.filter(option => isBuyerAssetDeclaration(option, formatKind)) : [];
+}
+
+/**
+ * The `formatKind` declarations a synced creative is held to, as groups of
+ * alternatives: the creative must satisfy at least one declaration in every
+ * group. Resolution order:
+ *  1. the option named by the creative's `format_option_ref`;
+ *  2. otherwise the options of that kind on each package the creative is, or
+ *     is being, assigned to (one group per package);
+ *  3. otherwise this agent's own creative capability for that kind, which
+ *     get_adcp_capabilities publishes in creative.supported_formats (no
+ *     constraints when the agent declares none).
+ */
+function formatOptionDeclarationGroups(
+  formatKind: string,
+  creative: { format_option_ref?: unknown; manifest?: { format_option_ref?: unknown } },
+  creativeId: string,
+  products: Map<string, Product>,
+  session: SessionState,
+  assignments: readonly CreativeAssignmentInput[],
+): FormatOptionDeclaration[][] {
+  const manifestRef = creative.manifest?.format_option_ref;
+  const ref = isRecord(creative.format_option_ref)
+    ? creative.format_option_ref
+    : (isRecord(manifestRef) ? manifestRef : undefined);
+  if (ref && typeof ref.format_option_id === 'string') {
+    const matches = [...products.values()]
+      .flatMap(product => productDeclarationsOfKind(product, formatKind))
+      .filter(declaration => {
+        if (declaration.format_option_id !== ref.format_option_id) return false;
+        const declarationDomain = typeof declaration.publisher_domain === 'string' ? declaration.publisher_domain : undefined;
+        if (ref.scope === 'publisher') return declarationDomain !== undefined && declarationDomain === ref.publisher_domain;
+        if (ref.scope === 'product') return declarationDomain === undefined;
+        return declarationDomain === ref.publisher_domain;
+      });
+    if (matches.length > 0) return [matches.map(toFormatOptionDeclaration)];
+  }
+
+  const assignedPackages = new Map<string, PackageState>();
+  for (const assignment of assignments) {
+    if (assignment.creative_id !== creativeId) continue;
+    const pkg = session.mediaBuys.get(assignment.media_buy_id)?.packages
+      .find(candidate => candidate.packageId === assignment.package_id);
+    if (pkg) assignedPackages.set(`${assignment.media_buy_id}:${pkg.packageId}`, pkg);
+  }
+  for (const [mediaBuyId, mediaBuy] of session.mediaBuys) {
+    for (const pkg of mediaBuy.packages) {
+      if (pkg.creativeAssignments.includes(creativeId)) assignedPackages.set(`${mediaBuyId}:${pkg.packageId}`, pkg);
+    }
+  }
+  const packageGroups: FormatOptionDeclaration[][] = [];
+  for (const pkg of assignedPackages.values()) {
+    // Prefer the package-time snapshot of the product's declarations.
+    let declarations = Array.isArray(pkg.formatsToProvide) && pkg.formatsToProvide.length > 0
+      ? pkg.formatsToProvide.filter(declaration => isBuyerAssetDeclaration(declaration, formatKind))
+      : productDeclarationsOfKind(products.get(pkg.productId), formatKind);
+    const selectedOptionIds = new Set((pkg.formatOptionRefs ?? []).flatMap(selected => (
+      isRecord(selected) && typeof selected.format_option_id === 'string' ? [selected.format_option_id] : []
+    )));
+    if (selectedOptionIds.size > 0) {
+      const selected = declarations.filter(declaration => (
+        typeof declaration.format_option_id === 'string' && selectedOptionIds.has(declaration.format_option_id)
+      ));
+      if (selected.length > 0) declarations = selected;
+    }
+    if (declarations.length > 0) packageGroups.push(declarations.map(toFormatOptionDeclaration));
+  }
+  if (packageGroups.length > 0) return packageGroups;
+
+  return [[{ params: CANONICAL_CAPABILITY_PARAMS[formatKind] ?? {} }]];
+}
+
+/**
+ * The first group whose every declaration the assets break, as a
+ * correctable TaskError naming the constraint. A creative passes a group by
+ * satisfying any one declaration in it.
+ */
+function declaredFormatOptionError(
+  groups: FormatOptionDeclaration[][],
+  assets: Record<string, unknown>,
+  check: (assets: Record<string, unknown>, params: Record<string, unknown>) => FormatOptionViolation | null,
+  fieldPrefix: string,
+): TaskError | null {
+  for (const group of groups) {
+    let failure: { declaration: FormatOptionDeclaration; violation: FormatOptionViolation } | undefined;
+    for (const declaration of group) {
+      const violation = check(assets, declaration.params);
+      if (!violation) {
+        failure = undefined;
+        break;
+      }
+      failure ??= { declaration, violation };
+    }
+    if (!failure) continue;
+    const { declaration, violation } = failure;
+    return {
+      code: violation.code,
+      message: violation.message,
+      field: `${fieldPrefix}.${violation.field}`,
+      recovery: 'correctable',
+      details: {
+        constraint: violation.constraint,
+        declared: violation.expected,
+        ...(violation.code === 'CREATIVE_VALUE_NOT_ALLOWED' && { allowed_values: violation.expected }),
+        ...(violation.constraint === 'main_image_sizes' && { allowed_sizes: violation.expected }),
+        ...(declaration.formatOptionId && { format_option_id: declaration.formatOptionId }),
+      },
+    };
+  }
+  return null;
+}
+
+/**
+ * Refuse a native_in_feed creative only for breaking a constraint its
+ * governing declaration states (see formatOptionDeclarationGroups). Accepted
+ * values come from the declaration, never from a fixed profile, so a creative
+ * built to a declared option is accepted.
+ */
+function nativeInFeedValidationError(
+  creative: {
+    format_id?: FormatID;
+    format_kind?: string;
+    format_option_ref?: unknown;
+    assets?: Record<string, unknown>;
+    manifest?: { format_option_ref?: unknown; assets?: Record<string, unknown> };
+  },
+  creativeId: string,
+  fieldPrefix: string,
+  products: Map<string, Product>,
+  session: SessionState,
+  assignments: readonly CreativeAssignmentInput[],
+): TaskError | null {
+  if (creative.format_kind !== 'native_in_feed' && creative.format_id?.id !== 'native_in_feed') return null;
+  const assets = isRecord(creative.assets) ? creative.assets : creative.manifest?.assets;
+  if (!isRecord(assets)) return null;
+
+  const trackerError = nativeInFeedTrackerError(assets, fieldPrefix);
+  if (trackerError) return trackerError;
+
+  return declaredFormatOptionError(
+    formatOptionDeclarationGroups('native_in_feed', creative, creativeId, products, session, assignments),
+    assets,
+    nativeInFeedParamViolation,
+    fieldPrefix,
+  );
+}
+
+/**
+ * Check image_carousel cards against the parameters a declaration states.
+ * `cta_values` (3.3) closes each card's `cta` to the listed values; a card
+ * without a `cta` is not refused, and a declaration without `cta_values`
+ * leaves `cta` free text. Returns the first offending card.
+ */
+function imageCarouselParamViolation(
+  assets: Record<string, unknown>,
+  params: Record<string, unknown>,
+): FormatOptionViolation | null {
+  if (!Array.isArray(params.cta_values) || params.cta_values.length === 0) return null;
+  const allowed = params.cta_values.filter((value): value is string => typeof value === 'string');
+  const cards = Array.isArray(assets.cards) ? assets.cards : [];
+  for (const [index, card] of cards.entries()) {
+    if (!isRecord(card) || typeof card.cta !== 'string' || allowed.includes(card.cta)) continue;
+    return {
+      code: 'CREATIVE_VALUE_NOT_ALLOWED',
+      constraint: 'cta_values',
+      field: `assets.cards[${index}].cta`,
+      message: `image_carousel cards[${index}].cta value "${card.cta}" is not in the format option's declared cta_values.`,
+      expected: allowed,
+      predicted: card.cta,
+    };
+  }
+  return null;
+}
+
+/**
+ * Refuse an image_carousel creative only for breaking a constraint its
+ * governing declaration states (see formatOptionDeclarationGroups).
+ */
+function imageCarouselValidationError(
+  creative: {
+    format_id?: FormatID;
+    format_kind?: string;
+    format_option_ref?: unknown;
+    assets?: Record<string, unknown>;
+    manifest?: { format_option_ref?: unknown; assets?: Record<string, unknown> };
+  },
+  creativeId: string,
+  fieldPrefix: string,
+  products: Map<string, Product>,
+  session: SessionState,
+  assignments: readonly CreativeAssignmentInput[],
+): TaskError | null {
+  if (creative.format_kind !== 'image_carousel' && creative.format_id?.id !== 'image_carousel') return null;
+  const assets = isRecord(creative.assets) ? creative.assets : creative.manifest?.assets;
+  if (!isRecord(assets)) return null;
+  return declaredFormatOptionError(
+    formatOptionDeclarationGroups('image_carousel', creative, creativeId, products, session, assignments),
+    assets,
+    imageCarouselParamViolation,
+    fieldPrefix,
+  );
 }
 
 function signalMatchesRef(
@@ -7550,6 +7992,8 @@ export function normalizeProductDiscoveryArgs(
         : {}),
       ...(ifFeedVersion !== undefined && { if_wholesale_feed_version: ifFeedVersion }),
       buying_mode: 'wholesale',
+      // Errors on expanded criteria report the compact path they arrived on.
+      __adcp_operation: toolName,
     };
   }
   if (toolName === 'request_proposals') {
@@ -7560,6 +8004,7 @@ export function normalizeProductDiscoveryArgs(
       buying_mode: 'brief',
       __compact_proposal_lifecycle: true,
       __require_proposals: true,
+      __adcp_operation: toolName,
     };
   }
   if (toolName === 'refine_proposals') {
@@ -8520,9 +8965,12 @@ function canonicalStringSet(value: unknown): string[] | undefined {
   return [...new Set(value)].sort();
 }
 
-/** Controller fixtures expose discrete inventory coverage separately from
- * overlay_support. The training seller can evaluate country and metro facts;
- * it refuses geography it cannot evaluate instead of ignoring a predicate. */
+/** Built-in products and controller fixtures expose discrete inventory
+ * coverage as `ext.training.coverage`, separately from overlay_support. The
+ * training seller can evaluate country and metro facts; it refuses geography
+ * it cannot evaluate instead of ignoring a predicate. A coverage filter
+ * returns products whose inventory covers a requested area, so a product
+ * that declares no facts for a requested field is left out. */
 function filterProductsByCoverage(
   products: Product[],
   filters: Record<string, unknown>,
@@ -8532,23 +8980,15 @@ function filterProductsByCoverage(
   if (requested.length === 0) return { products };
   const unsupported = requested.find(field => field !== 'countries' && field !== 'metros');
   if (unsupported) return { products: [], unsupported };
-  const coverageByProduct = new Map<Product, Record<string, unknown>>();
-  for (const product of products) {
-    const ext = (product as unknown as Record<string, unknown>).ext;
-    const training = isRecord(ext) && isRecord(ext.training) ? ext.training : undefined;
-    const coverage = training && isRecord(training.coverage) ? training.coverage : undefined;
-    for (const field of requested) {
-      if (!coverage || !Array.isArray(coverage[field])) return { products: [], unsupported: field };
-    }
-    coverageByProduct.set(product, coverage!);
-  }
   return {
     products: products.filter(product => {
-      const coverage = coverageByProduct.get(product)!;
+      const ext = (product as unknown as Record<string, unknown>).ext;
+      const training = isRecord(ext) && isRecord(ext.training) ? ext.training : undefined;
+      const coverage = training && isRecord(training.coverage) ? training.coverage : undefined;
       return requested.every(field => {
         const values = filters[field];
-        if (!Array.isArray(values)) return false;
-        const inventory = coverage[field] as unknown[];
+        const inventory = coverage?.[field];
+        if (!Array.isArray(values) || !Array.isArray(inventory)) return false;
         return values.some(value => inventory.some(area => field === 'countries'
           ? area === value
           : isRecord(area) && isRecord(value)
@@ -9334,6 +9774,37 @@ function applyDiscoveryTargeting(
   return { products: [...inherentlyMatched, ...configuredProducts], capacityDrops };
 }
 
+/** Name the discovery-targeting criterion that left no product: the first
+ * required_overlay_support or targeting_overlay field that none of the
+ * remaining offers supports, or the whole block when every field is supported
+ * somewhere but no single offer supports them all. Criteria-relative path. */
+function discoveryTargetingNarrowing(products: Product[], req: GetProductsRequest): string {
+  const request = req as unknown as Record<string, unknown>;
+  const supportOf = (product: Product): Record<string, unknown> => {
+    const support = (product as unknown as Record<string, unknown>).overlay_support;
+    return isRecord(support) ? support : {};
+  };
+  if (isRecord(request.required_overlay_support)) {
+    for (const [field, value] of Object.entries(request.required_overlay_support)) {
+      if (!products.some(product => overlaySupportContains(supportOf(product), { [field]: value }))) {
+        return `required_overlay_support.${field}`;
+      }
+    }
+  }
+  if (isRecord(request.targeting_overlay)) {
+    for (const [field, value] of Object.entries(request.targeting_overlay)) {
+      if (!products.some(product => concreteTargetingSupportedForProduct(supportOf(product), field, value))) {
+        return `targeting_overlay.${field}`;
+      }
+    }
+  }
+  if (isRecord(request.required_media_buy_support)) return 'required_media_buy_support';
+  if (isRecord(request.media_buy_frequency_cap)) return 'media_buy_frequency_cap';
+  return isRecord(request.required_overlay_support) && !isRecord(request.targeting_overlay)
+    ? 'required_overlay_support'
+    : 'targeting_overlay';
+}
+
 function bindConfiguredTargetingToProposal(proposal: Proposal, session: SessionState): Proposal {
   const internal = proposal as unknown as Record<string, unknown>;
   if (!isRecord(internal.__canonical_commercial_terms)) return proposal;
@@ -9829,15 +10300,35 @@ export function computeOutcomeTargetCostPlan(
   const planningCost = costPer.strength === 'cap' ? plannableCost : answeredAmount;
   const rangeFloor = budgetRange?.min ?? 0;
   const rangeCeiling = budgetRange?.max ?? Number.POSITIVE_INFINITY;
-  const budget = roundMoney(volume !== undefined
+  // Every purchase must clear its option's minimum spend, so the plan total
+  // is at least the largest minimum divided by that purchase's share,
+  // rounded up to a cent. Purchase budgets are unrounded, so the check uses
+  // buildCanonicalCommercialTerms' exact expression and steps up a cent
+  // while floating point leaves one a hair short.
+  const percentages = allocations.map(allocation => allocation.allocation_percentage ?? 0);
+  const minimumSpends = pricings.map(pricing => pricing!.min_spend_per_package ?? 0);
+  const clearsMinimums = (total: number) => percentages.every((percentage, index) => (
+    total * percentage / 100 >= minimumSpends[index]!
+  ));
+  let minimumSpendTotal = ceilToCents(Math.max(0, ...percentages.map((percentage, index) => (
+    percentage > 0 ? minimumSpends[index]! * 100 / percentage : 0
+  ))));
+  for (let step = 0; step < 100 && !clearsMinimums(minimumSpendTotal); step += 1) {
+    minimumSpendTotal = roundMoney(minimumSpendTotal + 0.01);
+  }
+  const targetBudget = volume !== undefined
     ? Math.min(Math.max(volume * planningCost, rangeFloor), rangeCeiling)
     : budgetRange
       ? budgetRange.max ?? budgetRange.min!
-      : OUTCOME_TARGET_DELIVERABLE_IMPRESSIONS * responseRate * planningCost);
+      : OUTCOME_TARGET_DELIVERABLE_IMPRESSIONS * responseRate * planningCost;
+  // A minimum spend above the buyer's ceiling leaves no executable plan; the
+  // caller drops a plan that buys less than one result.
+  const minimumSpendExceedsCeiling = minimumSpendTotal > rangeCeiling;
+  const budget = roundMoney(minimumSpendExceedsCeiling ? targetBudget : Math.max(targetBudget, minimumSpendTotal));
   const now = Date.now();
   return {
     totalBudgetGuidance: {
-      min: roundMoney(Math.min(budget, Math.max(rangeFloor, 0.8 * budget))),
+      min: roundMoney(Math.min(budget, Math.max(rangeFloor, 0.8 * budget, minimumSpendTotal))),
       recommended: budget,
       max: roundMoney(Math.max(budget, budgetRange?.max ?? 1.25 * budget)),
       currency: costPer.currency,
@@ -9867,7 +10358,7 @@ export function computeOutcomeTargetCostPlan(
     optimizationGoal: structuredClone(optimizationGoal),
     allocations,
     plannableCost,
-    plannedVolume: Math.floor(budget / planningCost),
+    plannedVolume: minimumSpendExceedsCeiling ? 0 : Math.floor(budget / planningCost),
   };
 }
 
@@ -10450,6 +10941,16 @@ function idempotencyPayloadForServedVersion(
   return toolName === 'get_products' ? args : { ...args, __adcp_operation: toolName };
 }
 
+/**
+ * The reasons a proposal decline may carry: the closed enum in
+ * enums/proposal-decline-reason.json, read from the source schema so both
+ * decline checks below accept exactly what the schema does.
+ */
+export const PROPOSAL_DECLINE_REASONS: ReadonlySet<string> = new Set(
+  (loadSourceSchema('enums/proposal-decline-reason.json').enum as unknown[])
+    .filter((reason): reason is string => typeof reason === 'string'),
+);
+
 export function validateProductDiscoveryAliasInput(
   toolName: string,
   args: Record<string, unknown>,
@@ -10621,10 +11122,6 @@ export function validateProductDiscoveryAliasInput(
       return { message: 'declines exceeds the maximum batch size (25)', field: 'declines' };
     }
     const proposalIds = new Set<string>();
-    const reasons = new Set([
-      'price', 'inventory_fit', 'audience_fit', 'creative_unsupported', 'measurement_unsupported',
-      'policy', 'timing', 'budget_changed', 'selected_alternative', 'other',
-    ]);
     for (let index = 0; index < args.declines.length; index += 1) {
       const entry = args.declines[index];
       if (!isRecord(entry)) {
@@ -10637,7 +11134,7 @@ export function validateProductDiscoveryAliasInput(
         return { message: 'proposal_id values in declines must be unique', field: `declines[${index}].proposal_id` };
       }
       proposalIds.add(entry.proposal_id);
-      if (typeof entry.reason !== 'string' || !reasons.has(entry.reason)) {
+      if (typeof entry.reason !== 'string' || !PROPOSAL_DECLINE_REASONS.has(entry.reason)) {
         return { message: 'a supported reason is required for every decline', field: `declines[${index}].reason` };
       }
       if (entry.reason === 'other' && !(typeof entry.detail === 'string' && entry.detail.length > 0)) {
@@ -11537,7 +12034,7 @@ async function handleGetProductsUnlocked(
       .map(proposal => [proposal.proposal_id, proposal]),
   );
   const wholesaleMeta = buyingMode === 'wholesale'
-    ? productWholesaleFeedMeta(req as WholesaleFeedRequest, session)
+    ? productWholesaleFeedMeta(req as WholesaleFeedRequest, session, ctx)
     : undefined;
   const contextEcho = req.context ? { context: req.context } : {};
 
@@ -11615,8 +12112,15 @@ async function handleGetProductsUnlocked(
     ? new Set(((req as unknown as Record<string, unknown>).product_ids as unknown[])
         .filter((id): id is string => typeof id === 'string'))
     : undefined;
+  // The first criterion that leaves no product, so a request_proposals
+  // rejection can name the constraint to broaden (criteria-relative path).
+  let emptiedByCriterion: string | undefined;
+  const noteNarrowing = (criterion: string) => {
+    if (emptiedByCriterion === undefined && products.length === 0) emptiedByCriterion = criterion;
+  };
   if (requestedProductIds) {
     products = products.filter(product => requestedProductIds.has(product.product_id));
+    noteNarrowing('product_ids');
   }
 
   // Apply filters
@@ -11628,9 +12132,12 @@ async function handleGetProductsUnlocked(
         products = products.filter(p => seededIds.has(p.product_id));
       }
       products = applyPricingCurrenciesFilterToProducts(products, pricingCurrencies);
+      noteNarrowing('offer_filters.pricing_currencies');
     }
     const coverageFilters = req.filters as Record<string, unknown>;
-    if (['countries', 'regions', 'metros', 'postal_areas', 'geo_proximity'].some(field => coverageFilters[field] !== undefined)) {
+    const coverageFields = ['countries', 'regions', 'metros', 'postal_areas', 'geo_proximity']
+      .filter(field => coverageFilters[field] !== undefined);
+    if (coverageFields.length > 0) {
       const seededIds = seededProductIds(session);
       if (seededIds.size > 0) products = products.filter(product => seededIds.has(product.product_id));
     }
@@ -11647,9 +12154,11 @@ async function handleGetProductsUnlocked(
       }] as TaskError[] };
     }
     products = coverage.products;
+    if (coverageFields.length > 0) noteNarrowing(coverageFields.map(field => `offer_filters.${field}`).join(' + '));
     const formatIdsFilter = req.filters.format_ids;
     if (formatIdsFilter?.length) {
       products = applyFormatIdsFilterToProducts(products, formatIdsFilter);
+      noteNarrowing('offer_filters.format_ids');
     }
     const canonicalFormatFilters = req.filters as unknown as {
       format_kinds?: string[];
@@ -11661,24 +12170,29 @@ async function handleGetProductsUnlocked(
         canonicalFormatFilters.format_kinds ?? [],
         canonicalFormatFilters.format_option_refs ?? [],
       );
+      noteNarrowing(canonicalFormatFilters.format_kinds?.length ? 'offer_filters.format_kinds' : 'offer_filters.format_option_refs');
     }
     const channelFilter = req.filters.channels;
     if (channelFilter?.length) {
       products = products.filter(p =>
         p.channels?.some(c => (channelFilter as string[]).includes(c)),
       );
+      noteNarrowing('offer_filters.channels');
     }
     const deliveryTypeFilter = req.filters.delivery_type;
     if (deliveryTypeFilter) {
       products = products.filter(p => p.delivery_type === deliveryTypeFilter);
+      noteNarrowing('offer_filters.delivery_type');
     }
     const fixedPriceFilter = req.filters.is_fixed_price;
     if (typeof fixedPriceFilter === 'boolean') {
       products = applyFixedPriceFilterToProducts(products, fixedPriceFilter);
+      noteNarrowing('offer_filters.is_fixed_price');
     }
     const pricingStructures = (req.filters as { pricing_structures?: PricingStructure[] }).pricing_structures;
     if (pricingStructures?.length) {
       products = applyPricingStructuresFilterToProducts(products, pricingStructures);
+      noteNarrowing('offer_filters.pricing_structures');
     }
     // Filter-not-fail per product-filters.json required_metrics: superset
     // evaluation under the container-subsumption rule (a product declaring
@@ -11691,6 +12205,7 @@ async function handleGetProductsUnlocked(
         );
         return requiredMetrics.every(metricId => reportingMetricIsAvailable(metricId, declared));
       });
+      noteNarrowing('offer_filters.required_metrics');
     }
     const requiredVendorMetrics = (req.filters as { required_vendor_metrics?: Array<{ vendor?: { domain?: string }; metric_id?: string }> }).required_vendor_metrics;
     if (requiredVendorMetrics?.length) {
@@ -11704,6 +12219,7 @@ async function handleGetProductsUnlocked(
           ),
         );
       });
+      noteNarrowing('offer_filters.required_vendor_metrics');
     }
     const audienceActivationMethods = (req.filters as { audience_activation_methods?: unknown[] }).audience_activation_methods;
     const implementsAudienceActivation = (ctx.tenantId === 'sales' || ctx.tenantId == null)
@@ -11712,8 +12228,10 @@ async function handleGetProductsUnlocked(
       products = products.filter(product => (
         productMatchesAudienceActivation(product, audienceActivationMethods)
       ));
+      noteNarrowing('offer_filters.audience_activation_methods');
     }
   }
+  const productsBeforeTargeting = products;
   const discoverySourceProductIds = new Map<string, string>();
   const reusedConfiguredProductIds = new Set<string>();
   const explicitTargeting = isRecord((req as unknown as Record<string, unknown>).targeting_overlay)
@@ -11747,6 +12265,9 @@ async function handleGetProductsUnlocked(
     };
   }
   products = discoveryTargeting.products;
+  if (emptiedByCriterion === undefined && products.length === 0 && productsBeforeTargeting.length > 0) {
+    emptiedByCriterion = discoveryTargetingNarrowing(productsBeforeTargeting, req);
+  }
   registryProducts = [...new Map(
     [...registryProducts, ...products].map(product => [product.product_id, product]),
   ).values()];
@@ -11821,7 +12342,7 @@ async function handleGetProductsUnlocked(
   // is intentionally not part of the deprecated get_products wire schema.
   type RefineEntry =
     | { scope: 'request'; ask?: string }
-    | { scope: 'product'; product_id: string; action?: 'include' | 'omit' | 'more_like_this'; ask?: string; package?: Record<string, unknown> }
+    | { scope: 'product'; product_id: string; action?: 'include' | 'omit' | 'more_like_this'; ask?: string }
     | {
         scope: 'proposal';
         proposal_id: string;
@@ -11853,7 +12374,6 @@ async function handleGetProductsUnlocked(
       : [],
   );
   const refinementApplied: RefinementAppliedEntry[] = [];
-  const unsupportedPackageForecastIds = new Set<string>();
   const proposalOmitIds = new Set<string>();
   const refinedProposalOverrides = new Map<string, Proposal>();
   const explicitlySelectedProposals = new Map<string, Proposal>();
@@ -12040,16 +12560,6 @@ async function handleGetProductsUnlocked(
           refinementApplied.push({ scope: 'product', product_id: op.product_id, status: 'applied' });
         } else if (action === 'include') {
           includeIds.add(op.product_id);
-          if (op.package !== undefined) {
-            unsupportedPackageForecastIds.add(op.product_id);
-            refinementApplied.push({
-              scope: 'product',
-              product_id: op.product_id,
-              status: 'unable',
-              notes: 'The training agent cannot compute an availability forecast for an exact proposed package.',
-            });
-            continue;
-          }
           if (!passesFilters) {
             refinementApplied.push({
               scope: 'product',
@@ -12443,18 +12953,21 @@ async function handleGetProductsUnlocked(
   const requestedMediaBuyFrequencyCap = isRecord(request.media_buy_frequency_cap)
     ? request.media_buy_frequency_cap
     : undefined;
-  if (requestedMediaBuyFrequencyCap) {
-    proposals = proposals.map(proposal => (
-      proposalLifecycle(proposal).proposal_status === 'committed'
-        || compactFinalizeSourceIds.has(proposal.proposal_id)
-        ? proposal
-        : {
-            ...proposal,
-            frequency_cap: structuredClone(requestedMediaBuyFrequencyCap),
-            __media_buy_frequency_cap: structuredClone(requestedMediaBuyFrequencyCap),
-          } as unknown as Proposal
-    ));
-  }
+  const bindRequestedMediaBuyFrequencyCap = (candidates: Proposal[]): Proposal[] => (
+    requestedMediaBuyFrequencyCap
+      ? candidates.map(proposal => (
+          proposalLifecycle(proposal).proposal_status === 'committed'
+            || compactFinalizeSourceIds.has(proposal.proposal_id)
+            ? proposal
+            : {
+                ...proposal,
+                frequency_cap: structuredClone(requestedMediaBuyFrequencyCap),
+                __media_buy_frequency_cap: structuredClone(requestedMediaBuyFrequencyCap),
+              } as unknown as Proposal
+        ))
+      : candidates
+  );
+  proposals = bindRequestedMediaBuyFrequencyCap(proposals);
   const requireProposals = buyingMode === 'brief'
     && (req as unknown as Record<string, unknown>).__require_proposals === true;
   // criteria.outcome_target expands to a top-level field by
@@ -12613,6 +13126,82 @@ async function handleGetProductsUnlocked(
           })) as Proposal['allocations'],
         } as Proposal];
       }
+    } else if (
+      proposals.length === 0
+      && !exactProductIds?.size
+      && seededProductIds(session).size === 0
+      && products.length > 0
+    ) {
+      // Ordinary sessions draw proposals from the pre-authored registry, whose
+      // plans name catalog product IDs. Criteria that narrow the catalog
+      // (offer_filters such as channels or delivery_type) or reconfigure it
+      // (a concrete targeting_overlay turns each offer into a configured
+      // product) leave no registry plan fully covered. Plan the best-matching
+      // offers instead of rejecting a satisfiable request (adcp#9087).
+      // The plan must be executable as returned: an equal split of the total
+      // clears every selected option's min_spend_per_package, inside the
+      // buyer's offer_filters.budget_range when one is given in this currency.
+      // A cost target is answered in its own currency (the seller does not
+      // convert), so only offers priced in it are planned, on that option.
+      const planOption = (product: Product): PricingOptionView | undefined => (
+        outcomeTargetCostPer
+          ? pricingOptionInCurrency(product, outcomeTargetCostPer.currency)
+          : product.pricing_options[0] as PricingOptionView | undefined
+      );
+      const planCurrency = outcomeTargetCostPer?.currency
+        ?? products[0]!.pricing_options[0]?.currency
+        ?? 'USD';
+      const minSpendOf = (product: Product) => planOption(product)?.min_spend_per_package ?? 0;
+      const filtersRecord = isRecord(req.filters) ? req.filters as Record<string, unknown> : undefined;
+      const budgetRangeCurrency = isRecord(filtersRecord?.budget_range) ? filtersRecord.budget_range.currency : undefined;
+      const budgetCeiling = budgetRangeCurrency === undefined || budgetRangeCurrency === planCurrency
+        ? outcomeTargetBudgetRange(filtersRecord)?.max
+        : undefined;
+      const planMinimum = (planned: Product[]) => Math.max(
+        Math.min(1_000, budgetCeiling ?? 1_000),
+        Math.max(0, ...planned.map(minSpendOf)) * planned.length,
+      );
+      const pricedProducts = products.filter(product => {
+        const option = planOption(product);
+        return option !== undefined && (option.currency ?? 'USD') === planCurrency;
+      });
+      const plannedProducts = pricedProducts
+        .filter(product => budgetCeiling === undefined || minSpendOf(product) <= budgetCeiling)
+        .slice(0, MAX_CRITERIA_PLAN_PRODUCTS);
+      while (budgetCeiling !== undefined && plannedProducts.length > 1 && planMinimum(plannedProducts) > budgetCeiling) {
+        plannedProducts.pop();
+      }
+      if (plannedProducts.length === 0) {
+        emptiedByCriterion ??= pricedProducts.length === 0
+          ? 'outcome_target.cost_per.currency'
+          : 'offer_filters.budget_range';
+      } else {
+        const minimum = planMinimum(plannedProducts);
+        const recommended = Math.max(minimum, Math.min(10_000, budgetCeiling ?? Infinity));
+        const allocationPercentage = 100 / plannedProducts.length;
+        const sortedProductIds = plannedProducts.map(product => product.product_id).sort();
+        proposals = [{
+          proposal_id: `criteria_match_${createHash('sha256').update(sortedProductIds.join('\0')).digest('hex').slice(0, 16)}`,
+          name: plannedProducts.length === 1
+            ? `Proposal for ${plannedProducts[0]!.name}`
+            : 'Proposal for products matching the requested criteria',
+          description: 'Indicative plan across the offers that satisfy the requested product and campaign criteria.',
+          brief_alignment: typeof brief === 'string'
+            ? brief
+            : 'Matches the offers satisfying the requested campaign criteria.',
+          total_budget_guidance: {
+            min: minimum,
+            recommended,
+            currency: planCurrency,
+          },
+          allocations: plannedProducts.map(product => ({
+            product_id: product.product_id,
+            allocation_percentage: allocationPercentage,
+            rationale: 'Offer satisfying the requested campaign criteria.',
+            pricing_option_id: planOption(product)!.pricing_option_id,
+          })) as Proposal['allocations'],
+        } as Proposal];
+      }
     }
     if (exactProductIds) {
       proposals = proposals.filter(proposal => proposal.allocations.every(allocation => (
@@ -12659,6 +13248,9 @@ async function handleGetProductsUnlocked(
         }
       }
     }
+    // Plans synthesized above did not exist when the requested aggregate cap
+    // was bound, and the canonical commercial terms read it from there.
+    proposals = bindRequestedMediaBuyFrequencyCap(proposals);
     const key = typeof (req as unknown as Record<string, unknown>).idempotency_key === 'string'
       ? (req as unknown as Record<string, unknown>).idempotency_key as string
       : 'unkeyed';
@@ -12795,10 +13387,24 @@ async function handleGetProductsUnlocked(
       );
     }
     if (proposals.length === 0) {
+      // Name the constraint the buyer has to change; a bare rejection leaves
+      // a learner guessing which of several criteria the seller could not meet.
+      const unplannableOutcome = outcomeTargetCostPer !== undefined && proposalsBeforeCostPlan > 0;
       return {
         status: 'rejected',
-        reason: 'The seller could not construct a proposal satisfying the supplied product and campaign criteria.',
-        suggestions: ['Broaden the product selection or campaign constraints and retry with a new idempotency key.'],
+        reason: emptiedByCriterion
+          ? `The seller could not construct a proposal: no offer satisfies criteria.${emptiedByCriterion} together with the other supplied criteria.`
+          : unplannableOutcome
+            ? 'The seller could not construct a proposal: within the supplied budget, criteria.outcome_target.cost_per plans less than one result, or cannot meet each offer\'s minimum spend, on every matching offer.'
+            : 'The seller could not construct a proposal satisfying the supplied product and campaign criteria.',
+        suggestions: emptiedByCriterion
+          ? [
+              `Remove or broaden criteria.${emptiedByCriterion} and retry with a new idempotency key.`,
+              `Call list_products without criteria.${emptiedByCriterion} to see what each offer declares.`,
+            ]
+          : unplannableOutcome
+            ? ['Raise the budget or the cost_per target in criteria.outcome_target and retry with a new idempotency key.']
+            : ['Broaden the product selection or campaign constraints and retry with a new idempotency key.'],
       } as GetProductsRejectedResponse;
     }
   }
@@ -12917,20 +13523,10 @@ async function handleGetProductsUnlocked(
   }
 
   // Store context for refine
-  const responseProducts = products.map(product => {
-    const servedProduct = productForServedAdcpVersion(
-      isThreeZeroStoryboardCompat(ctx) ? productForThreeZeroStoryboardCompat(product) : product,
-      ctx.servedAdcpVersion,
-    );
-    // Suppress ordinary/horizon forecasts after every generic forecast path;
-    // none is evidence that the unsupported exact package was evaluated.
-    const sourceProductId = discoverySourceProductIds.get(product.product_id) ?? product.product_id;
-    if (!unsupportedPackageForecastIds.has(sourceProductId)
-      && !unsupportedPackageForecastIds.has(product.product_id)) return servedProduct;
-    const withoutForecast = { ...servedProduct };
-    delete withoutForecast.forecast;
-    return withoutForecast;
-  });
+  const responseProducts = products.map(product => productForServedAdcpVersion(
+    isThreeZeroStoryboardCompat(ctx) ? productForThreeZeroStoryboardCompat(product) : product,
+    ctx.servedAdcpVersion,
+  ));
   const retainedCommittedProposals = new Map(
     (session.lastGetProductsContext?.proposals ?? [])
       .filter(proposal => proposalLifecycle(proposal).proposal_status === 'committed')
@@ -14982,6 +15578,19 @@ function validateCapabilityTarget(
     };
   }
   const violations = validateManifestSlots(manifest, capability.slots);
+  // Hold the manifest to the same declared narrowing that sync_creatives
+  // enforces for this capability.
+  const nativeViolation = capability.formatKind === 'native_in_feed' && isRecord(manifest.assets)
+    ? nativeInFeedParamViolation(manifest.assets, capability.params)
+    : null;
+  if (nativeViolation) {
+    violations.push({
+      rule: nativeViolation.constraint,
+      field: `manifest.${nativeViolation.field}`,
+      expected: nativeViolation.expected,
+      predicted: nativeViolation.predicted,
+    });
+  }
   return violations.length > 0
     ? { target, result_kind: 'validated_fail', violations }
     : { target, result_kind: 'validated_pass' };
@@ -15116,6 +15725,35 @@ async function validateCreativeForProduct(
   const target: ValidateInputTarget = { kind: 'product', id: product.product_id };
   const result = await validateProductTarget(target, manifest, product);
   return result.result_kind === 'validated_fail' ? (result.violations ?? []) : [];
+}
+
+// A manifest without format_option_ref routes by format_kind alone only when
+// the target product declares one option of that kind. With two or more, the
+// seller must not pick one from the assets (canonical-formats.mdx, routing
+// rule). Counts the product's format_options, not the package's selection.
+// Legacy format_id manifests route through v1_format_ref.
+function missingFormatOptionRefViolation(
+  product: Product,
+  manifest: CreativeManifest,
+): ValidateInputViolation[] {
+  if (manifest.format_option_ref !== undefined || manifest.format_id !== undefined) return [];
+  if (typeof manifest.format_kind !== 'string') return [];
+  const sameKind = productCanonicalFormatOptions(product).filter(format => format.format_kind === manifest.format_kind);
+  if (sameKind.length < 2) return [];
+  return [{
+    rule: 'format_option_ref_required',
+    field: 'format_option_ref',
+    expected: sameKind.flatMap(format => typeof format.format_option_id === 'string' ? [format.format_option_id] : []),
+  }];
+}
+
+async function validateAssignedCreative(
+  product: Product,
+  manifest: CreativeManifest,
+): Promise<ValidateInputViolation[]> {
+  const routing = missingFormatOptionRefViolation(product, manifest);
+  if (routing.length > 0) return routing;
+  return validateCreativeForProduct(product, manifest);
 }
 
 function creativeValidationErrors(
@@ -15527,8 +16165,6 @@ export async function handleCreateMediaBuy(
 ) {
   const invalidCollectionSelector = invalidSelectedCollectionSelector(args, ['packages']);
   if (invalidCollectionSelector) return { errors: invalidCollectionSelector };
-  const creativeStartPolicyError = unsupportedCreativeStartPolicyError(args);
-  if (creativeStartPolicyError) return { errors: [creativeStartPolicyError] };
 
   const proposalId = (args as unknown as Record<string, unknown>).proposal_id;
   if (typeof proposalId !== 'string') return handleCreateMediaBuyUnlocked(args, ctx, options);
@@ -16190,20 +16826,12 @@ async function handleCreateMediaBuyUnlocked(
       || typeof internalProposal.__brand_id === 'string'
       || Array.isArray(internalProposal.__brand_countries)
       || typeof internalProposal.__account_id === 'string';
+    // The proposal-state codes below take precedence over
+    // PROPOSAL_TERMS_CHANGED, which is checked after expiry. A proposal
+    // already executed under a different digest falls through to it.
     const suppliedTermsDigest = (req as unknown as { proposal_terms_digest?: unknown }).proposal_terms_digest;
-    if (typeof suppliedTermsDigest === 'string') {
-      const expectedTermsDigest = outwardProposal(internalProposal, productMap).terms_digest;
-      if (suppliedTermsDigest !== expectedTermsDigest) {
-        return {
-          errors: [{
-            code: 'INVALID_REQUEST',
-            message: 'proposal_terms_digest does not match the committed proposal snapshot.',
-            field: 'proposal_terms_digest',
-            recovery: 'correctable',
-          }] as TaskError[],
-        };
-      }
-    }
+    const termsDigestMismatch = typeof suppliedTermsDigest === 'string'
+      && suppliedTermsDigest !== outwardProposal(internalProposal, productMap).terms_digest;
     if (internalProposal.__declined === true) {
       return {
         errors: [{
@@ -16214,7 +16842,7 @@ async function handleCreateMediaBuyUnlocked(
         }] as TaskError[],
       };
     }
-    if (compactProposal && internalProposal.__executed === true) {
+    if (compactProposal && internalProposal.__executed === true && !termsDigestMismatch) {
       return {
         errors: [{
           code: 'INVALID_STATE',
@@ -16254,6 +16882,17 @@ async function handleCreateMediaBuyUnlocked(
     if (proposal.expires_at && new Date(proposal.expires_at) < new Date()) {
       return {
         errors: [{ code: 'PROPOSAL_EXPIRED', message: `Proposal "${req.proposal_id}" expired at ${proposal.expires_at}. Request and finalize a fresh proposal before retrying.` }] as TaskError[],
+      };
+    }
+
+    if (termsDigestMismatch) {
+      return {
+        errors: [{
+          code: 'PROPOSAL_TERMS_CHANGED',
+          message: "proposal_terms_digest does not match the committed proposal's current terms_digest; nothing was accepted. Re-read the proposal and accept its current terms with the current terms_digest.",
+          field: 'proposal_terms_digest',
+          recovery: 'correctable',
+        }] as TaskError[],
       };
     }
 
@@ -16799,7 +17438,6 @@ async function handleCreateMediaBuyUnlocked(
         creativeValidationSession,
         `packages[${i}].creative_assignments`,
         formatSnapshot.formats ?? [],
-        { declaresAssignmentSettings: declaresAssignmentSettings(ctx) },
       ));
     }
 
@@ -16839,7 +17477,7 @@ async function handleCreateMediaBuyUnlocked(
       }
       const assignedManifest = session.creatives.get(creativeId)?.manifest;
       if (assignedManifest) {
-        const violations = await validateCreativeForProduct(product, assignedManifest);
+        const violations = await validateAssignedCreative(product, assignedManifest);
         errors.push(...creativeValidationErrors(violations, `packages[${i}].creative_assignments[${j}]`));
       }
       creativeAssignments.push(creativeId);
@@ -16854,7 +17492,7 @@ async function handleCreateMediaBuyUnlocked(
           : undefined;
         const manifest = normalizedCreativeManifest(creative, existingCreative, identity.identity);
         if (!manifest) continue;
-        const violations = await validateCreativeForProduct(product, manifest);
+        const violations = await validateAssignedCreative(product, manifest);
         errors.push(...creativeValidationErrors(violations, `packages[${i}].creatives[${creativeIndex}]`));
       }
     }
@@ -16889,7 +17527,7 @@ async function handleCreateMediaBuyUnlocked(
         formatsToProvide: formatSnapshot.formats,
       }),
       creativeAssignments,
-      creativeAssignmentDetails: requestedAssignmentRows.map(assignment => structuredClone(assignment)),
+      creativeAssignmentDetails: requestedAssignmentRows.map(assignment => requestAssignmentRow(assignment)),
       targeting: targetingResult.targeting,
       ...(targetingResolution && { targetingResolution }),
       ...(propertyListApplication && { propertyListApplication }),
@@ -17187,8 +17825,7 @@ async function handleCreateMediaBuyUnlocked(
       start_time: pkg.startTime,
       end_time: pkg.endTime,
       ...packageFormatSelectorForWire(pkg, ctx),
-      ...packageReadinessFields(pkg, session),
-      ...creativeStartPolicyForWire(ctx),
+      ...packageReadinessFields(pkg, session, ctx),
       ...(pkg.targeting && { targeting_overlay: targetingForWire(pkg.targeting) }),
       ...(pkg.targetingResolution && { targeting_resolution: pkg.targetingResolution }),
       ...(pkg.context && { context: pkg.context }),
@@ -17196,7 +17833,7 @@ async function handleCreateMediaBuyUnlocked(
         ext: packageExtWithPropertyApplication(pkg.ext, pkg.propertyListApplication),
       }),
       ...(pkg.committedMetrics && mediaBuy.confirmedAt !== null && { committed_metrics: pkg.committedMetrics }),
-      creative_assignments: pkg.creativeAssignmentDetails
+      creative_assignments: pkg.creativeAssignmentDetails?.map(row => requestAssignmentRow(row))
         ?? pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
     })),
     ...(isRecord(req.context) && { context: req.context }),
@@ -17391,7 +18028,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext): 
             start_time: pkg.startTime,
             end_time: pkg.endTime,
             ...packageFormatSelectorForWire(pkg, ctx),
-            ...packageReadinessFields(pkg, session),
+            ...packageReadinessFields(pkg, session, ctx),
             ...creativeStartPolicyForWire(ctx),
             creative_approvals: pkg.creativeAssignments.map(cid => ({
               creative_id: cid,
@@ -17663,10 +18300,18 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
     : 0;
 
   // Read simulated delivery upfront so vendor_metric_values can be spread into
-  // per-package entries inside the map below.
-  const simDeliveryEarly = req.start_date || req.end_date
+  // per-package entries inside the map below. A read-through compliance
+  // fixture may carry its own default delivery state (for example a broadcast
+  // buy whose audience is still maturing). Session buys never read it.
+  const complianceFixtureDelivery = session.mediaBuys.has(mb.mediaBuyId)
+    ? undefined
+    : getComplianceDeliverySimulation(
+      mb.mediaBuyId,
+      req.start_date || req.end_date ? { start: reportingStart, end: reportingEnd } : undefined,
+    );
+  const simDeliveryEarly = (req.start_date || req.end_date
     ? getDeliverySimulationForPeriod(session, mb.mediaBuyId, reportingStart, reportingEnd, reportingTimezone)
-    : getDeliverySimulation(session, mb.mediaBuyId);
+    : getDeliverySimulation(session, mb.mediaBuyId)) ?? complianceFixtureDelivery;
 
   // Build per-package metrics
   let totalImpressions = 0;
@@ -18034,10 +18679,25 @@ export async function handleGetMediaBuyDelivery(args: ToolArgs, ctx: TrainingCon
         ? injectedRowsBreakdown('by_installment_property', injectedRows?.installmentPropertyDelivery, installmentPropertyDimension)
         : {}),
     };
+    // Compliance fixture packages carry internal product labels that do not
+    // resolve against the catalog; their reporting facts live with the fixture.
+    const fixtureProductReporting = product ? undefined : getComplianceFixtureProductReporting(pkg.productId);
+    const productCoverage = isRecord((product as unknown as Record<string, unknown> | undefined)?.ext)
+      ? ((product as unknown as { ext: { training?: { coverage?: { countries?: string[] } } } }).ext.training?.coverage?.countries)
+      : undefined;
+    const geoDeviceKeywordBreakdown = dimensionalDeliveryBreakdowns({
+      reporting: (reporting as unknown as Record<string, unknown> | undefined) ?? fixtureProductReporting?.reportingCapabilities,
+      channels: channels ?? fixtureProductReporting?.channels,
+      coverageCountries: productCoverage ?? fixtureProductReporting?.coverageCountries,
+      targeting: pkg.targeting as unknown as Record<string, unknown> | undefined,
+      totals: { impressions, spend, clicks },
+      dimensions: req.reporting_dimensions,
+    });
     const packageMetricsWithBreakdown = {
       ...packageDeliveryMetrics,
       ...formatBreakdown,
       ...injectedPropertyBreakdown,
+      ...geoDeviceKeywordBreakdown,
     };
     return {
       package_id: pkg.packageId,
@@ -18336,6 +18996,24 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
       errors: [{ code: 'INVALID_REQUEST', message: 'At least one of creatives, assignments, or assignment_operations is required' }] as TaskError[],
     };
   }
+  // trackers and landing_page_url were withdrawn from the deprecated
+  // assignments[] row in 3.3 (adcp#8501); assignment_operations assign carries
+  // them. The row rejects them by name, and so does the agent, rather than
+  // silently dropping them.
+  const legacyAssignments = (req.assignments ?? []) as unknown as Array<Record<string, unknown>>;
+  for (let index = 0; index < legacyAssignments.length; index++) {
+    for (const field of ['trackers', 'landing_page_url'] as const) {
+      if (isRecord(legacyAssignments[index]) && legacyAssignments[index]![field] !== undefined) {
+        return {
+          errors: [{
+            code: 'INVALID_REQUEST',
+            message: `assignments[${index}].${field} is not defined on the deprecated assignments row; send it on an assignment_operations assign operation.`,
+            field: `assignments[${index}].${field}`,
+          }] as TaskError[],
+        };
+      }
+    }
+  }
   if (assignmentOperations?.length && (req as unknown as { validation_mode?: string }).validation_mode === 'lenient') {
     return {
       errors: [{ code: 'INVALID_REQUEST', message: 'assignment_operations are atomic and require validation_mode strict.', field: 'validation_mode' }] as TaskError[],
@@ -18405,7 +19083,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
 
   const results: SyncCreativeResult[] = [];
   const stagedCreativeManifests = new Map<string, CreativeManifest>();
-  for (const creative of req.creatives ?? []) {
+  for (const [creativeIndex, creative] of (req.creatives ?? []).entries()) {
     if (!creative.creative_id) {
       return {
         errors: [{
@@ -18474,8 +19152,28 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
       };
     }
 
-    const nativeError = nativeInFeedValidationError(creative as { format_id?: FormatID; format_kind?: string; assets?: Record<string, unknown> });
+    // native_in_feed constraints come from the declaration the creative
+    // targets (format_option_ref, assigned package, or this agent's own
+    // capability), never from a fixed profile.
+    const nativeError = nativeInFeedValidationError(
+      creativeShape,
+      creativeId,
+      `creatives[${creativeIndex}]`,
+      productValidationMap,
+      session,
+      (req.assignments ?? []) as unknown as CreativeAssignmentInput[],
+    );
     if (nativeError) return { errors: [nativeError] as TaskError[] };
+    // image_carousel per-card constraints (3.3 cta_values) resolve the same way.
+    const carouselError = imageCarouselValidationError(
+      creativeShape,
+      creativeId,
+      `creatives[${creativeIndex}]`,
+      productValidationMap,
+      session,
+      (req.assignments ?? []) as unknown as CreativeAssignmentInput[],
+    );
+    if (carouselError) return { errors: [carouselError] as TaskError[] };
 
     const existingCreative = session.creatives.get(creativeId)
       ?? getSharedAccountCreative(accountId, creativeId);
@@ -18620,15 +19318,18 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
         liveChangeKinds = classifyCreativeChange(servingContent(existingCreative), nextContent, formatChanged);
         const decision = decideLiveUpdate(liveChangeKinds);
         if (decision.outcome === 'refuse') {
+          const refusedChanges = decision.refusedChanges.map(kind => servedChangeKind(kind, ctx.servedAdcpVersion));
           results.push({
             creative_id: creativeId,
             action: 'failed',
             errors: [{
               code: 'CREATIVE_LIVE_UPDATE_UNSUPPORTED',
-              message: `Creative ${creativeId} is live and this seller does not apply ${decision.refusedChanges.join(', ')} changes in place. Sync the change as a new creative_id and replace it on the live packages.`,
+              // Naming replace is safe: a seller declaring live_updates lists it
+              // in creative.assignment_operations, as this one does.
+              message: `Creative ${creativeId} is live and this seller does not apply ${refusedChanges.join(', ')} changes in place. Sync the change as a new creative_id and replace it on the live packages.`,
               field: `creatives[${creativeId}]`,
               recovery: 'correctable',
-              details: { refused_changes: decision.refusedChanges, live_package_ids: livePackages },
+              details: { refused_changes: refusedChanges, live_package_ids: livePackages },
             }] as TaskError[],
           });
           stagedCreativeManifests.delete(creativeId);
@@ -18657,7 +19358,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
           if (!pkg.creativeAssignments.includes(creativeId)) continue;
           const product = productValidationMap.get(pkg.productId);
           if (!product) continue;
-          assignedViolations.push(...await validateCreativeForProduct(product, candidateManifest));
+          assignedViolations.push(...await validateAssignedCreative(product, candidateManifest));
         }
       }
       if (assignedViolations.length > 0) {
@@ -18784,7 +19485,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
       action: existing ? 'updated' : 'created',
       status: servedStatus,
       ...(localization && { localization }),
-      ...(stagedUpdate && { staged_update: stagedUpdateWire(stagedUpdate) }),
+      ...(stagedUpdate && { staged_update: stagedUpdateWire(stagedUpdate, ctx.servedAdcpVersion) }),
     });
   }
 
@@ -18820,7 +19521,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
       const candidateManifest = stagedCreativeManifests.get(creativeId)
         ?? session.creatives.get(creativeId)?.manifest;
       if (product && candidateManifest) {
-        const violations = await validateCreativeForProduct(product, candidateManifest);
+        const violations = await validateAssignedCreative(product, candidateManifest);
         if (violations.length > 0) {
           assignmentResults.push({
             creative_id: creativeId,
@@ -18845,6 +19546,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     const statusById = new Map(results.filter(result => result.status).map(result => [result.creative_id, result.status as string]));
     const settings = declaresAssignmentSettings(ctx);
     const plan = await planAssignmentOperations(session, assignmentOperations, {
+      acceptedOperations: acceptedAssignmentOperations(ctx),
       supportsTrackers: settings,
       supportsLandingPage: settings,
       requestCreativeIds: accepted,
@@ -18855,7 +19557,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
         const manifest = stagedCreativeManifests.get(creativeId)
           ?? (session.creatives.get(creativeId) ?? getSharedAccountCreative(accountId, creativeId))?.manifest;
         if (!product || !manifest) return undefined;
-        const violations = await validateCreativeForProduct(product, manifest);
+        const violations = await validateAssignedCreative(product, manifest);
         return violations.length > 0
           ? `Creative ${creativeId} does not satisfy product ${product.product_id}: ${violations.map(v => v.rule).join(', ')}`
           : undefined;
@@ -19012,6 +19714,16 @@ function assignmentTrackerSlotProblem(
     if (problem) return `${problem} (format option ${label})`;
   }
   return undefined;
+}
+
+/** The sync_creatives assignment_operations this tenant accepts. The
+ * monolith (no tenant) lists them in creative.assignment_operations here;
+ * /sales lists the same set in tenants/router.ts. The served-release
+ * projection withholds the list below 3.3, but enforcement applies at every
+ * served version: the creative routes, which have no packages to assign to,
+ * accept none and refuse every operation, including at 3.2. */
+function acceptedAssignmentOperations(ctx: TrainingContext): ReadonlyArray<string> {
+  return ctx.tenantId == null || ctx.tenantId === 'sales' ? TRAINING_ASSIGNMENT_OPERATIONS : [];
 }
 
 /** Assignment trackers and landing-page overrides (3.3) ride the same gate:
@@ -19322,7 +20034,7 @@ export async function handleListCreatives(args: ToolArgs, ctx: TrainingContext) 
       }
       if (declaresLiveCreativeUpdates(ctx)) {
         if (c.stagedUpdate && (!selectedFields || selectedFields.has('staged_update'))) {
-          base.staged_update = stagedUpdateWire(c.stagedUpdate);
+          base.staged_update = stagedUpdateWire(c.stagedUpdate, ctx.servedAdcpVersion);
         }
       }
       if (declaresAssignmentSettings(ctx) && req.include_assignments !== false
@@ -19707,9 +20419,6 @@ async function handleUpdateMediaBuyUnlocked(
     };
   }
 
-  const creativeStartPolicyError = unsupportedCreativeStartPolicyError(req);
-  if (creativeStartPolicyError) return { errors: [creativeStartPolicyError] };
-
   if (
     !options.acceptedProposalExecution
     && Object.hasOwn(req as unknown as Record<string, unknown>, 'invoice_recipient')
@@ -20015,7 +20724,7 @@ async function handleUpdateMediaBuyUnlocked(
             : undefined;
           const manifest = normalizedCreativeManifest(inlineCreative, existingCreative, identity.identity);
           if (!manifest) continue;
-          const violations = await validateCreativeForProduct(product, manifest);
+          const violations = await validateAssignedCreative(product, manifest);
           if (violations.length > 0) {
             return { errors: creativeValidationErrors(violations, `packages[${pkgId}].creatives[${creativeIndex}]`) };
           }
@@ -20029,12 +20738,17 @@ async function handleUpdateMediaBuyUnlocked(
           };
         }
       }
+      const storedRows = update.creatives === undefined && assignments === undefined;
       const candidateRows = update.creatives !== undefined
         ? inlineCreativeAssignmentRows(update.creatives)
         : assignments !== undefined
           ? assignments.map(assignment => structuredClone(assignment))
           : (pkg.creativeAssignmentDetails
             ?? pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })));
+      // Rows this update supplies route a manifest onto the package, so they
+      // need format_option_ref where the product declares the kind twice.
+      // Stored rows on a targeting-only update keep the product check alone.
+      const validateRow = storedRows ? validateCreativeForProduct : validateAssignedCreative;
       for (const assignment of candidateRows) {
         const cid = assignment.creative_id;
         if (typeof cid !== 'string' || cid.length === 0) {
@@ -20043,9 +20757,11 @@ async function handleUpdateMediaBuyUnlocked(
         if (!creativeValidationSession.creatives.has(cid)) {
           return { errors: [{ code: 'CREATIVE_NOT_FOUND', message: `Creative not found: ${cid}. Sync the creative via sync_creatives before assigning.`, field: `packages[${pkgId}].creative_assignments` }] };
         }
-        const manifest = session.creatives.get(cid)?.manifest;
+        // The post-update library, so an inline re-send that adds the ref is
+        // checked as sent.
+        const manifest = creativeValidationSession.creatives.get(cid)?.manifest;
         if (product && manifest) {
-          const violations = await validateCreativeForProduct(product, manifest);
+          const violations = await validateRow(product, manifest);
           if (violations.length > 0) {
             return { errors: creativeValidationErrors(violations, `packages[${pkgId}].creative_assignments`) };
           }
@@ -20065,7 +20781,7 @@ async function handleUpdateMediaBuyUnlocked(
           creativeValidationSession,
           `packages[${pkgId}].creative_assignments`,
           (pkg.formatsToProvide ?? []) as CanonicalPackageFormat[],
-          { declaresAssignmentSettings: declaresAssignmentSettings(ctx) },
+          { storedAssignmentSettings: storedRows },
         );
         if (assignmentErrors.length) return { errors: assignmentErrors };
       }
@@ -20324,7 +21040,7 @@ async function handleUpdateMediaBuyUnlocked(
       if (creativeAssignments !== undefined) {
         const creativeIds = creativeAssignments.map(a => a.creative_id);
         pkg.creativeAssignments = creativeIds;
-        pkg.creativeAssignmentDetails = structuredClone(creativeAssignments);
+        pkg.creativeAssignmentDetails = creativeAssignments.map(assignment => requestAssignmentRow(assignment));
         affectedPackageIds.add(pkgId);
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'creative_assignments_updated', summary: `Package ${pkgId} creative assignments replaced (${creativeIds.length} creatives)`, packageId: pkgId });
       }
@@ -20463,15 +21179,13 @@ async function handleUpdateMediaBuyUnlocked(
         undefined,
         now,
       );
-      const assignmentRows = [
-        ...(Array.isArray(npkg.creative_assignments)
-          ? npkg.creative_assignments.map(assignment =>
-            structuredClone(assignment) as unknown as LegacyCreativeAssignmentRow
-          )
-          : []),
-        ...inlineCreativeAssignmentRows(npkg.creatives),
-      ];
-      for (const assignment of assignmentRows) {
+      const libraryRows = Array.isArray(npkg.creative_assignments)
+        ? npkg.creative_assignments.map(assignment =>
+          structuredClone(assignment) as unknown as LegacyCreativeAssignmentRow
+        )
+        : [];
+      const assignmentRows = [...libraryRows, ...inlineCreativeAssignmentRows(npkg.creatives)];
+      for (const [j, assignment] of assignmentRows.entries()) {
         if (enforceLifecycleSplit && (typeof assignment.creative_id !== 'string' || !creativeValidationSession.creatives.has(assignment.creative_id))) {
           return {
             errors: [{
@@ -20480,6 +21194,16 @@ async function handleUpdateMediaBuyUnlocked(
               field: `new_packages[${i}].creative_assignments`,
             }] as TaskError[],
           };
+        }
+        const manifest = enforceLifecycleSplit && typeof assignment.creative_id === 'string'
+          ? creativeValidationSession.creatives.get(assignment.creative_id)?.manifest
+          : undefined;
+        const routing = manifest ? missingFormatOptionRefViolation(product, manifest) : [];
+        if (routing.length > 0) {
+          const fieldPrefix = j < libraryRows.length
+            ? `new_packages[${i}].creative_assignments[${j}]`
+            : `new_packages[${i}].creatives[${j - libraryRows.length}]`;
+          return { errors: creativeValidationErrors(routing, fieldPrefix) };
         }
       }
       if (enforceLifecycleSplit) {
@@ -20490,7 +21214,6 @@ async function handleUpdateMediaBuyUnlocked(
           creativeValidationSession,
           `new_packages[${i}].creative_assignments`,
           formatSnapshot.formats ?? [],
-          { declaresAssignmentSettings: declaresAssignmentSettings(ctx) },
         );
         if (assignmentErrors.length) return { errors: assignmentErrors };
       }
@@ -20527,7 +21250,7 @@ async function handleUpdateMediaBuyUnlocked(
           formatsToProvide: formatSnapshot.formats,
         }),
         creativeAssignments: assignmentRows.flatMap(row => typeof row.creative_id === 'string' ? [row.creative_id] : []),
-        creativeAssignmentDetails: assignmentRows.map(row => structuredClone(row)),
+        creativeAssignmentDetails: assignmentRows.map(row => requestAssignmentRow(row)),
         targeting: targetingResult.targeting,
         targetingResolution: packageTargetingResolution(product, targetingResult.targeting),
         ...(newPackageListOutcome.application && { propertyListApplication: newPackageListOutcome.application }),
@@ -20687,7 +21410,7 @@ async function handleUpdateMediaBuyUnlocked(
         creativeValidationSession,
         `packages[${pkg.packageId}].creative_assignments`,
         (pkg.formatsToProvide ?? []) as CanonicalPackageFormat[],
-        { declaresAssignmentSettings: declaresAssignmentSettings(ctx) },
+        { storedAssignmentSettings: true },
       );
       if (assignmentErrors.length) return { errors: assignmentErrors };
     }
@@ -20765,8 +21488,7 @@ async function handleUpdateMediaBuyUnlocked(
     start_time: pkg.startTime,
     end_time: pkg.endTime,
     ...packageFormatSelectorForWire(pkg, ctx),
-    ...packageReadinessFields(pkg, session),
-    ...creativeStartPolicyForWire(ctx),
+    ...packageReadinessFields(pkg, session, ctx),
     ...(pkg.targeting && { targeting_overlay: targetingForWire(pkg.targeting) }),
     ...(pkg.targetingResolution && { targeting_resolution: pkg.targetingResolution }),
     ...(pkg.context && { context: pkg.context }),
@@ -20774,7 +21496,7 @@ async function handleUpdateMediaBuyUnlocked(
       ext: packageExtWithPropertyApplication(pkg.ext, pkg.propertyListApplication),
     }),
     ...(pkg.committedMetrics && { committed_metrics: pkg.committedMetrics }),
-    creative_assignments: pkg.creativeAssignmentDetails
+    creative_assignments: pkg.creativeAssignmentDetails?.map(row => requestAssignmentRow(row))
       ?? pkg.creativeAssignments.map(creativeId => ({ creative_id: creativeId })),
     ...(pkg.canceledAt && {
       cancellation: { canceled_at: pkg.canceledAt, canceled_by: pkg.canceledBy, reason: pkg.cancellationReason },
@@ -20862,6 +21584,9 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
     .filter(tool => toolAvailableForServedAdcpVersion(tool.name, servedAdcpVersion))
     .map(t => t.name)
     .filter(name => name !== 'get_adcp_capabilities');
+  // Declared from the tools served at this release, so it cannot drift from
+  // tools/list (adcp#8981).
+  const lifecycleTools = servedLifecycleTools(tasks, servedAdcpVersion);
   const channels = [...new Set(PUBLISHERS.flatMap(p => p.channels))].sort();
   const publisherDomains = PUBLISHERS.map(p => p.domain);
   const signingCap = selectSigningCapability(ctx);
@@ -21021,9 +21746,12 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
       ...(acceptancePolicyDiscoveryCapability(servedAdcpVersion, ctx.tenantId) && {
         acceptance_policy_discovery: acceptancePolicyDiscoveryCapability(servedAdcpVersion, ctx.tenantId),
       }),
-      ...(supportsGetProductsRejected(servedAdcpVersion) && {
-        lifecycle_tools: [...PRODUCT_DISCOVERY_LIFECYCLE_TOOLS],
-        proposal_refinement: proposalCapabilitiesForProfile(ctx.proposalNegotiationProfile),
+      ...(supportsGetProductsRejected(servedAdcpVersion) && lifecycleTools.length > 0 && {
+        lifecycle_tools: lifecycleTools,
+        // Describes refine_proposals, so the schema requires that tool declared.
+        ...(lifecycleTools.includes('refine_proposals') && {
+          proposal_refinement: proposalCapabilitiesForProfile(ctx.proposalNegotiationProfile),
+        }),
       }),
       supports_proposals: true,
       // Flexible-window availability discovery: parses
@@ -21149,7 +21877,10 @@ export async function handleGetAdcpCapabilities(args: ToolArgs, ctx: TrainingCon
         supports_provenance: true,
         supports_registry_policy_enforcement: true,
       }),
-      ...(declaresLiveCreativeUpdates(ctx) && { live_updates: liveUpdatesCapability() }),
+      ...(declaresLiveCreativeUpdates(ctx) && { live_updates: liveUpdatesCapability(ctx.servedAdcpVersion) }),
+      ...(!isThreeZeroStoryboardCompat(ctx) && acceptedAssignmentOperations(ctx).length > 0 && {
+        assignment_operations: [...acceptedAssignmentOperations(ctx)],
+      }),
       ...(declaresAssignmentSettings(ctx) && {
         supports_assignment_trackers: true,
         supports_assignment_landing_page: true,
@@ -23922,7 +24653,7 @@ export async function handleBuyProducts(
     sessionKeyFromArgs(args, ctx.mode, ctx.userId, ctx.moduleId),
     controllerFixtureSessionKey(args, ctx),
   );
-  const feed = productWholesaleFeedMeta(args, session);
+  const feed = productWholesaleFeedMeta(args, session, ctx);
   if (args.feed_version !== feed.wholesale_feed_version) {
     return { errors: [{
       code: 'INVALID_REQUEST',
@@ -23950,6 +24681,20 @@ export async function handleBuyProducts(
   const targetedPackageCounts = new Map<string, number>();
   for (let index = 0; index < args.purchases.length; index++) {
     const purchase = args.purchases[index]!;
+    // Each purchase becomes accepted commercial_terms the seller is bound by,
+    // member for member (media-buy/commercial-terms.json). A member the agent
+    // cannot interpret is rejected, never dropped or carried uninterpreted.
+    const [unrecognized] = undeclaredMembers(purchase, 'media-buy/product-purchase-input.json');
+    if (unrecognized) {
+      return {
+        errors: [{
+          code: 'UNRECOGNIZED_TERMS',
+          message: 'The purchase carries a member this seller cannot interpret, so it cannot accept the terms.',
+          field: `purchases[${index}]${unrecognized.map(segment => (/^\d+$/.test(segment) ? `[${segment}]` : `.${segment}`)).join('')}`,
+          recovery: 'correctable',
+        }],
+      };
+    }
     const product = catalog.get(purchase.product_id);
     const pricing = product?.pricing_options.find(
       option => option.pricing_option_id === purchase.pricing_option_id,
@@ -24226,17 +24971,31 @@ function proposalAcceptanceSnapshot(
     return { response: { errors: [{ code: 'INVALID_STATE', message: `Proposal ${args.proposal_id} was declined and cannot be accepted.`, field: 'proposal_id' }] } };
   }
   const proposal = canonicalProposalFromRecord(record);
-  if (record.accepted) {
+  const digestMatches = proposal.terms_digest === args.proposal_terms_digest;
+  if (record.accepted && digestMatches) {
     return { response: { errors: [{ code: 'INVALID_STATE', message: `Proposal ${args.proposal_id} was already accepted.`, field: 'proposal_id' }] } };
   }
-  if (proposal.proposal_status !== 'committed') {
+  // The proposal-state codes take precedence over PROPOSAL_TERMS_CHANGED. A
+  // proposal already accepted under a different digest falls through to it.
+  if (!record.accepted && proposal.proposal_status !== 'committed') {
     return { response: { errors: [{ code: 'PROPOSAL_NOT_COMMITTED', message: `Proposal ${args.proposal_id} is not committed.`, field: 'proposal_id' }] } };
   }
   if (proposal.expires_at && Date.parse(proposal.expires_at) <= Date.now()) {
     return { response: { errors: [{ code: 'PROPOSAL_EXPIRED', message: `Proposal ${args.proposal_id} expired at ${proposal.expires_at}.`, field: 'proposal_id' }] } };
   }
-  if (proposal.terms_digest !== args.proposal_terms_digest) {
-    return { response: { errors: [{ code: 'INVALID_REQUEST', message: 'proposal_terms_digest does not match the committed proposal snapshot.', field: 'proposal_terms_digest' }] } };
+  if (!digestMatches) {
+    return {
+      response: {
+        errors: [{
+          code: 'PROPOSAL_TERMS_CHANGED',
+          message: record.accepted
+            ? "Proposal was already accepted under a different terms_digest; nothing changed. Find the existing MediaBuy through get_media_buys."
+            : "proposal_terms_digest does not match the committed proposal's current terms_digest; nothing was accepted. Re-read the proposal and accept its current terms with the current terms_digest.",
+          field: 'proposal_terms_digest',
+          recovery: 'correctable',
+        }],
+      },
+    };
   }
   return { proposal };
 }
@@ -25062,8 +25821,10 @@ function validateIdempotencyProtectedInput(
     return { message: 'brief must be a string when provided', field: 'brief' };
   }
   if (Array.isArray(args.refine) && args.refine.some(entry => isRecord(entry) && 'package' in entry)) {
-    // The pinned SDK preserves unknown entry fields. Validate structured
-    // packages against source before replay claims or downstream state changes.
+    // refine[].package was withdrawn from 3.3 (adcp#8501). The pinned SDK
+    // preserves unknown entry fields, so validate against source, whose
+    // entries reject it by name, before replay claims or state changes.
+    // A facade rejects a field it cannot honor rather than dropping it.
     const sourceError = validateProductDiscoverySourceInput('get-products-request', args);
     if (sourceError) return sourceError;
   }
@@ -25078,10 +25839,6 @@ function validateIdempotencyProtectedInput(
         field: 'refine',
       };
     }
-    const reasons = new Set([
-      'price', 'inventory_fit', 'audience_fit', 'creative_unsupported', 'measurement_unsupported',
-      'policy', 'timing', 'budget_changed', 'selected_alternative', 'other',
-    ]);
     const invalidIndex = (args.refine as unknown[]).findIndex(entry => (
       isRecord(entry)
       && entry.scope === 'proposal'
@@ -25089,7 +25846,7 @@ function validateIdempotencyProtectedInput(
       && (
         typeof entry.proposal_id !== 'string'
         || typeof entry.reason !== 'string'
-        || !reasons.has(entry.reason)
+        || !PROPOSAL_DECLINE_REASONS.has(entry.reason)
         || (entry.reason === 'other' && !(typeof entry.detail === 'string' && entry.detail.length > 0))
       )
     ));

@@ -61,7 +61,7 @@
             },
             "minProperties": 1,
             "maxProperties": 1,
-            "additionalProperties": false
+            "additionalProperties": true
           }
         },
         "required": ["reason", "from"],
@@ -80,7 +80,7 @@
             "then": { "required": ["media_buy_id"], "properties": { "reason": { "enum": ["offering_unsupported", "overridden"] } } }
           }
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "timezone_cutovers": {
@@ -95,7 +95,7 @@
           "timezone": { "type": "string", "minLength": 1, "maxLength": 255, "description": "The account's new IANA timezone, as list_accounts shows it." }
         },
         "required": ["effective_at", "timezone"],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     },
     "gaps": {
@@ -110,7 +110,7 @@
           "reason": { "type": "string", "enum": ["unauthorized"] }
         },
         "required": ["from", "until", "reason"],
-        "additionalProperties": false
+        "additionalProperties": true
       }
     }
   },
@@ -141,7 +141,7 @@
     },
     { "if": { "properties": { "status": { "const": "inactive" } }, "required": ["status"] }, "then": { "required": ["deactivated_at"] }, "else": { "not": { "required": ["deactivated_at"] } } }
   ],
-  "additionalProperties": false,
+  "additionalProperties": true,
   "examples": [
     {
       "description": "Active account: one buy's products carry no matching offering, and an earlier capacity refusal has ended",

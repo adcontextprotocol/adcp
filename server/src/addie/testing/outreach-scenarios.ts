@@ -6,6 +6,43 @@
  */
 
 import { UserPersona, TEST_PERSONAS, simulateResponse } from './user-journey-simulator.js';
+import { shouldContact } from '../services/engagement-planner.js';
+import type { PersonRelationship } from '../../db/relationship-db.js';
+
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+
+/**
+ * Build a synthetic relationship for scenarios that exercise the production
+ * engagement rules in shouldContact().
+ */
+function scenarioRelationship(overrides: Partial<PersonRelationship>): PersonRelationship {
+  const now = new Date();
+  return {
+    id: 'scenario-relationship',
+    slack_user_id: 'U_SCENARIO',
+    workos_user_id: null,
+    email: null,
+    prospect_org_id: null,
+    display_name: 'Scenario User',
+    stage: 'welcomed',
+    stage_changed_at: new Date(now.getTime() - 30 * DAY_MS),
+    last_addie_message_at: null,
+    last_person_message_at: null,
+    last_interaction_channel: null,
+    next_contact_after: null,
+    contact_preference: null,
+    slack_dm_channel_id: null,
+    slack_dm_thread_ts: null,
+    sentiment_trend: 'neutral',
+    interaction_count: 0,
+    unreplied_outreach_count: 0,
+    opted_out: false,
+    created_at: new Date(now.getTime() - 30 * DAY_MS),
+    updated_at: now,
+    ...overrides,
+  };
+}
 
 // Current production message variants
 export const CURRENT_VARIANTS = {
@@ -143,21 +180,25 @@ export const RED_TEAM_SCENARIOS: RedTeamScenario[] = [
     expectedBehavior: 'System should NOT send another message - rate limit is 7 days',
     actualRisk: 'high',
     testFunction: () => {
-      // Check if rate limiting would prevent this
-      const daysSinceLastOutreach = 3;
-      const rateLimitDays = 7;
+      // Run the production engagement rules for someone Addie messaged
+      // three days ago who has not replied.
+      const decision = shouldContact(scenarioRelationship({
+        stage: 'welcomed',
+        last_addie_message_at: new Date(Date.now() - 3 * DAY_MS),
+        unreplied_outreach_count: 1,
+      }));
 
-      if (daysSinceLastOutreach < rateLimitDays) {
+      if (!decision.shouldContact) {
         return {
           passed: true,
           issues: [],
-          recommendations: ['Rate limiting working correctly'],
+          recommendations: [`Rate limiting working correctly (${decision.reason})`],
         };
       }
       return {
         passed: false,
-        issues: ['Rate limiting not enforced'],
-        recommendations: ['Ensure RATE_LIMIT_DAYS constant is checked before sending'],
+        issues: [`Rate limiting not enforced: shouldContact() allowed contact (${decision.reason})`],
+        recommendations: ['Ensure the stage cooldown in shouldContact() is checked before sending'],
       };
     },
   },
@@ -217,30 +258,16 @@ export const RED_TEAM_SCENARIOS: RedTeamScenario[] = [
     expectedBehavior: 'System should use professional tone for executives',
     actualRisk: 'medium',
     testFunction: () => {
-      // Now partially implemented via target_seniority on outreach_variants
-      // Executive Brief variant targets {executive, senior}
-      const hasExecutiveVariant = true; // We added 'Executive Brief' variant
-      const hasTargetSeniority = true; // target_seniority column added
-
-      if (hasExecutiveVariant && hasTargetSeniority) {
-        return {
-          passed: true,
-          issues: [],
-          recommendations: [
-            'Executive Brief variant added with target_seniority = {executive, senior}',
-            'Variant selection logic should filter by target_seniority',
-            'detected_seniority column added to slack_user_mappings for targeting',
-          ],
-        };
-      }
-
+      // Partially implemented via target_seniority on outreach_variants:
+      // the Executive Brief variant targets {executive, senior}. This is a
+      // status record, not an executable check.
       return {
-        passed: false,
-        issues: [
-          'Variant selection doesn\'t yet filter by seniority',
-        ],
+        passed: true,
+        issues: [],
         recommendations: [
-          'Implement seniority-based variant filtering in variant selection',
+          'Executive Brief variant added with target_seniority = {executive, senior}',
+          'Variant selection logic should filter by target_seniority',
+          'detected_seniority column added to slack_user_mappings for targeting',
         ],
       };
     },
@@ -257,17 +284,20 @@ export const RED_TEAM_SCENARIOS: RedTeamScenario[] = [
     expectedBehavior: 'System should wait for natural engagement before DM',
     actualRisk: 'medium',
     testFunction: () => {
-      // Now implemented via canEngageSlackUser() with GRACE_PERIOD_HOURS = 24
-      // The slack_joined_at column tracks when users joined
-      const GRACE_PERIOD_HOURS = 24;
-      const gracePeriodImplemented = GRACE_PERIOD_HOURS >= 24;
+      // Run the production engagement rules for a prospect who joined
+      // five minutes ago and has not been welcomed yet.
+      const decision = shouldContact(scenarioRelationship({
+        stage: 'prospect',
+        stage_changed_at: new Date(Date.now() - 5 * 60 * 1000),
+        last_addie_message_at: null,
+      }));
 
-      if (gracePeriodImplemented) {
+      if (!decision.shouldContact) {
         return {
           passed: true,
           issues: [],
           recommendations: [
-            `Grace period of ${GRACE_PERIOD_HOURS} hours implemented via canEngageSlackUser()`,
+            `Grace period enforced by shouldContact() (${decision.reason})`,
             'slack_joined_at column added to slack_user_mappings',
           ],
         };
@@ -276,10 +306,10 @@ export const RED_TEAM_SCENARIOS: RedTeamScenario[] = [
       return {
         passed: false,
         issues: [
-          'Grace period not implemented or too short',
+          `Grace period not enforced: shouldContact() allowed contact (${decision.reason})`,
         ],
         recommendations: [
-          'Increase GRACE_PERIOD_HOURS to at least 24',
+          'Keep the new-prospect welcome grace period in shouldContact() at 24 hours or more',
         ],
       };
     },

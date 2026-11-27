@@ -1054,9 +1054,7 @@ async function buildRequestContext(
             'The ONLY pre-module conversation allowed is helping the learner choose WHICH module to start.',
             'Once they indicate any module (or say "start certification" / "start A1" / "I want to learn"), call the tool FIRST.',
           ].join('\n');
-          certContextText = certContextText
-            ? `${noModuleWarning}\n\n${certContextText}`
-            : noModuleWarning;
+          certContextText = noModuleWarning;
         }
       } catch (error) {
         logger.warn({ error }, 'Addie Bolt: Failed to get certification progress for context');
@@ -1280,8 +1278,12 @@ async function createUserScopedTools(
   }
 
 
-  // Add brand tools (brand research and registry management)
-  const brandHandlers = createBrandToolHandlers();
+  // Add brand tools (brand research and registry management). Only a Slack
+  // user linked to an AgenticAdvertising.org account may add new registry
+  // records through research_brand (#9024).
+  const brandHandlers = createBrandToolHandlers({
+    authenticated: Boolean(memberContext?.workos_user?.workos_user_id),
+  });
   allTools.push(...BRAND_TOOLS);
   for (const [name, handler] of brandHandlers) {
     allHandlers.set(name, handler);

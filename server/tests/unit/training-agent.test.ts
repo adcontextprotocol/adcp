@@ -44,6 +44,8 @@ import {
   TRAINING_ACCEPTANCE_POLICY_CATALOG_DIGEST,
   TRAINING_ACCEPTANCE_POLICY_CATALOG_PATH,
   TRAINING_ACCEPTANCE_POLICY_DEFAULT_PROFILE,
+  PROPOSAL_DECLINE_REASONS,
+  validateProductDiscoveryAliasInput,
 } from '../../src/training-agent/task-handlers.js';
 import {
   MUTATING_TOOLS,
@@ -69,6 +71,7 @@ function futureFlight(): { start_time: string; end_time: string } {
 }
 import { getAgentUrl } from '../../src/training-agent/config.js';
 import { computeDeliveryStatementDigest } from '../../src/training-agent/governance-payload-hash.js';
+import { computePlanHash } from '../../src/training-agent/plan-hash.js';
 import {
   CANONICAL_GOV_ISS,
   clearGovernanceTokenReplayRegistry,
@@ -2072,8 +2075,8 @@ describe('get_products handler', () => {
       buying_mode: 'wholesale',
     });
 
-    expect(first.wholesale_feed_version).toBe('training-products-feed-v1.public.base');
-    expect(first.pricing_version).toBe('training-products-pricing-v1.public.base');
+    expect(first.wholesale_feed_version).toMatch(/^training-products-feed-v1\.public\.[0-9a-f]{16}$/);
+    expect(first.pricing_version).toMatch(/^training-products-pricing-v1\.public\.[0-9a-f]{16}$/);
     expect(first.cache_scope).toBe('public');
 
     const { result: unchanged } = await simulateCallTool(server, 'get_products', {
@@ -2091,16 +2094,17 @@ describe('get_products handler', () => {
 
   it('returns products when only the pricing token is stale', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result: first } = await simulateCallTool(server, 'get_products', { buying_mode: 'wholesale' });
     const { result } = await simulateCallTool(server, 'get_products', {
       buying_mode: 'wholesale',
-      if_wholesale_feed_version: 'training-products-feed-v1.public.base',
+      if_wholesale_feed_version: first.wholesale_feed_version,
       if_pricing_version: 'stale-pricing-token',
     });
 
     expect(result.unchanged).toBeUndefined();
     expect((result.products as unknown[]).length).toBeGreaterThan(0);
-    expect(result.wholesale_feed_version).toBe('training-products-feed-v1.public.base');
-    expect(result.pricing_version).toBe('training-products-pricing-v1.public.base');
+    expect(result.wholesale_feed_version).toBe(first.wholesale_feed_version);
+    expect(result.pricing_version).toBe(first.pricing_version);
   });
 
   it('changes product wholesale version tokens when controller-seeded catalog state changes', async () => {
@@ -2131,7 +2135,8 @@ describe('get_products handler', () => {
 
     expect(afterSeed.unchanged).toBeUndefined();
     expect(afterSeed.wholesale_feed_version).not.toBe(first.wholesale_feed_version);
-    expect(afterSeed.pricing_version).toBe(first.pricing_version);
+    // The backfilled seeded product carries a default price, so the pricing layer moves too.
+    expect(afterSeed.pricing_version).not.toBe(first.pricing_version);
     expect((afterSeed.products as Array<Record<string, unknown>>).some(p => p.product_id === 'seeded_wholesale_product')).toBe(true);
   });
 
@@ -18880,8 +18885,8 @@ describe('sync_plans input validation', () => {
       binding: 'proposed',
       caller: 'https://buyer.example',
     });
-    expect(result.status).toBe('denied');
-    expect(result.explanation).toContain('Plan not found');
+    expect(result.code).toBe('PLAN_NOT_FOUND');
+    expect(result.field).toBe('plan_id');
   });
 });
 
@@ -18904,9 +18909,11 @@ describe('check_governance delegation enforcement', () => {
     budget: { total: 100000, currency: 'USD', reallocation_threshold: 1000000 },
     flight: { start: '2027-01-01T00:00:00Z', end: '2027-12-31T23:59:59Z' },
     countries: ['US', 'GB', 'DE'],
+    // These cases open new actions, which an execute_only delegate cannot do;
+    // training-agent-governance-delegation-authority.test.ts covers that level.
     delegations: [{
       agent_url: 'https://delegated.example',
-      authority: 'execute_only',
+      authority: 'full',
       budget_limit: { amount: 25000, currency: 'USD' },
       markets: ['US', 'GB'],
     }],
@@ -20258,6 +20265,43 @@ describe('proposal lifecycle', () => {
     });
     expect(unsupported.isError).toBeFalsy();
     expect(unsupported.result).toMatchObject({ outcome: 'listed', products: [] });
+
+    // The requirements container is open, so an unknown requirement validates.
+    // It still fails closed: "Missing or unknown required fields do not match."
+    // The only difference from allRegions above is the unknown key.
+    const unknownRequirement = {
+      geo_regions: { countries: { FR: { values: ['FR-49'] } } },
+      future_unknown_dimension: true,
+    };
+    const unknownRequirementValidation = validateSourceSchema(
+      'core/targeting-overlay-requirements.json',
+      unknownRequirement,
+    );
+    expect(unknownRequirementValidation.valid, JSON.stringify(unknownRequirementValidation.errors)).toBe(true);
+    const unknownListed = await simulateCallTool(server, 'list_products', {
+      account,
+      criteria: {
+        product_ids: [targetedProductId],
+        required_overlay_support: unknownRequirement,
+      },
+    });
+    expect(unknownListed.isError, JSON.stringify(unknownListed.result)).toBeFalsy();
+    expect(unknownListed.result).toMatchObject({ outcome: 'listed', products: [] });
+    const discover = (required_overlay_support: Record<string, unknown>) => executeTrainingAgentTool('get_products', {
+      adcp_version: CURRENT_ADCP_VERSION,
+      account,
+      buying_mode: 'brief',
+      brief: 'Regional display inventory in France',
+      required_overlay_support,
+    }, DEFAULT_CTX);
+    const knownDiscovered = await discover({ geo_regions: unknownRequirement.geo_regions });
+    expect(knownDiscovered.success, knownDiscovered.error).toBe(true);
+    expect((knownDiscovered.data as { products: Array<{ product_id: string }> }).products)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ product_id: targetedProductId })]));
+    const unknownDiscovered = await discover(unknownRequirement);
+    expect(unknownDiscovered.success, unknownDiscovered.error).toBe(true);
+    expect(unknownDiscovered.data).not.toHaveProperty('errors');
+    expect((unknownDiscovered.data as { products: unknown[] }).products).toEqual([]);
 
     const concurrentListings = await Promise.all(['US', 'CA'].map(country => simulateCallTool(
       server,
@@ -21834,6 +21878,56 @@ describe('proposal lifecycle', () => {
       expect(stored?.__declined).toBe(true);
       expect(stored).not.toHaveProperty('__opportunity_update');
     });
+  });
+
+  it('accepts the unrecognized_terms decline reason on both decline checks and rejects an unknown reason', async () => {
+    const schemaReasons = JSON.parse(
+      readFileSync(new URL('../../../static/schemas/source/enums/proposal-decline-reason.json', import.meta.url), 'utf8'),
+    ).enum as string[];
+    expect([...PROPOSAL_DECLINE_REASONS]).toEqual(schemaReasons);
+    expect(PROPOSAL_DECLINE_REASONS.has('unrecognized_terms')).toBe(true);
+
+    // decline_proposals request check.
+    const declineRequest = (reason: string) => validateProductDiscoveryAliasInput('decline_proposals', {
+      idempotency_key: randomUUID(),
+      declines: [{ proposal_id: 'p1', reason }],
+    });
+    expect(declineRequest('unrecognized_terms')).toBeUndefined();
+    expect(declineRequest('not_a_reason')).toMatchObject({ field: 'declines[0].reason' });
+
+    // Compact refine-decline check, reached directly with the internal flags.
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const compactDecline = (reason: string) => simulateCallTool(server, 'get_products', {
+      buying_mode: 'refine',
+      __compact_proposal_lifecycle: true,
+      __decline_proposals: true,
+      refine: [{ scope: 'proposal', proposal_id: 'p1', action: 'decline', reason }],
+    });
+    const compactAccepted = await compactDecline('unrecognized_terms');
+    expect(compactAccepted.isError).toBeFalsy();
+    expect(compactAccepted.result).not.toHaveProperty('code');
+    const compactRejected = await compactDecline('not_a_reason');
+    expect(compactRejected.isError).toBe(true);
+    expect(compactRejected.result).toMatchObject({ code: 'INVALID_REQUEST', field: 'refine[0]' });
+
+    // End to end, a decline_proposals call passes both checks.
+    const { result: requested } = await simulateCallTool(server, 'request_proposals', {
+      brand: account.brand,
+      brief: 'social engagement display',
+    });
+    const proposal = (requested.proposals as Array<Record<string, unknown>>)[0];
+    const declined = await simulateCallTool(server, 'decline_proposals', {
+      declines: [{ proposal_id: proposal.proposal_id, reason: 'unrecognized_terms' }],
+    });
+    expect(declined.isError).toBeFalsy();
+    expect(declined.result).toMatchObject({
+      results: [{ proposal_id: proposal.proposal_id, outcome: 'declined' }],
+    });
+    const rejected = await simulateCallTool(server, 'decline_proposals', {
+      declines: [{ proposal_id: proposal.proposal_id, reason: 'not_a_reason' }],
+    });
+    expect(rejected.isError).toBe(true);
+    expect(rejected.result).toMatchObject({ code: 'INVALID_REQUEST' });
   });
 
   it('rejects duplicate decline proposal IDs and cannot decline registry proposals', async () => {
@@ -25219,11 +25313,71 @@ describe('human_review_required auto-flip and enforcement', () => {
 
   it('auto-flips human_review_required when policy_categories contains fair_lending', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'derived.example' }, operator: 'test.example' };
+    // The plan omits the flag; the governance agent derives it from the category.
     const { result, isError } = await simulateCallTool(server, 'sync_plans', {
-      plans: [{ ...PLAN_BASE, policy_categories: ['fair_lending'], human_review_required: true }],
+      account,
+      plans: [{
+        ...PLAN_BASE,
+        brand: { ...PLAN_BASE.brand, domain: 'derived.example' },
+        policy_categories: ['fair_lending'],
+      }],
     });
     expect(isError).toBeFalsy();
     expect((result.plans as Array<{ status: string }>)[0].status).toBe('active');
+
+    const { result: check } = await simulateCallTool(server, 'check_governance', {
+      account,
+      plan_id: PLAN_BASE.plan_id,
+      caller: 'https://buyer.example',
+      tool: 'create_media_buy',
+      payload: { type: 'media_buy', account, total_budget: 20 },
+    });
+    expect(check.status).toBe('denied');
+    const findings = check.findings as Array<{ category_id: string; severity: string }>;
+    expect(findings.find(f => f.category_id === 'human_review')?.severity).toBe('critical');
+  });
+
+  it('keeps the derived flag out of the plan_hash preimage', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const account = { brand: { domain: 'preimage.example' }, operator: 'test.example' };
+    const plan = {
+      ...PLAN_BASE,
+      brand: { ...PLAN_BASE.brand, domain: 'preimage.example' },
+      policy_categories: ['fair_lending'],
+    };
+    await simulateCallTool(server, 'sync_plans', { account, plans: [plan] });
+
+    const payload = { type: 'media_buy', account, total_budget: 20 };
+    const { result: denied } = await simulateCallTool(server, 'check_governance', {
+      account,
+      plan_id: PLAN_BASE.plan_id,
+      caller: 'https://buyer.example',
+      tool: 'create_media_buy',
+      payload,
+    });
+    expect(denied.status).toBe('denied');
+
+    const { result: approved } = await simulateCallTool(server, 'check_governance', {
+      account,
+      plan_id: PLAN_BASE.plan_id,
+      caller: 'https://buyer.example',
+      tool: 'create_media_buy',
+      ext: {
+        human_approval: {
+          approved_by: 'human-reviewer-1',
+          approved_at: '2099-03-15T12:00:00Z',
+          approval_reference: denied.check_id,
+        },
+      },
+      payload,
+    });
+    expect(approved.status).toBe('approved');
+
+    const token = approved.governance_context as string;
+    const claims = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString()) as { plan_hash: string };
+    expect(claims.plan_hash).toBe(computePlanHash(plan));
+    expect(claims.plan_hash).not.toBe(computePlanHash({ ...plan, human_review_required: true }));
   });
 
   it('rejects plan that sets human_review_required=false with fair_housing category', async () => {
