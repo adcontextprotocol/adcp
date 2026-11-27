@@ -169,7 +169,7 @@ test('account_request.changed is a caller-anchored event type', () => {
 
   const hook = validate('/schemas/core/account-request-changed-webhook.json');
   for (const example of read('core/account-request-changed-webhook.json').examples) {
-    assert.ok(hook(example.data), JSON.stringify(hook.errors));
+    assert.ok(hook(example), JSON.stringify(hook.errors));
   }
 });
 
@@ -328,9 +328,9 @@ test('matched and created resolutions carry the target account and its money ter
     assert.ok(v({ ...base, state: 'resolved', account_id: 'acc_nova_pinnacle', resolution, account: target }), JSON.stringify(v.errors));
     assert.equal(v({ ...base, state: 'resolved', account_id: 'acc_nova_pinnacle', resolution }), false, `${resolution} without account`);
   }
-  for (const example of record.examples) assert.ok(v(example.data), example.description);
+  for (const example of record.examples) assert.ok(v(example), JSON.stringify(v.errors));
   const response = validate('/schemas/account/request-account-response.json');
-  for (const example of read('account/request-account-response.json').examples) assert.ok(response(example.data), example.description);
+  for (const example of read('account/request-account-response.json').examples) assert.ok(response(example), JSON.stringify(response.errors));
 });
 
 test('money changes carry effective_at; a separate account lists what did not carry over', () => {

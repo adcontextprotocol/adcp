@@ -139,48 +139,42 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Waiting on seller sales ops",
-      "data": {
-        "request_id": "areq_01K4F8M2Q7",
-        "state": "in_review",
-        "requested": {
-          "brand": { "domain": "renault.fr", "countries": ["FR"] },
-          "operator": "wppmedia.fr",
-          "currency": "EUR",
-          "billing": "operator"
-        },
-        "pending_action": {
-          "waiting_on": "seller",
-          "kind": "review",
-          "message": "Checking for an existing Renault France relationship."
-        },
-        "created_at": "2026-10-18T09:00:00Z",
-        "updated_at": "2026-10-18T09:00:00Z"
-      }
+      "request_id": "areq_01K4F8M2Q7",
+      "state": "in_review",
+      "requested": {
+        "brand": { "domain": "renault.fr", "countries": ["FR"] },
+        "operator": "wppmedia.fr",
+        "currency": "EUR",
+        "billing": "operator"
+      },
+      "pending_action": {
+        "waiting_on": "seller",
+        "kind": "review",
+        "message": "Checking for an existing Renault France relationship."
+      },
+      "created_at": "2026-10-18T09:00:00Z",
+      "updated_at": "2026-10-18T09:00:00Z"
     },
     {
-      "description": "Matched to an existing account, with that account's money terms",
-      "data": {
-        "request_id": "areq_01K4F8M2Q7",
-        "state": "resolved",
-        "requested": {
-          "brand": { "domain": "nova-athletics.example" },
-          "operator": "pinnacle-media.example",
-          "currency": "EUR",
-          "billing": "operator"
-        },
+      "request_id": "areq_01K4F8M2Q7",
+      "state": "resolved",
+      "requested": {
+        "brand": { "domain": "nova-athletics.example" },
+        "operator": "pinnacle-media.example",
+        "currency": "EUR",
+        "billing": "operator"
+      },
+      "account_id": "acc_nova_pinnacle",
+      "resolution": "matched",
+      "account": {
         "account_id": "acc_nova_pinnacle",
-        "resolution": "matched",
-        "account": {
-          "account_id": "acc_nova_pinnacle",
-          "name": "Nova Athletics via Pinnacle Media",
-          "status": "active",
-          "billing": "operator",
-          "payment_terms": "net_45"
-        },
-        "created_at": "2026-10-18T09:00:00Z",
-        "updated_at": "2026-10-19T14:30:00Z"
-      }
+        "name": "Nova Athletics via Pinnacle Media",
+        "status": "active",
+        "billing": "operator",
+        "payment_terms": "net_45"
+      },
+      "created_at": "2026-10-18T09:00:00Z",
+      "updated_at": "2026-10-19T14:30:00Z"
     }
   ]
 }

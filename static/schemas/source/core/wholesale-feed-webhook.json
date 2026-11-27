@@ -105,69 +105,63 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Product pricing change webhook",
-      "data": {
-        "idempotency_key": "whk_01HX2N4S8J4TK8M6D3K9Q2P1A7",
-        "notification_id": "019539a0-0000-7000-8000-000000000001",
-        "notification_type": "product.priced",
-        "fired_at": "2026-05-18T10:00:02Z",
-        "subscriber_id": "wholesale-feed-sync",
-        "account_id": "acc_acme_pinnacle",
-        "wholesale_feed_version": "v2026-05-18T10:00:00Z-acme-rev413",
-        "product_payload_view": "legacy",
-        "previous_wholesale_feed_version": "v2026-05-18T08:00:00Z-acme-rev412",
-        "cache_scope": "public",
-        "event": {
-          "event_id": "019539a0-0000-7000-8000-000000000001",
-          "event_type": "product.priced",
-          "entity_type": "product",
-          "entity_id": "prod_premium_ctv_us",
-          "created_at": "2026-05-18T10:00:00Z",
-          "payload": {
-            "product_id": "prod_premium_ctv_us",
-            "pricing_options": [
-              {
-                "pricing_option_id": "po_cpm_v2",
-                "pricing_model": "cpm",
-                "fixed_price": 18.5,
-                "currency": "USD"
-              }
-            ],
-            "previous_pricing_option_ids": [
-              "po_cpm_v1"
-            ],
-            "applies_to": {
-              "scope": "public"
+      "idempotency_key": "whk_01HX2N4S8J4TK8M6D3K9Q2P1A7",
+      "notification_id": "019539a0-0000-7000-8000-000000000001",
+      "notification_type": "product.priced",
+      "fired_at": "2026-05-18T10:00:02Z",
+      "subscriber_id": "wholesale-feed-sync",
+      "account_id": "acc_acme_pinnacle",
+      "wholesale_feed_version": "v2026-05-18T10:00:00Z-acme-rev413",
+      "product_payload_view": "legacy",
+      "previous_wholesale_feed_version": "v2026-05-18T08:00:00Z-acme-rev412",
+      "cache_scope": "public",
+      "event": {
+        "event_id": "019539a0-0000-7000-8000-000000000001",
+        "event_type": "product.priced",
+        "entity_type": "product",
+        "entity_id": "prod_premium_ctv_us",
+        "created_at": "2026-05-18T10:00:00Z",
+        "payload": {
+          "product_id": "prod_premium_ctv_us",
+          "pricing_options": [
+            {
+              "pricing_option_id": "po_cpm_v2",
+              "pricing_model": "cpm",
+              "fixed_price": 18.5,
+              "currency": "USD"
             }
+          ],
+          "previous_pricing_option_ids": [
+            "po_cpm_v1"
+          ],
+          "applies_to": {
+            "scope": "public"
           }
         }
       }
     },
     {
-      "description": "Collection card removal webhook (experimental, media_buy.collection_catalog); the version is the unfiltered list_collections collections_version",
-      "data": {
-        "idempotency_key": "whk_01JAC2N4S8J4TK8M6D3K9Q2P1B8",
-        "notification_id": "0192a6f0-0000-7000-8000-000000000102",
-        "notification_type": "collection_card.removed",
-        "fired_at": "2026-10-17T15:10:02Z",
-        "subscriber_id": "card-mirror",
-        "account_id": "acct_nova_agency",
-        "wholesale_feed_version": "cc_2026_10_17_r90",
-        "previous_wholesale_feed_version": "cc_2026_10_17_r89",
-        "cache_scope": "public",
-        "event": {
-          "event_id": "0192a6f0-0000-7000-8000-000000000102",
-          "event_type": "collection_card.removed",
-          "entity_type": "collection",
-          "entity_id": "card_2b8c44",
-          "created_at": "2026-10-17T15:10:00Z",
-          "payload": {
-            "publisher_domain": "pinnaclepods.example",
-            "collection_id": "founders_hour",
-            "removal_reason": "withdrawn",
-            "applies_to": {
-              "scope": "public"
-            }
+      "idempotency_key": "whk_01JAC2N4S8J4TK8M6D3K9Q2P1B8",
+      "notification_id": "0192a6f0-0000-7000-8000-000000000102",
+      "notification_type": "collection_card.removed",
+      "fired_at": "2026-10-17T15:10:02Z",
+      "subscriber_id": "card-mirror",
+      "account_id": "acct_nova_agency",
+      "wholesale_feed_version": "cc_2026_10_17_r90",
+      "previous_wholesale_feed_version": "cc_2026_10_17_r89",
+      "cache_scope": "public",
+      "event": {
+        "event_id": "0192a6f0-0000-7000-8000-000000000102",
+        "event_type": "collection_card.removed",
+        "entity_type": "collection",
+        "entity_id": "card_2b8c44",
+        "created_at": "2026-10-17T15:10:00Z",
+        "payload": {
+          "publisher_domain": "pinnaclepods.example",
+          "collection_id": "founders_hour",
+          "removal_reason": "withdrawn",
+          "applies_to": {
+            "scope": "public"
           }
         }
       }

@@ -52,21 +52,18 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Subscriber set updated",
-      "data": {
-        "status": "completed",
-        "action": "updated",
-        "notification_configs": [
-          {
-            "subscriber_id": "registry-cache",
-            "url": "https://registry.example/webhooks/adcp/capabilities",
-            "event_types": [
-              "capabilities.changed"
-            ],
-            "active": true
-          }
-        ]
-      }
+      "status": "completed",
+      "action": "updated",
+      "notification_configs": [
+        {
+          "subscriber_id": "registry-cache",
+          "url": "https://registry.example/webhooks/adcp/capabilities",
+          "event_types": [
+            "capabilities.changed"
+          ],
+          "active": true
+        }
+      ]
     }
   ]
 }

@@ -98,105 +98,81 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Synced product catalog from Google Merchant Center",
-      "data": {
-        "catalog_id": "gmc-primary",
-        "name": "Primary Product Feed",
-        "type": "product",
-        "url": "https://feeds.acmecorp.com/products.xml",
-        "feed_format": "google_merchant_center",
-        "update_frequency": "daily"
-      }
+      "catalog_id": "gmc-primary",
+      "name": "Primary Product Feed",
+      "type": "product",
+      "url": "https://feeds.acmecorp.com/products.xml",
+      "feed_format": "google_merchant_center",
+      "update_frequency": "daily"
     },
     {
-      "description": "Inventory feed for store-level stock data",
-      "data": {
-        "catalog_id": "store-inventory",
-        "name": "Store Inventory",
-        "type": "inventory",
-        "url": "https://feeds.acmecorp.com/inventory.json",
-        "feed_format": "custom",
-        "update_frequency": "hourly"
-      }
+      "catalog_id": "store-inventory",
+      "name": "Store Inventory",
+      "type": "inventory",
+      "url": "https://feeds.acmecorp.com/inventory.json",
+      "feed_format": "custom",
+      "update_frequency": "hourly"
     },
     {
-      "description": "Store locator feed",
-      "data": {
-        "catalog_id": "retail-locations",
-        "name": "Retail Locations",
-        "type": "store",
-        "url": "https://feeds.acmecorp.com/stores.json",
-        "feed_format": "custom",
-        "update_frequency": "weekly"
-      }
+      "catalog_id": "retail-locations",
+      "name": "Retail Locations",
+      "type": "store",
+      "url": "https://feeds.acmecorp.com/stores.json",
+      "feed_format": "custom",
+      "update_frequency": "weekly"
     },
     {
-      "description": "Promotional pricing feed",
-      "data": {
-        "catalog_id": "summer-sale",
-        "name": "Summer Sale Promotions",
-        "type": "promotion",
-        "url": "https://feeds.acmecorp.com/promotions.json",
-        "feed_format": "google_merchant_center",
-        "update_frequency": "daily"
-      }
+      "catalog_id": "summer-sale",
+      "name": "Summer Sale Promotions",
+      "type": "promotion",
+      "url": "https://feeds.acmecorp.com/promotions.json",
+      "feed_format": "google_merchant_center",
+      "update_frequency": "daily"
     },
     {
-      "description": "Inline offering catalog (no sync needed)",
-      "data": {
-        "type": "offering",
-        "items": [
-          {
-            "offering_id": "summer-sale",
-            "name": "Summer Sale",
-            "landing_url": "https://acme.com/summer"
-          }
-        ]
-      }
+      "type": "offering",
+      "items": [
+        {
+          "offering_id": "summer-sale",
+          "name": "Summer Sale",
+          "landing_url": "https://acme.com/summer"
+        }
+      ]
     },
     {
-      "description": "Reference to a previously synced catalog by ID",
-      "data": {
-        "catalog_id": "gmc-primary",
-        "type": "product",
-        "ids": ["SKU-12345", "SKU-67890"]
-      }
+      "catalog_id": "gmc-primary",
+      "type": "product",
+      "ids": ["SKU-12345", "SKU-67890"]
     },
     {
-      "description": "Product catalog with GTIN cross-retailer matching and attribution",
-      "data": {
-        "type": "product",
-        "gtins": ["00013000006040", "00013000006057"],
-        "content_id_type": "gtin",
-        "conversion_events": ["purchase", "add_to_cart"]
-      }
+      "type": "product",
+      "gtins": ["00013000006040", "00013000006057"],
+      "content_id_type": "gtin",
+      "conversion_events": ["purchase", "add_to_cart"]
     },
     {
-      "description": "Inline store catalog with catchment areas",
-      "data": {
-        "catalog_id": "retail-locations",
-        "name": "Retail Locations",
-        "type": "store",
-        "items": [
-          {
-            "store_id": "amsterdam-flagship",
-            "name": "Amsterdam Flagship",
-            "location": { "lat": 52.3676, "lng": 4.9041 },
-            "catchments": [
-              {
-                "catchment_id": "walk",
-                "travel_time": { "value": 10, "unit": "min" },
-                "transport_mode": "walking"
-              },
-              {
-                "catchment_id": "drive",
-                "travel_time": { "value": 15, "unit": "min" },
-                "transport_mode": "driving"
-              }
-            ]
-          }
-        ]
-      }
+      "catalog_id": "retail-locations",
+      "name": "Retail Locations",
+      "type": "store",
+      "items": [
+        {
+          "store_id": "amsterdam-flagship",
+          "name": "Amsterdam Flagship",
+          "location": { "lat": 52.3676, "lng": 4.9041 },
+          "catchments": [
+            {
+              "catchment_id": "walk",
+              "travel_time": { "value": 10, "unit": "min" },
+              "transport_mode": "walking"
+            },
+            {
+              "catchment_id": "drive",
+              "travel_time": { "value": 15, "unit": "min" },
+              "transport_mode": "driving"
+            }
+          ]
+        }
+      ]
     }
   ]
 }

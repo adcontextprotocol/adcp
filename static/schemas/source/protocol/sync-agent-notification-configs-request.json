@@ -66,27 +66,21 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Register a registry cache invalidation endpoint",
-      "data": {
-        "idempotency_key": "b6aa9428-9d5f-4d16-a6d2-1a27db67ef5b",
-        "notification_configs": [
-          {
-            "subscriber_id": "registry-cache",
-            "url": "https://registry.example/webhooks/adcp/capabilities",
-            "event_types": [
-              "capabilities.changed"
-            ],
-            "active": true
-          }
-        ]
-      }
+      "idempotency_key": "b6aa9428-9d5f-4d16-a6d2-1a27db67ef5b",
+      "notification_configs": [
+        {
+          "subscriber_id": "registry-cache",
+          "url": "https://registry.example/webhooks/adcp/capabilities",
+          "event_types": [
+            "capabilities.changed"
+          ],
+          "active": true
+        }
+      ]
     },
     {
-      "description": "Clear all agent-level subscribers",
-      "data": {
-        "idempotency_key": "f9f9a5ea-b3f1-41e1-9227-64c67b1bda18",
-        "notification_configs": []
-      }
+      "idempotency_key": "f9f9a5ea-b3f1-41e1-9227-64c67b1bda18",
+      "notification_configs": []
     }
   ]
 }

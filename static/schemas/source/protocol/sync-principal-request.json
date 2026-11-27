@@ -153,54 +153,51 @@
   },
   "examples": [
     {
-      "description": "Register one capability webhook and two reusable reporting destinations",
-      "data": {
-        "idempotency_key": "528f1f06-e2a7-49b9-bd13-c953f35a1c49",
-        "configuration": {
-          "notification_configs": [
-            {
-              "subscriber_id": "buyer-events",
-              "url": "https://buyer.example/webhooks/adcp",
-              "event_types": [
-                "capabilities.changed"
-              ],
-              "active": true
-            }
-          ],
-          "reporting_destinations": [
-            {
-              "pattern": "file_transfer",
-              "destination_id": "reporting-archive",
-              "active": true,
-              "provider": {
-                "domain": "object-store.example"
-              },
-              "transport": "s3",
-              "location": "s3://pinnacle-reporting/adcp/",
-              "accepted_formats": [
-                "parquet"
-              ],
-              "accepted_verification_profiles": [
-                "manifest_checksums",
-                "canonical_digest"
-              ]
+      "idempotency_key": "528f1f06-e2a7-49b9-bd13-c953f35a1c49",
+      "configuration": {
+        "notification_configs": [
+          {
+            "subscriber_id": "buyer-events",
+            "url": "https://buyer.example/webhooks/adcp",
+            "event_types": [
+              "capabilities.changed"
+            ],
+            "active": true
+          }
+        ],
+        "reporting_destinations": [
+          {
+            "pattern": "file_transfer",
+            "destination_id": "reporting-archive",
+            "active": true,
+            "provider": {
+              "domain": "object-store.example"
             },
-            {
-              "pattern": "warehouse_materialization",
-              "destination_id": "analytics-warehouse",
-              "active": true,
-              "provider": {
-                "domain": "data-warehouse.example"
-              },
-              "transport": "bigquery",
-              "location": "pinnacle-analytics.adcp_reporting",
-              "accepted_verification_profiles": [
-                "native_commit",
-                "canonical_digest"
-              ]
-            }
-          ]
-        }
+            "transport": "s3",
+            "location": "s3://pinnacle-reporting/adcp/",
+            "accepted_formats": [
+              "parquet"
+            ],
+            "accepted_verification_profiles": [
+              "manifest_checksums",
+              "canonical_digest"
+            ]
+          },
+          {
+            "pattern": "warehouse_materialization",
+            "destination_id": "analytics-warehouse",
+            "active": true,
+            "provider": {
+              "domain": "data-warehouse.example"
+            },
+            "transport": "bigquery",
+            "location": "pinnacle-analytics.adcp_reporting",
+            "accepted_verification_profiles": [
+              "native_commit",
+              "canonical_digest"
+            ]
+          }
+        ]
       }
     }
   ]

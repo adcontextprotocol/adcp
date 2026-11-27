@@ -265,156 +265,144 @@
   ],
   "examples": [
     {
-      "description": "Credit account — current, with invoice history",
-      "data": {
-        "status": "completed",
-        "account": {
-          "account_id": "acc_acme_001"
-        },
-        "currency": "USD",
-        "period": {
-          "start": "2026-02-01",
-          "end": "2026-02-28"
-        },
-        "timezone": "America/New_York",
-        "spend": {
-          "total_spend": 45230,
-          "media_buy_count": 3
-        },
-        "credit": {
-          "credit_limit": 100000,
-          "available_credit": 54770,
-          "utilization_percent": 45.23
-        },
-        "payment_status": "current",
-        "payment_terms": "net_30",
-        "invoices": [
-          {
-            "invoice_id": "inv_2026_01",
-            "period": {
-              "start": "2026-01-01",
-              "end": "2026-01-31"
-            },
-            "amount": 38500,
-            "status": "paid",
-            "due_date": "2026-02-28",
-            "paid_date": "2026-02-15"
-          }
-        ]
-      }
-    },
-    {
-      "description": "Itemised invoice and credit note (experimental, account.invoice_lines)",
-      "data": {
-        "status": "completed",
-        "account": {
-          "account_id": "acc_acme_001"
-        },
-        "currency": "USD",
-        "period": {
-          "start": "2026-03-01",
-          "end": "2026-03-31"
-        },
-        "timezone": "America/New_York",
-        "invoices": [
-          {
-            "invoice_id": "inv_2026_02",
-            "period": {
-              "start": "2026-02-01",
-              "end": "2026-02-28"
-            },
-            "amount": 45230,
-            "status": "issued",
-            "due_date": "2026-03-30",
-            "lines": [
-              {
-                "media_buy_id": "mb_spring_launch",
-                "package_id": "pkg_ctv_prime",
-                "reporting_revision_ids": [
-                  "rev_mb_spring_launch_2026_02_official"
-                ],
-                "billed_quantity": {
-                  "name": "impressions",
-                  "value": "1808000",
-                  "value_type": "integer",
-                  "unit": "impressions"
-                },
-                "amount": 45230
-              }
-            ]
+      "status": "completed",
+      "account": {
+        "account_id": "acc_acme_001"
+      },
+      "currency": "USD",
+      "period": {
+        "start": "2026-02-01",
+        "end": "2026-02-28"
+      },
+      "timezone": "America/New_York",
+      "spend": {
+        "total_spend": 45230,
+        "media_buy_count": 3
+      },
+      "credit": {
+        "credit_limit": 100000,
+        "available_credit": 54770,
+        "utilization_percent": 45.23
+      },
+      "payment_status": "current",
+      "payment_terms": "net_30",
+      "invoices": [
+        {
+          "invoice_id": "inv_2026_01",
+          "period": {
+            "start": "2026-01-01",
+            "end": "2026-01-31"
           },
-          {
-            "invoice_id": "cn_2026_03_001",
-            "invoice_kind": "credit_note",
-            "adjusts_invoice_id": "inv_2026_02",
-            "period": {
-              "start": "2026-03-01",
-              "end": "2026-03-31"
-            },
-            "amount": 1200,
-            "status": "issued",
-            "lines": [
-              {
-                "media_buy_id": "mb_spring_launch",
-                "package_id": "pkg_ctv_prime",
-                "reporting_adjustment_ids": [
-                  "adj_mb_spring_launch_2026_02_ivt"
-                ],
-                "billed_quantity": {
-                  "name": "impressions",
-                  "value": "48000",
-                  "value_type": "integer",
-                  "unit": "impressions"
-                },
-                "amount": 1200
-              }
-            ]
-          }
-        ]
-      }
+          "amount": 38500,
+          "status": "paid",
+          "due_date": "2026-02-28",
+          "paid_date": "2026-02-15"
+        }
+      ]
     },
     {
-      "description": "Prepay account with low balance",
-      "data": {
-        "status": "completed",
-        "account": {
-          "brand": {
-            "domain": "acme-corp.com"
+      "status": "completed",
+      "account": {
+        "account_id": "acc_acme_001"
+      },
+      "currency": "USD",
+      "period": {
+        "start": "2026-03-01",
+        "end": "2026-03-31"
+      },
+      "timezone": "America/New_York",
+      "invoices": [
+        {
+          "invoice_id": "inv_2026_02",
+          "period": {
+            "start": "2026-02-01",
+            "end": "2026-02-28"
           },
-          "operator": "acme-corp.com"
+          "amount": 45230,
+          "status": "issued",
+          "due_date": "2026-03-30",
+          "lines": [
+            {
+              "media_buy_id": "mb_spring_launch",
+              "package_id": "pkg_ctv_prime",
+              "reporting_revision_ids": [
+                "rev_mb_spring_launch_2026_02_official"
+              ],
+              "billed_quantity": {
+                "name": "impressions",
+                "value": "1808000",
+                "value_type": "integer",
+                "unit": "impressions"
+              },
+              "amount": 45230
+            }
+          ]
         },
-        "currency": "USD",
-        "period": {
-          "start": "2026-02-01",
-          "end": "2026-02-28"
-        },
-        "timezone": "America/Los_Angeles",
-        "spend": {
-          "total_spend": 8200,
-          "media_buy_count": 2
-        },
-        "balance": {
-          "available": 1800,
-          "last_top_up": {
-            "amount": 10000,
-            "date": "2026-02-01"
-          }
-        },
-        "payment_status": "current",
-        "payment_terms": "prepay"
-      }
+        {
+          "invoice_id": "cn_2026_03_001",
+          "invoice_kind": "credit_note",
+          "adjusts_invoice_id": "inv_2026_02",
+          "period": {
+            "start": "2026-03-01",
+            "end": "2026-03-31"
+          },
+          "amount": 1200,
+          "status": "issued",
+          "lines": [
+            {
+              "media_buy_id": "mb_spring_launch",
+              "package_id": "pkg_ctv_prime",
+              "reporting_adjustment_ids": [
+                "adj_mb_spring_launch_2026_02_ivt"
+              ],
+              "billed_quantity": {
+                "name": "impressions",
+                "value": "48000",
+                "value_type": "integer",
+                "unit": "impressions"
+              },
+              "amount": 1200
+            }
+          ]
+        }
+      ]
     },
     {
-      "description": "Agent-billed account — not supported",
-      "data": {
-        "status": "completed",
-        "errors": [
-          {
-            "code": "UNSUPPORTED_FEATURE",
-            "message": "Financial data is not available for agent-billed accounts. The agent's own billing system is the source of truth."
-          }
-        ]
-      }
+      "status": "completed",
+      "account": {
+        "brand": {
+          "domain": "acme-corp.com"
+        },
+        "operator": "acme-corp.com"
+      },
+      "currency": "USD",
+      "period": {
+        "start": "2026-02-01",
+        "end": "2026-02-28"
+      },
+      "timezone": "America/Los_Angeles",
+      "spend": {
+        "total_spend": 8200,
+        "media_buy_count": 2
+      },
+      "balance": {
+        "available": 1800,
+        "last_top_up": {
+          "amount": 10000,
+          "date": "2026-02-01"
+        }
+      },
+      "payment_status": "current",
+      "payment_terms": "prepay"
+    },
+    {
+      "status": "completed",
+      "errors": [
+        {
+          "code": "UNSUPPORTED_FEATURE",
+          "message": "Financial data is not available for agent-billed accounts. The agent's own billing system is the source of truth."
+        }
+      ]
     }
   ],
   "properties": {}

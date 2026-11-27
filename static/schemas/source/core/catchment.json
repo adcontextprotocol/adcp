@@ -104,40 +104,28 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Isochrone: 15-minute drive",
-      "data": {
-        "catchment_id": "drive",
-        "label": "15-min drive",
-        "travel_time": { "value": 15, "unit": "min" },
-        "transport_mode": "driving"
-      }
+      "catchment_id": "drive",
+      "label": "15-min drive",
+      "travel_time": { "value": 15, "unit": "min" },
+      "transport_mode": "driving"
     },
     {
-      "description": "Isochrone: 10-minute walk",
-      "data": {
-        "catchment_id": "walk",
-        "label": "10-min walk",
-        "travel_time": { "value": 10, "unit": "min" },
-        "transport_mode": "walking"
-      }
+      "catchment_id": "walk",
+      "label": "10-min walk",
+      "travel_time": { "value": 10, "unit": "min" },
+      "transport_mode": "walking"
     },
     {
-      "description": "Simple 5km radius",
-      "data": {
-        "catchment_id": "local",
-        "label": "5km radius",
-        "radius": { "value": 5, "unit": "km" }
-      }
+      "catchment_id": "local",
+      "label": "5km radius",
+      "radius": { "value": 5, "unit": "km" }
     },
     {
-      "description": "Pre-computed GeoJSON boundary",
-      "data": {
-        "catchment_id": "trade-area",
-        "label": "Primary trade area",
-        "geometry": {
-          "type": "Polygon",
-          "coordinates": [[[4.85, 52.35], [4.95, 52.35], [4.95, 52.40], [4.85, 52.40], [4.85, 52.35]]]
-        }
+      "catchment_id": "trade-area",
+      "label": "Primary trade area",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[4.85, 52.35], [4.95, 52.35], [4.95, 52.40], [4.85, 52.40], [4.85, 52.35]]]
       }
     }
   ]

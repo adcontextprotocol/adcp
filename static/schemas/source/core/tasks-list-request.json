@@ -136,60 +136,48 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "List all pending tasks across protocols",
-      "data": {
-        "account": {
-          "brand": {
-            "domain": "acme-corp.example"
-          },
-          "operator": "acme-corp.example",
-          "sandbox": true
+      "account": {
+        "brand": {
+          "domain": "acme-corp.example"
         },
-        "filters": {
-          "statuses": [
-            "submitted",
-            "working",
-            "input-required"
-          ]
-        }
+        "operator": "acme-corp.example",
+        "sandbox": true
+      },
+      "filters": {
+        "statuses": [
+          "submitted",
+          "working",
+          "input-required"
+        ]
       }
     },
     {
-      "description": "Find media-buy tasks requiring attention",
-      "data": {
-        "filters": {
-          "protocol": "media-buy",
-          "statuses": [
-            "input-required",
-            "failed"
-          ]
-        },
-        "sort": {
-          "field": "updated_at",
-          "direction": "asc"
-        }
+      "filters": {
+        "protocol": "media-buy",
+        "statuses": [
+          "input-required",
+          "failed"
+        ]
+      },
+      "sort": {
+        "field": "updated_at",
+        "direction": "asc"
       }
     },
     {
-      "description": "Recent signal operations",
-      "data": {
-        "filters": {
-          "protocol": "signals",
-          "created_after": "2025-01-01T00:00:00Z"
-        },
-        "pagination": {
-          "max_results": 20
-        }
+      "filters": {
+        "protocol": "signals",
+        "created_after": "2025-01-01T00:00:00Z"
+      },
+      "pagination": {
+        "max_results": 20
       }
     },
     {
-      "description": "State reconciliation for specific campaign",
-      "data": {
-        "filters": {
-          "context_contains": "nike_q1_2025"
-        },
-        "include_history": true
-      }
+      "filters": {
+        "context_contains": "nike_q1_2025"
+      },
+      "include_history": true
     }
   ]
 }

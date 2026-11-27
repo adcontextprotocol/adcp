@@ -80,19 +80,16 @@
   "not": { "anyOf": [{ "required": ["commercial_terms"] }, { "required": ["opportunity_id"] }] },
   "examples": [
     {
-      "description": "A creator postponed a scheduled installment and the seller offered a new date",
-      "data": {
-        "idempotency_key": "whk_01K2OFFER4EXAMPLE8Q7M5N3",
-        "notification_id": "prop_offer_mb_a_0007",
-        "notification_type": "proposal.offered",
-        "fired_at": "2026-10-20T14:01:00Z",
-        "subscriber_id": "buyer-primary",
-        "account_id": "acc_example",
-        "media_buy_id": "mb_a",
-        "proposal_id": "prop_offer_mb_a_0007",
-        "expires_at": "2026-10-24T17:00:00Z",
-        "offer_reason": "installment_postponed"
-      }
+      "idempotency_key": "whk_01K2OFFER4EXAMPLE8Q7M5N3",
+      "notification_id": "prop_offer_mb_a_0007",
+      "notification_type": "proposal.offered",
+      "fired_at": "2026-10-20T14:01:00Z",
+      "subscriber_id": "buyer-primary",
+      "account_id": "acc_example",
+      "media_buy_id": "mb_a",
+      "proposal_id": "prop_offer_mb_a_0007",
+      "expires_at": "2026-10-24T17:00:00Z",
+      "offer_reason": "installment_postponed"
     }
   ],
   "allOf": [

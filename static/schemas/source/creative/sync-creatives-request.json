@@ -466,116 +466,107 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Full sync with hosted video creative",
-      "data": {
-        "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
-        "account": {
-          "account_id": "acct_acmecorp"
-        },
-        "creatives": [
-          {
-            "creative_id": "hero_video_30s",
-            "name": "Brand Hero Video 30s",
-            "format_kind": "video_hosted",
-            "assets": {
-              "video": {
-                "asset_type": "video",
-                "url": "https://cdn.example.com/hero-video.mp4",
-                "width": 1920,
-                "height": 1080,
-                "duration_ms": 30000
-              }
-            },
-            "tags": [
-              "q1_2026",
-              "video"
-            ]
-          }
-        ],
-        "assignments": [
-          {
-            "creative_id": "hero_video_30s",
-            "package_id": "pkg_ctv_001"
-          },
-          {
-            "creative_id": "hero_video_30s",
-            "package_id": "pkg_ctv_002"
-          }
-        ]
-      }
-    },
-    {
-      "description": "Generative creative with approval",
-      "data": {
-        "idempotency_key": "5f8b1f3a-1234-4a5b-9cde-1234567890ab",
-        "account": {
-          "account_id": "acct_acmecorp"
-        },
-        "creatives": [
-          {
-            "creative_id": "holiday_hero",
-            "name": "Holiday Campaign Hero",
-            "format_kind": "image",
-            "assets": {
-              "product_catalog": {
-                "asset_type": "catalog",
-                "type": "product",
-                "catalog_id": "winter-products"
-              },
-              "generation_prompt": {
-                "asset_type": "text",
-                "content": "Create a warm, festive holiday campaign featuring winter products"
-              }
-            },
-            "tags": [
-              "holiday",
-              "q4_2026"
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "description": "Scoped update using creative_ids filter",
-      "data": {
-        "idempotency_key": "6a9c2f4b-5678-49ab-8def-fedcba987654",
-        "account": {
-          "account_id": "acct_acmecorp"
-        },
-        "creative_ids": [
-          "hero_video_30s",
-          "banner_300x250"
-        ],
-        "creatives": [
-          {
-            "creative_id": "hero_video_30s",
-            "name": "Brand Hero Video 30s - Updated",
-            "format_kind": "video_hosted",
-            "assets": {
-              "video": {
-                "asset_type": "video",
-                "url": "https://cdn.example.com/updated-hero.mp4",
-                "width": 1920,
-                "height": 1080,
-                "duration_ms": 30000
-              }
+      "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
+      "account": {
+        "account_id": "acct_acmecorp"
+      },
+      "creatives": [
+        {
+          "creative_id": "hero_video_30s",
+          "name": "Brand Hero Video 30s",
+          "format_kind": "video_hosted",
+          "assets": {
+            "video": {
+              "asset_type": "video",
+              "url": "https://cdn.example.com/hero-video.mp4",
+              "width": 1920,
+              "height": 1080,
+              "duration_ms": 30000
             }
           },
-          {
-            "creative_id": "banner_300x250",
-            "name": "Display Banner 300x250 - Updated",
-            "format_kind": "image",
-            "assets": {
-              "image": {
-                "asset_type": "image",
-                "url": "https://cdn.example.com/updated-banner.png",
-                "width": 300,
-                "height": 250
-              }
+          "tags": [
+            "q1_2026",
+            "video"
+          ]
+        }
+      ],
+      "assignments": [
+        {
+          "creative_id": "hero_video_30s",
+          "package_id": "pkg_ctv_001"
+        },
+        {
+          "creative_id": "hero_video_30s",
+          "package_id": "pkg_ctv_002"
+        }
+      ]
+    },
+    {
+      "idempotency_key": "5f8b1f3a-1234-4a5b-9cde-1234567890ab",
+      "account": {
+        "account_id": "acct_acmecorp"
+      },
+      "creatives": [
+        {
+          "creative_id": "holiday_hero",
+          "name": "Holiday Campaign Hero",
+          "format_kind": "image",
+          "assets": {
+            "product_catalog": {
+              "asset_type": "catalog",
+              "type": "product",
+              "catalog_id": "winter-products"
+            },
+            "generation_prompt": {
+              "asset_type": "text",
+              "content": "Create a warm, festive holiday campaign featuring winter products"
+            }
+          },
+          "tags": [
+            "holiday",
+            "q4_2026"
+          ]
+        }
+      ]
+    },
+    {
+      "idempotency_key": "6a9c2f4b-5678-49ab-8def-fedcba987654",
+      "account": {
+        "account_id": "acct_acmecorp"
+      },
+      "creative_ids": [
+        "hero_video_30s",
+        "banner_300x250"
+      ],
+      "creatives": [
+        {
+          "creative_id": "hero_video_30s",
+          "name": "Brand Hero Video 30s - Updated",
+          "format_kind": "video_hosted",
+          "assets": {
+            "video": {
+              "asset_type": "video",
+              "url": "https://cdn.example.com/updated-hero.mp4",
+              "width": 1920,
+              "height": 1080,
+              "duration_ms": 30000
             }
           }
-        ]
-      }
+        },
+        {
+          "creative_id": "banner_300x250",
+          "name": "Display Banner 300x250 - Updated",
+          "format_kind": "image",
+          "assets": {
+            "image": {
+              "asset_type": "image",
+              "url": "https://cdn.example.com/updated-banner.png",
+              "width": 300,
+              "height": 250
+            }
+          }
+        }
+      ]
     }
   ]
 }

@@ -89,49 +89,34 @@
   ],
   "examples": [
     {
-      "description": "Scalar binding — hotel name to headline slot",
-      "data": {
-        "kind": "scalar",
-        "asset_id": "headline",
-        "catalog_field": "name"
-      }
+      "kind": "scalar",
+      "asset_id": "headline",
+      "catalog_field": "name"
     },
     {
-      "description": "Scalar binding — nested field (nightly rate)",
-      "data": {
-        "kind": "scalar",
-        "asset_id": "price_badge",
-        "catalog_field": "price.amount"
-      }
+      "kind": "scalar",
+      "asset_id": "price_badge",
+      "catalog_field": "price.amount"
     },
     {
-      "description": "Asset pool binding — hero image from landscape pool",
-      "data": {
-        "kind": "asset_pool",
-        "asset_id": "hero_image",
-        "asset_group_id": "images_landscape"
-      }
+      "kind": "asset_pool",
+      "asset_id": "hero_image",
+      "asset_group_id": "images_landscape"
     },
     {
-      "description": "Asset pool binding — Snap vertical background from vertical pool",
-      "data": {
-        "kind": "asset_pool",
-        "asset_id": "snap_background",
-        "asset_group_id": "images_vertical"
-      }
+      "kind": "asset_pool",
+      "asset_id": "snap_background",
+      "asset_group_id": "images_vertical"
     },
     {
-      "description": "Catalog group binding — carousel where each slide is one hotel",
-      "data": {
-        "kind": "catalog_group",
-        "format_group_id": "slide",
-        "catalog_item": true,
-        "per_item_bindings": [
-          { "kind": "scalar",     "asset_id": "title", "catalog_field": "name" },
-          { "kind": "scalar",     "asset_id": "price", "catalog_field": "price.amount" },
-          { "kind": "asset_pool", "asset_id": "image", "asset_group_id": "images_landscape" }
-        ]
-      }
+      "kind": "catalog_group",
+      "format_group_id": "slide",
+      "catalog_item": true,
+      "per_item_bindings": [
+        { "kind": "scalar",     "asset_id": "title", "catalog_field": "name" },
+        { "kind": "scalar",     "asset_id": "price", "catalog_field": "price.amount" },
+        { "kind": "asset_pool", "asset_id": "image", "asset_group_id": "images_landscape" }
+      ]
     }
   ]
 }

@@ -57,69 +57,45 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Simple field rename",
-      "data": {
-        "feed_field": "hotel_name",
-        "catalog_field": "name"
-      }
+      "feed_field": "hotel_name",
+      "catalog_field": "name"
     },
     {
-      "description": "Date format transform — YYYYMMDD to ISO 8601",
-      "data": {
-        "feed_field": "available_from",
-        "catalog_field": "valid_from",
-        "transform": "date",
-        "format": "YYYYMMDD",
-        "timezone": "UTC"
-      }
+      "feed_field": "available_from",
+      "catalog_field": "valid_from",
+      "transform": "date",
+      "format": "YYYYMMDD",
+      "timezone": "UTC"
     },
     {
-      "description": "Divide cents to dollars",
-      "data": {
-        "feed_field": "price_cents",
-        "catalog_field": "price.amount",
-        "transform": "divide",
-        "by": 100
-      }
+      "feed_field": "price_cents",
+      "catalog_field": "price.amount",
+      "transform": "divide",
+      "by": 100
     },
     {
-      "description": "Static literal injection — currency not in feed",
-      "data": {
-        "catalog_field": "price.currency",
-        "value": "USD"
-      }
+      "catalog_field": "price.currency",
+      "value": "USD"
     },
     {
-      "description": "Image URL assigned to typed asset pool",
-      "data": {
-        "feed_field": "primary_photo_url",
-        "asset_group_id": "images_landscape"
-      }
+      "feed_field": "primary_photo_url",
+      "asset_group_id": "images_landscape"
     },
     {
-      "description": "Vertical photo URL assigned to vertical pool",
-      "data": {
-        "feed_field": "portrait_photo_url",
-        "asset_group_id": "images_vertical"
-      }
+      "feed_field": "portrait_photo_url",
+      "asset_group_id": "images_vertical"
     },
     {
-      "description": "Split comma-separated tags to array",
-      "data": {
-        "feed_field": "amenity_list",
-        "catalog_field": "amenities",
-        "transform": "split",
-        "separator": ","
-      }
+      "feed_field": "amenity_list",
+      "catalog_field": "amenities",
+      "transform": "split",
+      "separator": ","
     },
     {
-      "description": "Boolean coercion with default",
-      "data": {
-        "feed_field": "is_available",
-        "catalog_field": "available",
-        "transform": "boolean",
-        "default": false
-      }
+      "feed_field": "is_available",
+      "catalog_field": "available",
+      "transform": "boolean",
+      "default": false
     }
   ]
 }

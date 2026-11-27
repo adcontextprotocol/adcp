@@ -123,21 +123,18 @@
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Endpoint proof-of-control challenge",
-      "data": {
-        "type": "webhook.challenge",
-        "challenge": "example-challenge-token-000000000000",
-        "account_id": "acct_123",
-        "subscriber_id": "buyer-primary",
-        "seller_agent_url": "https://seller.example/adcp",
-        "delivery_auth": {
-          "mode": "rfc9421"
-        },
-        "event_types": [
-          "creative.status_changed",
-          "creative.purged"
-        ]
-      }
+      "type": "webhook.challenge",
+      "challenge": "example-challenge-token-000000000000",
+      "account_id": "acct_123",
+      "subscriber_id": "buyer-primary",
+      "seller_agent_url": "https://seller.example/adcp",
+      "delivery_auth": {
+        "mode": "rfc9421"
+      },
+      "event_types": [
+        "creative.status_changed",
+        "creative.purged"
+      ]
     }
   ]
 }

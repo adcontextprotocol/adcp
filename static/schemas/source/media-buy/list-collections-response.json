@@ -60,51 +60,45 @@
   "not": { "required": ["products"] },
   "examples": [
     {
-      "description": "A listed page with one creator card",
-      "data": {
-        "status": "completed",
-        "outcome": "listed",
-        "collections": [
-          {
-            "publisher_domain": "novacreators.example",
-            "collection_id": "kitchen_lab",
-            "name": "Kitchen Lab with Jordan Vega",
-            "kind": "series",
-            "status": "active",
-            "language": "en",
-            "cadence": "weekly",
-            "description": "Weekly food science experiments for home cooks",
-            "url": "https://novacreators.example/creators/kitchen-lab",
-            "talent": [
-              { "role": "host", "name": "Jordan Vega", "brand_ref": { "domain": "jordanvega.example" } }
-            ],
-            "distribution": [
-              {
-                "publisher_domain": "videoplatform.example",
-                "identifiers": [{ "type": "youtube_channel_id", "value": "UCexample123456" }],
-                "followers": {
-                  "lower_bound": 1230000,
-                  "upper_bound": 1239999,
-                  "precision": "approximate",
-                  "as_of": "2026-10-15T00:00:00Z"
-                }
+      "status": "completed",
+      "outcome": "listed",
+      "collections": [
+        {
+          "publisher_domain": "novacreators.example",
+          "collection_id": "kitchen_lab",
+          "name": "Kitchen Lab with Jordan Vega",
+          "kind": "series",
+          "status": "active",
+          "language": "en",
+          "cadence": "weekly",
+          "description": "Weekly food science experiments for home cooks",
+          "url": "https://novacreators.example/creators/kitchen-lab",
+          "talent": [
+            { "role": "host", "name": "Jordan Vega", "brand_ref": { "domain": "jordanvega.example" } }
+          ],
+          "distribution": [
+            {
+              "publisher_domain": "videoplatform.example",
+              "identifiers": [{ "type": "youtube_channel_id", "value": "UCexample123456" }],
+              "followers": {
+                "lower_bound": 1230000,
+                "upper_bound": 1239999,
+                "precision": "approximate",
+                "as_of": "2026-10-15T00:00:00Z"
               }
-            ]
-          }
-        ],
-        "pagination": { "has_more": true, "cursor": "eyJvIjo1MH0=" },
-        "collections_version": "cc_2026_10_16_r88",
-        "cache_scope": "account"
-      }
+            }
+          ]
+        }
+      ],
+      "pagination": { "has_more": true, "cursor": "eyJvIjo1MH0=" },
+      "collections_version": "cc_2026_10_16_r88",
+      "cache_scope": "account"
     },
     {
-      "description": "A conditional read that matched",
-      "data": {
-        "status": "completed",
-        "outcome": "unchanged",
-        "collections_version": "cc_2026_10_16_r88",
-        "cache_scope": "account"
-      }
+      "status": "completed",
+      "outcome": "unchanged",
+      "collections_version": "cc_2026_10_16_r88",
+      "cache_scope": "account"
     }
   ]
 }

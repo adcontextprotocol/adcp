@@ -21,7 +21,7 @@
  *                                  into undefined behavior.
  *
  * Scans:
- *   - `examples[].data` (or `examples[]`) on every JSON Schema under
+ *   - `examples[]` on every JSON Schema under
  *     `static/schemas/source/`.
  *   - `sample_request` and `sample_response` on every step of every
  *     storyboard under `static/compliance/source/`.
@@ -137,12 +137,8 @@ function lintSchemas(dir = SCHEMA_DIR) {
     }
     if (!doc || !Array.isArray(doc.examples)) continue;
     for (let i = 0; i < doc.examples.length; i++) {
-      const example = doc.examples[i];
-      // Schema example shape varies: some wrap payloads in `{ description, data }`,
-      // others place the payload directly in the array element.
-      const data =
-        example && typeof example === 'object' && 'data' in example ? example.data : example;
-      for (const found of walkPaginationObjects(data)) {
+      // Each `examples` entry is an instance of the schema that declares it.
+      for (const found of walkPaginationObjects(doc.examples[i])) {
         const violation = checkPagination(found.pagination);
         if (violation) {
           violations.push({
