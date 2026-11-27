@@ -42,11 +42,13 @@
       "properties": {
         "account_id": {
           "type": "string",
+          "maxLength": 255,
           "minLength": 1,
           "x-entity": "account"
         },
         "reasons": {
           "type": "array",
+          "maxItems": 32,
           "items": {
             "type": "string",
             "enum": [
@@ -74,6 +76,7 @@
       "properties": {
         "account_id": {
           "type": "string",
+          "maxLength": 255,
           "minLength": 1,
           "x-entity": "account"
         },

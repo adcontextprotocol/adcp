@@ -7,10 +7,10 @@
   "description": "An account that matches an account request or an ambiguous account reference, offered so a human can pick one. Only accounts the caller is already granted are ever offered.",
   "type": "object",
   "properties": {
-    "account_id": { "type": "string", "x-entity": "account" },
-    "name": { "type": "string" },
+    "account_id": { "type": "string", "maxLength": 255, "x-entity": "account" },
+    "name": { "type": "string", "maxLength": 255 },
     "brand": { "$ref": "/schemas/core/brand-key.json" },
-    "operator": { "type": "string" },
+    "operator": { "type": "string", "maxLength": 255 },
     "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
   },
   "required": ["account_id", "name"],

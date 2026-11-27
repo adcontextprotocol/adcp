@@ -13,6 +13,7 @@
     },
     "request_id": {
       "type": "string",
+      "maxLength": 255,
       "description": "Echoed request identifier from the original request"
     },
     "code": {
@@ -30,6 +31,7 @@
     },
     "message": {
       "type": "string",
+      "maxLength": 2000,
       "description": "Human-readable error description for debugging"
     }
   },

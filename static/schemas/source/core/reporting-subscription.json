@@ -32,7 +32,7 @@
         "all_authorized_accounts": { "type": "boolean", "const": true },
         "account_ids": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1, "x-entity": "account" },
+          "items": { "type": "string", "maxLength": 255, "minLength": 1, "x-entity": "account" },
           "minItems": 1,
           "maxItems": 1000,
           "uniqueItems": true
@@ -44,7 +44,7 @@
     },
     "exclude_account_ids": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1, "x-entity": "account" },
+      "items": { "type": "string", "maxLength": 255, "minLength": 1, "x-entity": "account" },
       "minItems": 1,
       "maxItems": 1000,
       "uniqueItems": true,

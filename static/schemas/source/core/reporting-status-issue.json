@@ -130,6 +130,7 @@
     },
     "media_buy_ids": {
       "type": "array",
+      "maxItems": 1000,
       "items": {
         "$ref": "/schemas/core/reporting-coverage.json#/definitions/ReportingMediaBuyId"
       },
@@ -138,6 +139,7 @@
     },
     "package_ids": {
       "type": "array",
+      "maxItems": 1000,
       "items": {
         "$ref": "/schemas/core/reporting-coverage.json#/definitions/ReportingPackageId"
       },

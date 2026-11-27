@@ -537,6 +537,7 @@
             },
             "collection_id": {
               "type": "string",
+              "maxLength": 255,
               "x-entity": "collection"
             },
             "removal_reason": {

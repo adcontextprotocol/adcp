@@ -19,7 +19,7 @@
       "title": "Provision binding",
       "properties": {
         "mode": { "type": "string", "const": "provision" },
-        "provider": { "type": "object", "description": "Platform hosting the destination.", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$" } }, "required": ["domain"], "additionalProperties": false },
+        "provider": { "type": "object", "description": "Platform hosting the destination.", "properties": { "domain": { "type": "string", "maxLength": 253, "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$" } }, "required": ["domain"], "additionalProperties": false },
         "location": { "type": "string", "minLength": 1, "maxLength": 2048, "description": "Provider-native bucket, prefix, project/dataset, catalog/schema, or equivalent locator. It MUST NOT contain an embedded credential or signed URL." },
         "access_mode": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_.-]*$", "description": "Optional provider access family used for capability matching." }
       },

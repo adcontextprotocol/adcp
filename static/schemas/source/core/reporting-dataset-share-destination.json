@@ -27,7 +27,7 @@
       "title": "Provision recipient",
       "properties": {
         "mode": { "type": "string", "const": "provision" },
-        "provider": { "type": "object", "description": "Data-sharing platform, such as databricks.com or snowflake.com.", "properties": { "domain": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$" } }, "required": ["domain"], "additionalProperties": false },
+        "provider": { "type": "object", "description": "Data-sharing platform, such as databricks.com or snowflake.com.", "properties": { "domain": { "type": "string", "maxLength": 253, "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$" } }, "required": ["domain"], "additionalProperties": false },
         "access_mode": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_.-]*$", "description": "Provider access family, such as databricks_to_databricks, open_sharing, or secure_data_sharing." },
         "recipient": {
           "type": "object",

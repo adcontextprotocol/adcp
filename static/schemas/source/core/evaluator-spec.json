@@ -8,6 +8,7 @@
   "properties": {
     "feature_requirement": {
       "type": "array",
+      "maxItems": 100,
       "description": "Optional hard GATE over creative-feature values — the predicates a leaf MUST satisfy for the producing agent to recommend/return it. Reuses the feature-requirement shape (min_value/max_value for quantitative features like creative_quality_score, allowed_values for binary/categorical) — the same predicate vocabulary that gates property/audience filters, which its own schema names as an intended creative-gate reuse. A leaf that fails any predicate is DROPPED from the agent's best_of_n survivors before ranking — this is internal pruning of which leaves the agent recommends, not an AdCP-layer block of an already-produced billable leaf (what is produced/billed is governed by max_variants/max_creatives/max_spend). Distinct from `rank_by`: the gate is a pass/fail predicate (drop on fail), `rank_by` is an ordering over survivors. Each predicate's `if_not_covered` (exclude|include, default exclude) is the fail-open knob when the source cannot measure that feature. A pass/warn/fail verdict is expressed as a categorical string feature value gated via `allowed_values` (e.g. [\"pass\"] or [\"pass\",\"warn\"]) — the buyer's predicate decides whether warn passes; the verdict is derived, never stored on creative-feature-result. Omit to leave evaluation advisory (no leaf is dropped).",
       "items": {
         "$ref": "/schemas/core/feature-requirement.json"
@@ -16,12 +17,14 @@
     },
     "rank_by": {
       "type": "array",
+      "maxItems": 100,
       "description": "Optional RANK ordering over creative-feature values — an ordered list (most significant first) the agent uses to order the gate survivors into recommended/rank. An explicit {feature_id, direction} ordering rather than the feature-requirement predicate (which has no sort direction): the gate decides pass/fail, rank_by decides better/worse. Soft preference, never a gate: leaves are not dropped by rank_by, they are only ordered. Omit to let the evaluator/seller choose the ordering.",
       "items": {
         "type": "object",
         "properties": {
           "feature_id": {
             "type": "string",
+            "maxLength": 255,
             "description": "Creative feature to order by (discovered via get_adcp_capabilities; the same feature_id space the chosen evaluator form returns in eval.features[])."
           },
           "direction": {
@@ -48,6 +51,7 @@
         },
         "feature_id": {
           "type": "string",
+          "maxLength": 255,
           "description": "Optional canonical feature_id the producing agent SHOULD request against this agent. When present it SHOULD match the agent's `accepted_verifiers[].feature_id` or be omitted; when absent the seller selects a feature at evaluation time. Resolves selector ambiguity exactly as the provenance verify_agent.feature_id does."
         }
       },
@@ -89,6 +93,7 @@
           "properties": {
             "pass": {
               "type": "array",
+              "maxItems": 100,
               "items": {
                 "$ref": "/schemas/content-standards/artifact.json"
               },
@@ -96,6 +101,7 @@
             },
             "fail": {
               "type": "array",
+              "maxItems": 100,
               "items": {
                 "$ref": "/schemas/content-standards/artifact.json"
               },

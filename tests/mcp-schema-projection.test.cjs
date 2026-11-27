@@ -233,6 +233,9 @@ const MODEL_CONTEXT_BUDGET_KIB = {
 // Reserved-word enum replacements (#8791) add a replacement value and its
 // deprecation metadata to enums in the controller closure; merged with the
 // above they stay within 1_388_000.
+// The 3.3 bounds slice (#8512) adds maxItems/maxLength to the new and
+// experimental fields in the controller closure; rebased on the above, the
+// controller measures 1_352_679 bytes, within the bound.
 const PARITY_COMPILE_LIMIT = 1_388_000;
 
 function readJson(filename) {

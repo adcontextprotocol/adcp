@@ -21,6 +21,7 @@
     },
     "mechanisms": {
       "type": "array",
+      "maxItems": 32,
       "description": "Mechanisms whose events enter the row's value; not every mechanism the vendor operates, and not cross-check mechanisms. `mechanisms` is the union across the row's aggregation scope. A set: order carries no meaning and values MUST NOT repeat.",
       "items": { "$ref": "/schemas/enums/collection-mechanism.json" },
       "minItems": 1,

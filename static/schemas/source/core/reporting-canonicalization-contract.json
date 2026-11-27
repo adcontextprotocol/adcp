@@ -21,6 +21,7 @@
     "schema_sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$", "description": "Digest of the exact row schema to which this contract applies." },
     "primary_keys": {
       "type": "array",
+      "maxItems": 32,
       "items": { "$ref": "#/definitions/ReportingPrimaryKey" },
       "minItems": 1,
       "uniqueItems": true,
@@ -48,8 +49,8 @@
           "properties": {
             "name": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]{1,128}$" },
             "purpose": { "type": "string", "const": "ordering_encoding" },
-            "input_rows": { "type": "array", "items": { "type": "object" }, "minItems": 2 },
-            "canonical_utf8_base64": { "type": "string", "minLength": 1, "description": "Base64 of the exact expected canonical UTF-8 bytes." },
+            "input_rows": { "type": "array", "maxItems": 10000, "items": { "type": "object" }, "minItems": 2 },
+            "canonical_utf8_base64": { "type": "string", "maxLength": 1048576, "minLength": 1, "description": "Base64 of the exact expected canonical UTF-8 bytes." },
             "sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" }
           },
           "required": ["name", "purpose", "input_rows", "canonical_utf8_base64", "sha256"],
@@ -57,14 +58,15 @@
         },
         "additional": {
           "type": "array",
+          "maxItems": 100,
           "items": {
             "title": "AdditionalGoldenVector",
             "type": "object",
             "properties": {
               "name": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]{1,128}$" },
               "purpose": { "type": "string", "const": "additional" },
-              "input_rows": { "type": "array", "items": { "type": "object" } },
-              "canonical_utf8_base64": { "type": "string", "minLength": 1, "description": "Base64 of the exact expected canonical UTF-8 bytes." },
+              "input_rows": { "type": "array", "maxItems": 10000, "items": { "type": "object" } },
+              "canonical_utf8_base64": { "type": "string", "maxLength": 1048576, "minLength": 1, "description": "Base64 of the exact expected canonical UTF-8 bytes." },
               "sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" }
             },
             "required": ["name", "purpose", "input_rows", "canonical_utf8_base64", "sha256"],
