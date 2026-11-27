@@ -315,6 +315,7 @@
         },
         "impression_basis_breakdown": {
           "type": "array",
+          "maxItems": 100,
           "x-status": "experimental",
           "x-added-in": "3.3.0",
           "description": "Experimental (media_buy.dooh_impression_basis). For a row that aggregates plays estimated on different tiers — a product mixing sensor-equipped screens and screens without a sensor, or a sensor-equipped screen whose fallback plays, estimated while its sensor was not reporting, are `seller_modeled` — one entry per tier present: at least two entries, whose tiers MUST be distinct and whose `plays` and `impressions` MUST sum exactly to the row's. Each entry of a parent row (totals, a package) MUST equal the sum of its child rows' entries for that tier, a single-tier child counting as one entry. A row never carries both this and `impression_basis`. Tiers are different units with no exchange rate, so compare impressions within a tier (and for `sensor_measured`, within the same `basis_metric`), and plays and spend across tiers. Billing is unchanged: a CPM bills the row's total `impressions`, all tiers together. Sellers that emit it MUST list `media_buy.dooh_impression_basis` in `experimental_features`.",

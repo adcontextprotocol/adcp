@@ -3,7 +3,7 @@
     "schema_version": "3.3.0-rc.3",
     "last_stable_release": "3.2.12",
     "source_files": 1116,
-    "already_bounded_arrays": 472,
+    "already_bounded_arrays": 477,
     "skipped_strings": {
       "const": 604,
       "enum": 985,
@@ -11,7 +11,7 @@
       "format:date-time": 517,
       "bounded-pattern": 526,
       "format:date": 32,
-      "bounded": 852,
+      "bounded": 858,
       "format:email": 11,
       "format:uuid": 18
     },
@@ -47,24 +47,24 @@
   },
   "summary": {
     "array": {
-      "total": 1484,
+      "total": 1479,
       "files": 394,
       "by_stability": {
-        "experimental": 31,
-        "new-3.3": 11,
+        "experimental": 28,
+        "new-3.3": 9,
         "stable": 1442
       },
       "by_side": {
-        "both": 461,
+        "both": 456,
         "other": 232,
         "request": 234,
         "response": 557
       },
       "by_stability_and_side": {
-        "experimental/both": 8,
+        "experimental/both": 5,
         "experimental/other": 1,
         "experimental/response": 22,
-        "new-3.3/both": 6,
+        "new-3.3/both": 4,
         "new-3.3/response": 5,
         "stable/both": 447,
         "stable/other": 231,
@@ -76,12 +76,11 @@
         "array-catalog": 4,
         "array-enum": 409,
         "array-large": 61,
-        "array-small": 132,
-        "array-typical": 659,
+        "array-small": 131,
+        "array-typical": 655,
         "inline-property-list": 54
       },
       "by_action": {
-        "apply in 3.3": 5,
         "deferred (#8198)": 27,
         "deferred (SDK generation)": 4,
         "move out of band (4.0)": 54,
@@ -89,23 +88,21 @@
       }
     },
     "string": {
-      "total": 1847,
-      "files": 468,
+      "total": 1841,
+      "files": 466,
       "by_stability": {
-        "experimental": 3,
-        "new-3.3": 5,
+        "experimental": 1,
+        "new-3.3": 1,
         "stable": 1839
       },
       "by_side": {
-        "both": 571,
+        "both": 566,
         "other": 414,
         "request": 291,
-        "response": 571
+        "response": 570
       },
       "by_stability_and_side": {
-        "experimental/both": 1,
-        "experimental/response": 2,
-        "new-3.3/both": 4,
+        "experimental/response": 1,
         "new-3.3/response": 1,
         "stable/both": 566,
         "stable/other": 414,
@@ -114,16 +111,15 @@
       },
       "by_tier": {
         "string-body": 15,
-        "string-code": 209,
+        "string-code": 208,
         "string-domain": 65,
-        "string-generic": 435,
-        "string-id": 869,
+        "string-generic": 434,
+        "string-id": 865,
         "string-text": 200,
         "string-token": 43,
         "string-url": 11
       },
       "by_action": {
-        "apply in 3.3": 6,
         "deferred (SDK generation)": 1,
         "tighten in 4.0": 1839,
         "withdrawn (#8501)": 1
@@ -1316,7 +1312,6 @@
     {"file":"core/canonical-delivery-forecast.json","pointer":"/properties/points","kind":"array","property":"points","side":"both","stability":"stable","in_last_stable":"yes","items":"$ref /schemas/core/canonical-forecast-point.json","proposed_limit":100,"tier":"array-typical","rationale":"Typical nested list; 100 until the owning group names a real ceiling.","action":"tighten in 4.0"},
     {"file":"core/canonical-delivery-forecast.json","pointer":"/properties/demographic","kind":"string","property":"demographic","side":"both","stability":"stable","in_last_stable":"yes","proposed_limit":500,"tier":"string-generic","rationale":"No name signal: 500, to be confirmed by the owning working group.","action":"tighten in 4.0"},
     {"file":"core/canonical-forecast-point.json","pointer":"/properties/product_id","kind":"string","property":"product_id","side":"both","stability":"stable","in_last_stable":"yes","proposed_limit":255,"tier":"string-id","rationale":"Identifier or name; 255 is the repository default (262 fields).","action":"tighten in 4.0"},
-    {"file":"core/canonical-forecast-point.json","pointer":"/properties/impression_basis_breakdown","kind":"array","property":"impression_basis_breakdown","side":"both","stability":"experimental","added_in_3_3":true,"in_last_stable":"no","items":"$ref /schemas/core/impression-basis-breakdown-entry.json","proposed_limit":100,"tier":"array-typical","rationale":"Typical nested list; 100 until the owning group names a real ceiling.","action":"apply in 3.3"},
     {"file":"core/canonical-forecast-point.json","pointer":"/properties/vendor_metric_values","kind":"array","property":"vendor_metric_values","side":"both","stability":"stable","in_last_stable":"yes","items":"$ref /schemas/core/canonical-forecast-vendor-metric-value.json","proposed_limit":100,"tier":"array-typical","rationale":"Typical nested list; 100 until the owning group names a real ceiling.","action":"tighten in 4.0"},
     {"file":"core/canonical-forecast-vendor-metric-value.json","pointer":"/properties/unit","kind":"string","property":"unit","side":"both","stability":"stable","in_last_stable":"yes","proposed_limit":64,"tier":"string-code","rationale":"Short code or version; 64 covers every registered value with room.","action":"tighten in 4.0"},
     {"file":"core/canonical-format-option.json","pointer":"/properties/format_option_id","kind":"string","property":"format_option_id","side":"response","stability":"stable","in_last_stable":"yes","proposed_limit":255,"tier":"string-id","rationale":"Identifier or name; 255 is the repository default (262 fields).","action":"tighten in 4.0"},
@@ -1546,9 +1541,6 @@
     {"file":"core/creative-representation.json","pointer":"/properties/source/properties/system","kind":"string","property":"system","side":"request","stability":"stable","in_last_stable":"yes","proposed_limit":500,"tier":"string-generic","rationale":"No name signal: 500, to be confirmed by the owning working group.","action":"tighten in 4.0"},
     {"file":"core/creative-representation.json","pointer":"/properties/source/properties/source_representation","kind":"string","property":"source_representation","side":"request","stability":"stable","in_last_stable":"yes","proposed_limit":255,"tier":"string-id","rationale":"Identifier or name; 255 is the repository default (262 fields).","action":"tighten in 4.0"},
     {"file":"core/creative-representation.json","pointer":"/properties/source/properties/source_id","kind":"string","property":"source_id","side":"request","stability":"stable","in_last_stable":"yes","proposed_limit":255,"tier":"string-id","rationale":"Identifier or name; 255 is the repository default (262 fields).","action":"tighten in 4.0"},
-    {"file":"core/creative-review-sla.json","pointer":"/properties/business_calendar_id","kind":"string","property":"business_calendar_id","side":"both","stability":"new-3.3","added_in_3_3":true,"in_last_stable":"no","proposed_limit":255,"tier":"string-id","rationale":"Identifier or name; 255 is the repository default (262 fields).","action":"apply in 3.3"},
-    {"file":"core/creative-review-sla.json","pointer":"/properties/response_max","kind":"string","property":"response_max","side":"both","stability":"new-3.3","added_in_3_3":true,"in_last_stable":"no","pattern":"^P(?!$)(\\d+Y)?(\\d+M)?(\\d+D)?(T(\\d+H)?(\\d+M)?(\\d+S)?)?$","proposed_limit":255,"tier":"string-id","rationale":"Pattern-constrained but unbounded value; 255 is the repository default.","action":"apply in 3.3"},
-    {"file":"core/creative-review-sla.json","pointer":"/properties/completion_max","kind":"string","property":"completion_max","side":"both","stability":"new-3.3","added_in_3_3":true,"in_last_stable":"no","pattern":"^P(?!$)(\\d+Y)?(\\d+M)?(\\d+D)?(T(\\d+H)?(\\d+M)?(\\d+S)?)?$","proposed_limit":255,"tier":"string-id","rationale":"Pattern-constrained but unbounded value; 255 is the repository default.","action":"apply in 3.3"},
     {"file":"core/creative-variable.json","pointer":"/properties/variable_id","kind":"string","property":"variable_id","side":"response","stability":"stable","in_last_stable":"yes","proposed_limit":255,"tier":"string-id","rationale":"Identifier or name; 255 is the repository default (262 fields).","action":"tighten in 4.0"},
     {"file":"core/creative-variable.json","pointer":"/properties/name","kind":"string","property":"name","side":"response","stability":"stable","in_last_stable":"yes","proposed_limit":255,"tier":"string-id","rationale":"Identifier or name; 255 is the repository default (262 fields).","action":"tighten in 4.0"},
     {"file":"core/creative-variable.json","pointer":"/properties/default_value","kind":"string","property":"default_value","side":"response","stability":"stable","in_last_stable":"yes","proposed_limit":500,"tier":"string-generic","rationale":"No name signal: 500, to be confirmed by the owning working group.","action":"tighten in 4.0"},
@@ -1575,7 +1567,6 @@
     {"file":"core/delivery-metrics.json","pointer":"/properties/by_event_type/items/properties/event_source_id","kind":"string","property":"event_source_id","side":"response","stability":"stable","in_last_stable":"yes","proposed_limit":255,"tier":"string-id","rationale":"Identifier or name; 255 is the repository default (262 fields).","action":"tighten in 4.0"},
     {"file":"core/delivery-metrics.json","pointer":"/properties/time_based_views","kind":"array","property":"time_based_views","side":"response","stability":"stable","in_last_stable":"yes","items":"object","proposed_limit":100,"tier":"array-typical","rationale":"Typical nested list; 100 until the owning group names a real ceiling.","action":"tighten in 4.0"},
     {"file":"core/delivery-metrics.json","pointer":"/properties/dooh_metrics/properties/calculation_notes","kind":"string","property":"calculation_notes","side":"both","stability":"stable","in_last_stable":"yes","proposed_limit":2000,"tier":"string-text","rationale":"Prose for a human or model; 2,000 is the repository default (41 fields).","action":"tighten in 4.0"},
-    {"file":"core/delivery-metrics.json","pointer":"/properties/dooh_metrics/properties/impression_basis_breakdown","kind":"array","property":"impression_basis_breakdown","side":"both","stability":"experimental","added_in_3_3":true,"in_last_stable":"no","items":"$ref /schemas/core/impression-basis-breakdown-entry.json","proposed_limit":100,"tier":"array-typical","rationale":"Typical nested list; 100 until the owning group names a real ceiling.","action":"apply in 3.3"},
     {"file":"core/delivery-metrics.json","pointer":"/properties/dooh_metrics/properties/venue_breakdown","kind":"array","property":"venue_breakdown","side":"both","stability":"stable","in_last_stable":"yes","items":"object","proposed_limit":100,"tier":"array-typical","rationale":"Typical nested list; 100 until the owning group names a real ceiling.","action":"tighten in 4.0"},
     {"file":"core/delivery-metrics.json","pointer":"/properties/dooh_metrics/properties/venue_breakdown/items/properties/venue_id","kind":"string","property":"venue_id","side":"both","stability":"stable","in_last_stable":"yes","proposed_limit":255,"tier":"string-id","rationale":"Identifier or name; 255 is the repository default (262 fields).","action":"tighten in 4.0"},
     {"file":"core/delivery-metrics.json","pointer":"/properties/dooh_metrics/properties/venue_breakdown/items/properties/venue_name","kind":"string","property":"venue_name","side":"both","stability":"stable","in_last_stable":"yes","proposed_limit":255,"tier":"string-id","rationale":"Identifier or name; 255 is the repository default (262 fields).","action":"tighten in 4.0"},
@@ -1687,7 +1678,6 @@
     {"file":"core/forecast-dimension-signal.json","pointer":"/properties/signal_value_name","kind":"string","property":"signal_value_name","side":"both","stability":"stable","in_last_stable":"yes","proposed_limit":255,"tier":"string-id","rationale":"Identifier or name; 255 is the repository default (262 fields).","action":"tighten in 4.0"},
     {"file":"core/forecast-point-dimensions.json","pointer":"","kind":"array","property":"","side":"both","stability":"stable","in_last_stable":"yes","items":"schema","proposed_limit":100,"tier":"array-typical","rationale":"Typical nested list; 100 until the owning group names a real ceiling.","action":"tighten in 4.0"},
     {"file":"core/forecast-point.json","pointer":"/properties/product_id","kind":"string","property":"product_id","side":"both","stability":"stable","in_last_stable":"yes","proposed_limit":255,"tier":"string-id","rationale":"Identifier or name; 255 is the repository default (262 fields).","action":"tighten in 4.0"},
-    {"file":"core/forecast-point.json","pointer":"/properties/impression_basis_breakdown","kind":"array","property":"impression_basis_breakdown","side":"both","stability":"experimental","added_in_3_3":true,"in_last_stable":"no","items":"$ref /schemas/core/impression-basis-breakdown-entry.json","proposed_limit":100,"tier":"array-typical","rationale":"Typical nested list; 100 until the owning group names a real ceiling.","action":"apply in 3.3"},
     {"file":"core/forecast-point.json","pointer":"/properties/vendor_metric_values","kind":"array","property":"vendor_metric_values","side":"both","stability":"stable","in_last_stable":"yes","items":"$ref /schemas/core/forecast-vendor-metric-value.json","proposed_limit":100,"tier":"array-typical","rationale":"Typical nested list; 100 until the owning group names a real ceiling.","action":"tighten in 4.0"},
     {"file":"core/forecast-vendor-metric-value.json","pointer":"/properties/unit","kind":"string","property":"unit","side":"both","stability":"stable","in_last_stable":"yes","proposed_limit":64,"tier":"string-code","rationale":"Short code or version; 64 covers every registered value with room.","action":"tighten in 4.0"},
     {"file":"core/format-id.json","pointer":"/properties/id","kind":"string","property":"id","side":"both","stability":"stable","in_last_stable":"yes","pattern":"^[a-zA-Z0-9_-]+$","proposed_limit":255,"tier":"string-id","rationale":"Identifier or name; 255 is the repository default (262 fields).","action":"tighten in 4.0"},
@@ -1802,7 +1792,6 @@
     {"file":"core/indicators-changed-webhook.json","pointer":"/properties/package_id","kind":"string","property":"package_id","side":"response","stability":"stable","in_last_stable":"yes","proposed_limit":255,"tier":"string-id","rationale":"Identifier or name; 255 is the repository default (262 fields).","action":"tighten in 4.0"},
     {"file":"core/indicators-changed-webhook.json","pointer":"/properties/creative_id","kind":"string","property":"creative_id","side":"response","stability":"stable","in_last_stable":"yes","proposed_limit":255,"tier":"string-id","rationale":"Identifier or name; 255 is the repository default (262 fields).","action":"tighten in 4.0"},
     {"file":"core/indicators-changed-webhook.json","pointer":"/properties/changed_indicator_types","kind":"array","property":"changed_indicator_types","side":"response","stability":"stable","in_last_stable":"yes","items":"$ref /schemas/enums/indicator-type.json","proposed_limit":32,"tier":"array-enum","rationale":"Enum-valued items (9 values), so the enum bounds it; 32 floor.","action":"tighten in 4.0"},
-    {"file":"core/installment-change.json","pointer":"/properties/product_id","kind":"string","property":"product_id","side":"both","stability":"experimental","added_in_3_3":true,"in_last_stable":"no","proposed_limit":255,"tier":"string-id","rationale":"Identifier or name; 255 is the repository default (262 fields).","action":"apply in 3.3"},
     {"file":"core/installment-deadlines.json","pointer":"/properties/material_deadlines","kind":"array","property":"material_deadlines","side":"both","stability":"stable","in_last_stable":"yes","items":"$ref /schemas/core/material-deadline.json","proposed_limit":100,"tier":"array-typical","rationale":"Typical nested list; 100 until the owning group names a real ceiling.","action":"tighten in 4.0"},
     {"file":"core/installment-delivery-metrics.json","pointer":"/allOf/1/properties/installment_name","kind":"string","property":"installment_name","side":"response","stability":"stable","in_last_stable":"yes","proposed_limit":255,"tier":"string-id","rationale":"Identifier or name; 255 is the repository default (262 fields).","action":"tighten in 4.0"},
     {"file":"core/installment-property-delivery-metrics.json","pointer":"/allOf/1/properties/installment_name","kind":"string","property":"installment_name","side":"response","stability":"stable","in_last_stable":"yes","proposed_limit":255,"tier":"string-id","rationale":"Identifier or name; 255 is the repository default (262 fields).","action":"tighten in 4.0"},
@@ -2937,11 +2926,8 @@
     {"file":"formats/canonical/image.json","pointer":"/properties/cta_values/items","kind":"string","property":"cta_values","side":"both","stability":"stable","in_last_stable":"yes","proposed_limit":500,"tier":"string-generic","rationale":"No name signal: 500, to be confirmed by the owning working group.","action":"tighten in 4.0"},
     {"file":"formats/canonical/image.json","pointer":"/properties/activation_methods","kind":"array","property":"activation_methods","side":"both","stability":"stable","in_last_stable":"yes","items":"$ref /schemas/enums/activation-method.json","proposed_limit":32,"tier":"array-enum","rationale":"Enum-valued items (6 values), so the enum bounds it; 32 floor.","action":"tighten in 4.0"},
     {"file":"formats/canonical/image_carousel.json","pointer":"/properties/card_aspect_ratio","kind":"string","property":"card_aspect_ratio","side":"both","stability":"stable","in_last_stable":"yes","pattern":"^[0-9]+(\\.[0-9]+)?:[0-9]+(\\.[0-9]+)?$","proposed_limit":255,"tier":"string-id","rationale":"Pattern-constrained but unbounded value; 255 is the repository default.","action":"tighten in 4.0"},
-    {"file":"formats/canonical/image_carousel.json","pointer":"/properties/card_image_sizes","kind":"array","property":"card_image_sizes","side":"both","stability":"new-3.3","added_in_3_3":true,"in_last_stable":"no","items":"object","proposed_limit":32,"tier":"array-small","rationale":"Closed or near-closed vocabulary; a payload naming more than 32 is a modelling error.","action":"apply in 3.3"},
     {"file":"formats/canonical/image_carousel.json","pointer":"/properties/allowed_card_media_asset_types","kind":"array","property":"allowed_card_media_asset_types","side":"both","stability":"stable","in_last_stable":"yes","items":"string","proposed_limit":32,"tier":"array-enum","rationale":"Enum-valued items (2 values), so the enum bounds it; 32 floor.","action":"tighten in 4.0"},
     {"file":"formats/canonical/image_carousel.json","pointer":"/properties/allowed_card_asset_types","kind":"array","property":"allowed_card_asset_types","side":"both","stability":"stable","in_last_stable":"yes","items":"string","proposed_limit":32,"tier":"array-enum","rationale":"Enum-valued items (2 values), so the enum bounds it; 32 floor.","action":"tighten in 4.0"},
-    {"file":"formats/canonical/image_carousel.json","pointer":"/properties/cta_values","kind":"array","property":"cta_values","side":"both","stability":"new-3.3","added_in_3_3":true,"in_last_stable":"no","items":"string","proposed_limit":100,"tier":"array-typical","rationale":"Typical nested list; 100 until the owning group names a real ceiling.","action":"apply in 3.3"},
-    {"file":"formats/canonical/image_carousel.json","pointer":"/properties/cta_values/items","kind":"string","property":"cta_values","side":"both","stability":"new-3.3","added_in_3_3":true,"in_last_stable":"no","proposed_limit":500,"tier":"string-generic","rationale":"No name signal: 500, to be confirmed by the owning working group.","action":"apply in 3.3"},
     {"file":"formats/canonical/native_in_feed.json","pointer":"/properties/activation_methods","kind":"array","property":"activation_methods","side":"both","stability":"stable","in_last_stable":"yes","items":"$ref /schemas/enums/activation-method.json","proposed_limit":32,"tier":"array-enum","rationale":"Enum-valued items (6 values), so the enum bounds it; 32 floor.","action":"tighten in 4.0"},
     {"file":"formats/canonical/native_in_feed.json","pointer":"/properties/cta_values","kind":"array","property":"cta_values","side":"both","stability":"stable","in_last_stable":"yes","items":"string","proposed_limit":100,"tier":"array-typical","rationale":"Typical nested list; 100 until the owning group names a real ceiling.","action":"tighten in 4.0"},
     {"file":"formats/canonical/native_in_feed.json","pointer":"/properties/cta_values/items","kind":"string","property":"cta_values","side":"both","stability":"stable","in_last_stable":"yes","proposed_limit":500,"tier":"string-generic","rationale":"No name signal: 500, to be confirmed by the owning working group.","action":"tighten in 4.0"},
@@ -3391,7 +3377,6 @@
     {"file":"media-buy/list-products-request.json","pointer":"/properties/if_pricing_version","kind":"string","property":"if_pricing_version","side":"request","stability":"stable","in_last_stable":"yes","proposed_limit":64,"tier":"string-code","rationale":"Short code or version; 64 covers every registered value with room.","action":"tighten in 4.0"},
     {"file":"media-buy/list-products-response.json","pointer":"/properties/products","kind":"array","property":"products","side":"response","stability":"stable","in_last_stable":"yes","items":"$ref /schemas/core/canonical-product.json","proposed_limit":100,"tier":"array-typical","rationale":"Typical nested list; 100 until the owning group names a real ceiling.","action":"tighten in 4.0"},
     {"file":"media-buy/list-products-response.json","pointer":"/properties/collections","kind":"array","property":"collections","side":"response","stability":"experimental","added_in_3_3":true,"in_last_stable":"no","items":"$ref /schemas/core/response-collection.json","proposed_limit":null,"tier":"inline-property-list","rationale":"Property/collection list carried inline; the WG rule is that such lists are passed by reference (agent_url + list_id).","action":"move out of band (4.0)"},
-    {"file":"media-buy/list-products-response.json","pointer":"/properties/execution_readiness/properties/version","kind":"string","property":"version","side":"response","stability":"experimental","added_in_3_3":true,"in_last_stable":"no","proposed_limit":64,"tier":"string-code","rationale":"Short code or version; 64 covers every registered value with room.","action":"apply in 3.3"},
     {"file":"media-buy/list-products-response.json","pointer":"/properties/next_cursor","kind":"string","property":"next_cursor","side":"response","stability":"stable","in_last_stable":"yes","proposed_limit":4096,"tier":"string-token","rationale":"Opaque token; 4,096 matches cursor and token fields already bounded.","action":"tighten in 4.0"},
     {"file":"media-buy/list-products-response.json","pointer":"/properties/feed_version","kind":"string","property":"feed_version","side":"response","stability":"stable","in_last_stable":"yes","proposed_limit":64,"tier":"string-code","rationale":"Short code or version; 64 covers every registered value with room.","action":"tighten in 4.0"},
     {"file":"media-buy/list-products-response.json","pointer":"/properties/pricing_version","kind":"string","property":"pricing_version","side":"response","stability":"stable","in_last_stable":"yes","proposed_limit":64,"tier":"string-code","rationale":"Short code or version; 64 covers every registered value with room.","action":"tighten in 4.0"},

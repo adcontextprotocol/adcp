@@ -9,6 +9,7 @@
   "properties": {
     "product_id": {
       "type": "string",
+      "maxLength": 255,
       "minLength": 1,
       "x-entity": "product",
       "description": "A product the source proposal purchases, or one that product_changes includes in the same request. The seller checks this membership before it resolves installment_ref, so an unauthorized caller never causes reference resolution."

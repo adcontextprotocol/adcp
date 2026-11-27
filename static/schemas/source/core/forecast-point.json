@@ -44,6 +44,7 @@
     },
     "impression_basis_breakdown": {
       "type": "array",
+      "maxItems": 100,
       "x-status": "experimental",
       "x-added-in": "3.3.0",
       "description": "Experimental (media_buy.dooh_impression_basis). For a DOOH point covering plays expected on different tiers, one entry per tier with the expected plays and impressions behind the point's midpoints: at least two entries, whose tiers MUST be distinct and whose `plays` and `impressions` MUST sum exactly to `metrics.plays.mid` and `metrics.impressions.mid`, which a point carrying a breakdown therefore carries. It SHOULD include the fallback the seller expects: the plays sensor-equipped screens are expected to estimate on `seller_modeled` while their sensor is not reporting. A point never carries both this and `impression_basis`. Tiers are different units with no exchange rate, so compare impressions within a tier (and for `sensor_measured`, within the same metric), and plays and spend across tiers.",
