@@ -44,7 +44,7 @@ Identify which layer first. Symptoms in one layer often have root causes in anot
 #### A2A Agent Failures
 | Symptom | Likely Cause | Check |
 |---------|-------------|-------|
-| Agent not discoverable | Agent Card not served at `/.well-known/agent.json` | Verify endpoint, check CORS headers |
+| Agent not discoverable | Agent Card not served at `/.well-known/agent-card.json` (A2A 1.x) | Verify endpoint, check CORS headers |
 | Skill not matched | Skill description doesn't match incoming task | Review skill tags and description for ambiguity |
 | Task stuck in "working" | Agent never transitions to completed/failed | Check task lifecycle state management |
 | Streaming breaks | SSE connection dropped | Check for proxy/load balancer timeout, keep-alive configuration |
