@@ -19,9 +19,10 @@ function writeJson(file, value) {
 
 /**
  * Writes a repository tree with the smallest source the build accepts (a
- * registry, one error code, no task types, a permissive manifest schema)
- * plus `schemas`, a map from source-relative path to schema. Returns the
- * tree's root; `removeFixtureTrees` deletes every tree written.
+ * registry, the extension registry placeholder, one error code, no task
+ * types, a permissive manifest schema) plus `schemas`, a map from
+ * source-relative path to schema. Returns the tree's root;
+ * `removeFixtureTrees` deletes every tree written.
  */
 const fixtureTrees = [];
 function writeFixtureTree(schemas) {
@@ -31,6 +32,7 @@ function writeFixtureTree(schemas) {
   writeJson(path.join(root, 'package.json'), { version: '0.0.0' });
   writeJson(path.join(source, 'index.json'), {});
   writeJson(path.join(source, 'manifest.schema.json'), {});
+  writeJson(path.join(source, 'extensions/index.json'), {});
   writeJson(path.join(source, 'enums/task-type.json'), { enum: [] });
   writeJson(path.join(source, 'enums/error-code.json'), {
     enum: ['FIXTURE_ERROR'],
