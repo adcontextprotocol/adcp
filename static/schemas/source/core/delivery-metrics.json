@@ -315,6 +315,7 @@
         },
         "impression_basis_breakdown": {
           "type": "array",
+          "maxItems": 100,
           "x-status": "experimental",
           "x-added-in": "3.3.0",
           "description": "Experimental (media_buy.dooh_impression_basis). For a row that aggregates plays estimated on different tiers — a product mixing sensor-equipped screens and screens without a sensor, or a sensor-equipped screen whose fallback plays, estimated while its sensor was not reporting, are `seller_modeled` — one entry per tier present: at least two entries, whose tiers MUST be distinct and whose `plays` and `impressions` MUST sum exactly to the row's. Each entry of a parent row (totals, a package) MUST equal the sum of its child rows' entries for that tier, a single-tier child counting as one entry. A row never carries both this and `impression_basis`. Tiers are different units with no exchange rate, so compare impressions within a tier (and for `sensor_measured`, within the same `basis_metric`), and plays and spend across tiers. Billing is unchanged: a CPM bills the row's total `impressions`, all tiers together. Sellers that emit it MUST list `media_buy.dooh_impression_basis` in `experimental_features`.",
@@ -392,12 +393,14 @@
       "properties": {
         "panels": {
           "type": "array",
+          "maxItems": 100,
           "description": "Panels (faces) covered by this row. A panel commonly carries multiple identifiers at once — OOH contracts key line items on the measurement-currency panel number AND the operator's own panel number together.",
           "items": {
             "type": "object",
             "properties": {
               "identifiers": {
                 "type": "array",
+                "maxItems": 32,
                 "minItems": 1,
                 "description": "All identifiers for this panel, one entry per scheme",
                 "items": {
@@ -405,6 +408,7 @@
                   "properties": {
                     "id": {
                       "type": "string",
+                      "maxLength": 255,
                       "description": "Panel/face identifier within the id_type namespace"
                     },
                     "id_type": {
@@ -419,6 +423,7 @@
               },
               "name": {
                 "type": "string",
+                "maxLength": 255,
                 "description": "Human-readable location description (e.g., 'I-95 N of Exit 12, right-hand read')"
               }
             },
@@ -469,12 +474,14 @@
         },
         "postings": {
           "type": "array",
+          "maxItems": 100,
           "description": "Posting records — the seller-attested settlement artifact proving each panel was posted for the period. Industry convention (OAAA model contracts, Proof of Performance §3.5): photo evidence per bulletin within five calendar days of posting and again after each rotary rotation; one representative close-up photograph per creative design variation for poster showings (no deadline attached). Distinct from the §2.2 posting-completion obligation (posting within five business days of the scheduled date), which governs average_posted_date, not evidence.",
           "items": {
             "type": "object",
             "properties": {
               "panel_id": {
                 "type": "string",
+                "maxLength": 255,
                 "description": "Panel reference matching one of panels[].identifiers[].id"
               },
               "event_type": {
@@ -499,6 +506,7 @@
         },
         "calculation_notes": {
           "type": "string",
+          "maxLength": 2000,
           "description": "Row-specific methodology context that doesn't fit the structured fields (e.g., a partial-period proration or a market-specific estimate adjustment). Same role as dooh_metrics.calculation_notes — canonical methodology declarations belong on the measurement vendor's discoverable surfaces, not here."
         }
       },
@@ -520,6 +528,7 @@
         },
         "position_delivered": {
           "type": "string",
+          "maxLength": 255,
           "description": "Position in which the insertion actually ran (e.g., 'right_hand', 'outside_back_cover'). Unconstrained free-form text until a shared print position vocabulary exists; compare against the position the buyer booked."
         },
         "circulation_delivered": {
@@ -771,6 +780,7 @@
     },
     "vendor_metric_provenance": {
       "type": "array",
+      "maxItems": 100,
       "x-status": "experimental",
       "x-added-in": "3.3.0",
       "description": "Experimental (media_buy.measurement_provenance). Collection-mechanism provenance for rows of `vendor_metric_values` in this object, one entry per `(vendor, metric_id, qualifier)` and joined on that key. A sibling of the closed rows, not a field on them. Sellers that emit it declare `media_buy.measurement_provenance` in `experimental_features`. Omit when no row has provenance to report.",

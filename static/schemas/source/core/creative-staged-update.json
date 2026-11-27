@@ -16,6 +16,7 @@
     },
     "change_kinds": {
       "type": "array",
+      "maxItems": 32,
       "items": { "$ref": "/schemas/enums/creative-change-kind.json" },
       "minItems": 1,
       "uniqueItems": true,
@@ -28,6 +29,7 @@
     },
     "rejection_reason": {
       "type": "string",
+      "maxLength": 2000,
       "description": "Human-readable reason. Present only when status is rejected."
     }
   },

@@ -146,9 +146,11 @@
                     },
                     "interval_ids": {
                       "type": "array",
+                      "maxItems": 1000,
                       "description": "Seller-scoped interval identifiers whose union produced applied.",
                       "items": {
                         "type": "string",
+                        "maxLength": 255,
                         "minLength": 1,
                         "x-entity": "demographic_interval_id"
                       },
@@ -180,6 +182,7 @@
                     },
                     "signal_refs": {
                       "type": "array",
+                      "maxItems": 1000,
                       "description": "Authoritative signal references whose demographic predicates were unioned to produce applied. Signal names alone never establish equivalence.",
                       "items": {
                         "$ref": "/schemas/core/signal-ref.json"
@@ -239,6 +242,7 @@
                     },
                     "signal_refs": {
                       "type": "array",
+                      "maxItems": 1000,
                       "description": "Authoritative signal references whose demographic predicates were unioned to produce applied. Signal names alone never establish equivalence.",
                       "items": {
                         "$ref": "/schemas/core/signal-ref.json"

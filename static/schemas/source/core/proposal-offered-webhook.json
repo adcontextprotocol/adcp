@@ -37,10 +37,12 @@
     },
     "account_id": {
       "type": "string",
+      "maxLength": 255,
       "x-entity": "account"
     },
     "media_buy_id": {
       "type": "string",
+      "maxLength": 255,
       "minLength": 1,
       "x-entity": "media_buy"
     },

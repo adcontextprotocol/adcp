@@ -32,6 +32,7 @@
     "card_image_sizes": {
       "x-added-in": "3.3.0",
       "type": "array",
+      "maxItems": 32,
       "minItems": 1,
       "items": {
         "type": "object",
@@ -97,7 +98,8 @@
     "cta_values": {
       "x-added-in": "3.3.0",
       "type": "array",
-      "items": { "type": "string" },
+      "maxItems": 100,
+      "items": { "type": "string", "maxLength": 500 },
       "description": "Permitted values for each card's `cta` (e.g., ['SHOP_NOW', 'LEARN_MORE']). When set, every card's `cta` MUST be one of these values, and a seller refuses any other value with `CREATIVE_VALUE_NOT_ALLOWED`, with `error.field` pointing at that card's `cta`. When absent, a card's `cta` takes free text, and a seller does not refuse it as `CREATIVE_VALUE_NOT_ALLOWED`."
     },
     "ssl_required": {

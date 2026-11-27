@@ -27,6 +27,7 @@
         },
         "message": {
           "type": "string",
+          "maxLength": 2000,
           "description": "Human-readable description of what is needed."
         },
         "expires_at": {

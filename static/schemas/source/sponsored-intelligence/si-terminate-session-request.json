@@ -14,6 +14,7 @@
   "properties": {
     "session_id": {
       "type": "string",
+      "maxLength": 255,
       "description": "Session identifier to terminate",
       "x-entity": "si_session"
     },
@@ -34,6 +35,7 @@
       "properties": {
         "summary": {
           "type": "string",
+          "maxLength": 2000,
           "description": "Summary of the conversation"
         },
         "transaction_intent": {
@@ -56,6 +58,7 @@
         },
         "cause": {
           "type": "string",
+          "maxLength": 500,
           "description": "For host_terminated - why host ended session"
         }
       },

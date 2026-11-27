@@ -230,6 +230,7 @@
   "properties": {
     "plan_id": {
       "type": "string",
+      "maxLength": 255,
       "description": "Campaign governance plan identifier. Required on the initial intent or availability check, before a governance_context exists. Optional on subsequent checks: the governance agent derives the plan from its own signed governance_context. If both are present, the governance agent MUST reject the request when plan_id does not match the token's plan binding. Services MUST treat governance_context as authoritative and MUST NOT require a buyer to disclose plan_id. A plan is owned by the authenticated buyer principal that synchronized it; plan_id is an identifier, not an account credential.",
       "x-entity": "governance_plan"
     },
@@ -279,6 +280,7 @@
     },
     "tool": {
       "type": "string",
+      "maxLength": 500,
       "description": "The AdCP tool being checked (e.g., 'create_media_buy', 'acquire_rights', 'activate_signal'). Present on intent checks (orchestrator). The governance agent uses the presence of tool+payload to identify an intent check."
     },
     "payload": {
@@ -426,6 +428,7 @@
             },
             "baseline_description": {
               "type": "string",
+              "maxLength": 2000,
               "description": "Description of the baseline when baseline is 'custom' (e.g., 'US adults 18+ with broadband access')."
             },
             "indices": {

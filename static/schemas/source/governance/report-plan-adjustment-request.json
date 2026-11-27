@@ -50,18 +50,21 @@
     },
     "plan_id": {
       "type": "string",
+      "maxLength": 255,
       "minLength": 1,
       "description": "Plan containing the source outcome.",
       "x-entity": "governance_plan"
     },
     "outcome_id": {
       "type": "string",
+      "maxLength": 255,
       "minLength": 1,
       "description": "Completed outcome whose authoritative commitment is being adjusted.",
       "x-entity": "governance_outcome"
     },
     "adjustment_id": {
       "type": "string",
+      "maxLength": 255,
       "description": "Adjustment to accept or dispute. Required for review.",
       "x-entity": "governance_adjustment"
     },
