@@ -1,0 +1,8 @@
+changes:
+  - root: d-request.json
+    pointer: /properties/wait
+    keyword: pattern
+    old: ^P(?=[0-9]|T)(?:[0-9]+D)?(?:T(?:[0-9]+H)?)?$
+    new: ^P(?=[0-9]|T)(?:[0-9]+D)?(?:T(?=[0-9])(?:[0-9]+H)?)?$
+    direction: tighten
+    side: request

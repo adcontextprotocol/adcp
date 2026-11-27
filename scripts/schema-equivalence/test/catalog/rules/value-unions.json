@@ -1,0 +1,1435 @@
+{
+  "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "oracle_frozen": "2026-11-20",
+  "subsumes_commit": "9a9d00afa3e1c46015949a74faa91b4ce71f4ab0",
+  "pairs": [
+    {
+      "id": "rules/value-unions/anyof-of-values/top",
+      "rule": "an anyOf of value-only branches is one enum; a oneOf only when its value sets do not overlap",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "anyOf": [
+            {
+              "const": "a"
+            },
+            {
+              "const": "b"
+            },
+            {
+              "enum": [
+                "c"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "enum": [
+            "a",
+            "b",
+            "c"
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "rules/value-unions/anyof-of-values/allOf",
+      "rule": "an anyOf of value-only branches is one enum; a oneOf only when its value sets do not overlap",
+      "context": "allOf",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "anyOf": [
+                {
+                  "const": "a"
+                },
+                {
+                  "const": "b"
+                },
+                {
+                  "enum": [
+                    "c"
+                  ]
+                }
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "enum": [
+                "a",
+                "b",
+                "c"
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "rules/value-unions/anyof-of-values/not",
+      "rule": "an anyOf of value-only branches is one enum; a oneOf only when its value sets do not overlap",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "anyOf": [
+              {
+                "const": "a"
+              },
+              {
+                "const": "b"
+              },
+              {
+                "enum": [
+                  "c"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "enum": [
+              "a",
+              "b",
+              "c"
+            ]
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "rules/value-unions/anyof-of-values/ref",
+      "rule": "an anyOf of value-only branches is one enum; a oneOf only when its value sets do not overlap",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "anyOf": [
+            {
+              "const": "a"
+            },
+            {
+              "const": "b"
+            },
+            {
+              "enum": [
+                "c"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "enum": [
+            "a",
+            "b",
+            "c"
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "rules/value-unions/anyof-of-values/cycle",
+      "rule": "an anyOf of value-only branches is one enum; a oneOf only when its value sets do not overlap",
+      "context": "cycle",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "anyOf": [
+                    {
+                      "const": "a"
+                    },
+                    {
+                      "const": "b"
+                    },
+                    {
+                      "enum": [
+                        "c"
+                      ]
+                    }
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "enum": [
+                    "a",
+                    "b",
+                    "c"
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "rules/value-unions/anyof-of-values/discriminator",
+      "rule": "an anyOf of value-only branches is one enum; a oneOf only when its value sets do not overlap",
+      "context": "discriminator",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "anyOf": [
+                    {
+                      "const": "a"
+                    },
+                    {
+                      "const": "b"
+                    },
+                    {
+                      "enum": [
+                        "c"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "enum": [
+                    "a",
+                    "b",
+                    "c"
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "rules/value-unions/oneof-of-disjoint-values/top",
+      "rule": "an anyOf of value-only branches is one enum; a oneOf only when its value sets do not overlap",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "oneOf": [
+            {
+              "const": "a"
+            },
+            {
+              "enum": [
+                "b",
+                "c"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "enum": [
+            "a",
+            "b",
+            "c"
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "rules/value-unions/oneof-of-disjoint-values/allOf",
+      "rule": "an anyOf of value-only branches is one enum; a oneOf only when its value sets do not overlap",
+      "context": "allOf",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "oneOf": [
+                {
+                  "const": "a"
+                },
+                {
+                  "enum": [
+                    "b",
+                    "c"
+                  ]
+                }
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "enum": [
+                "a",
+                "b",
+                "c"
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "rules/value-unions/oneof-of-disjoint-values/not",
+      "rule": "an anyOf of value-only branches is one enum; a oneOf only when its value sets do not overlap",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "oneOf": [
+              {
+                "const": "a"
+              },
+              {
+                "enum": [
+                  "b",
+                  "c"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "enum": [
+              "a",
+              "b",
+              "c"
+            ]
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "rules/value-unions/oneof-of-disjoint-values/ref",
+      "rule": "an anyOf of value-only branches is one enum; a oneOf only when its value sets do not overlap",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "oneOf": [
+            {
+              "const": "a"
+            },
+            {
+              "enum": [
+                "b",
+                "c"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "enum": [
+            "a",
+            "b",
+            "c"
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "rules/value-unions/oneof-of-disjoint-values/cycle",
+      "rule": "an anyOf of value-only branches is one enum; a oneOf only when its value sets do not overlap",
+      "context": "cycle",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "oneOf": [
+                    {
+                      "const": "a"
+                    },
+                    {
+                      "enum": [
+                        "b",
+                        "c"
+                      ]
+                    }
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "enum": [
+                    "a",
+                    "b",
+                    "c"
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "rules/value-unions/oneof-of-disjoint-values/discriminator",
+      "rule": "an anyOf of value-only branches is one enum; a oneOf only when its value sets do not overlap",
+      "context": "discriminator",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "oneOf": [
+                    {
+                      "const": "a"
+                    },
+                    {
+                      "enum": [
+                        "b",
+                        "c"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "enum": [
+                    "a",
+                    "b",
+                    "c"
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "rules/value-unions/anyof-of-values-with-own-enum/top",
+      "rule": "an anyOf of value-only branches is one enum; a oneOf only when its value sets do not overlap",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "enum": [
+            "a",
+            "b",
+            "x"
+          ],
+          "anyOf": [
+            {
+              "const": "a"
+            },
+            {
+              "const": "b"
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "enum": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "rules/value-unions/anyof-of-values-with-own-enum/allOf",
+      "rule": "an anyOf of value-only branches is one enum; a oneOf only when its value sets do not overlap",
+      "context": "allOf",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "enum": [
+                "a",
+                "b",
+                "x"
+              ],
+              "anyOf": [
+                {
+                  "const": "a"
+                },
+                {
+                  "const": "b"
+                }
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "allOf": [
+            {
+              "enum": [
+                "a",
+                "b"
+              ]
+            },
+            {
+              "maxProperties": 64
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "rules/value-unions/anyof-of-values-with-own-enum/not",
+      "rule": "an anyOf of value-only branches is one enum; a oneOf only when its value sets do not overlap",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "enum": [
+              "a",
+              "b",
+              "x"
+            ],
+            "anyOf": [
+              {
+                "const": "a"
+              },
+              {
+                "const": "b"
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "enum": [
+              "a",
+              "b"
+            ]
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "rules/value-unions/anyof-of-values-with-own-enum/ref",
+      "rule": "an anyOf of value-only branches is one enum; a oneOf only when its value sets do not overlap",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "enum": [
+            "a",
+            "b",
+            "x"
+          ],
+          "anyOf": [
+            {
+              "const": "a"
+            },
+            {
+              "const": "b"
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "enum": [
+            "a",
+            "b"
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "rules/value-unions/anyof-of-values-with-own-enum/cycle",
+      "rule": "an anyOf of value-only branches is one enum; a oneOf only when its value sets do not overlap",
+      "context": "cycle",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "enum": [
+                    "a",
+                    "b",
+                    "x"
+                  ],
+                  "anyOf": [
+                    {
+                      "const": "a"
+                    },
+                    {
+                      "const": "b"
+                    }
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "node": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "enum": [
+                    "a",
+                    "b"
+                  ]
+                },
+                "next": {
+                  "$ref": "#/definitions/node"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/node"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "rules/value-unions/anyof-of-values-with-own-enum/discriminator",
+      "rule": "an anyOf of value-only branches is one enum; a oneOf only when its value sets do not overlap",
+      "context": "discriminator",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "enum": [
+                    "a",
+                    "b",
+                    "x"
+                  ],
+                  "anyOf": [
+                    {
+                      "const": "a"
+                    },
+                    {
+                      "const": "b"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "a"
+                },
+                "v": {
+                  "enum": [
+                    "a",
+                    "b"
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "const": "b"
+                }
+              },
+              "required": [
+                "kind"
+              ]
+            }
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "rules/value-unions/oneof-of-overlapping-values/top",
+      "rule": "an anyOf of value-only branches is one enum; a oneOf only when its value sets do not overlap",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "oneOf": [
+            {
+              "enum": [
+                "a",
+                "b"
+              ]
+            },
+            {
+              "enum": [
+                "b",
+                "c"
+              ]
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "enum": [
+            "a",
+            "b",
+            "c"
+          ]
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": "b",
+          "base": false,
+          "head": true
+        }
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": "b"
+        }
+      }
+    },
+    {
+      "id": "rules/value-unions/oneof-of-overlapping-values/not",
+      "rule": "an anyOf of value-only branches is one enum; a oneOf only when its value sets do not overlap",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "oneOf": [
+              {
+                "enum": [
+                  "a",
+                  "b"
+                ]
+              },
+              {
+                "enum": [
+                  "b",
+                  "c"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "enum": [
+              "a",
+              "b",
+              "c"
+            ]
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": "b",
+          "base": true,
+          "head": false
+        }
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": "b"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "rules/value-unions/anyof-of-values-drops-one/top",
+      "rule": "an anyOf of value-only branches is one enum; a oneOf only when its value sets do not overlap",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "anyOf": [
+            {
+              "const": "a"
+            },
+            {
+              "const": "b"
+            }
+          ]
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "const": "a"
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": "b",
+          "base": true,
+          "head": false
+        }
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": "b"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "rules/value-unions/anyof-of-values-drops-one/not",
+      "rule": "an anyOf of value-only branches is one enum; a oneOf only when its value sets do not overlap",
+      "context": "not",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "anyOf": [
+              {
+                "const": "a"
+              },
+              {
+                "const": "b"
+              }
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "not": {
+            "const": "a"
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": "b",
+          "base": false,
+          "head": true
+        }
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": "b"
+        }
+      }
+    }
+  ]
+}

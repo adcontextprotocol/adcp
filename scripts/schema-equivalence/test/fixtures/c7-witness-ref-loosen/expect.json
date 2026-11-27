@@ -1,0 +1,11 @@
+{
+  "why": "A site that now names a definition without its properties map gets a loosen witness: the base map comes back for that site, and its local $ref still names the base definition.",
+  "exit": 0,
+  "class": 3,
+  "args": [
+    "--manifest",
+    "manifest.yaml",
+    "--witness"
+  ],
+  "witnesses": 1
+}

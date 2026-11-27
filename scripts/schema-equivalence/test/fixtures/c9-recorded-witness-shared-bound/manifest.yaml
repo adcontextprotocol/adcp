@@ -1,0 +1,24 @@
+title: c9-recorded-witness-shared-bound
+changes:
+  - location: label-request.json#/properties/label
+    keyword: allOf
+    new:
+      pattern: ^.{0,10}$
+    direction: tighten
+    side: request
+    witness:
+      root: /schemas/label-request.json
+      instance:
+        token: abcdefghijk1
+        label: abcdefghijk
+  - location: label-request.json#/properties/label
+    keyword: allOf
+    new:
+      pattern: ^[a-z ]{0,10}$
+    direction: tighten
+    side: request
+    witness:
+      root: /schemas/label-request.json
+      instance:
+        token: abcdefghijk1
+        label: ABC

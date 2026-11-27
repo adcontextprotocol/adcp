@@ -1,0 +1,7 @@
+{
+  "why": "300 tightened properties give a JSON report over 64 KB, which must reach a pipe whole although the check fails.",
+  "exit": 1,
+  "class": 3,
+  "keyword": "maxLength",
+  "entries": 300
+}

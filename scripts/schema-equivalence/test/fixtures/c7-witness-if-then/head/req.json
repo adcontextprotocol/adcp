@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/req.json",
+  "anyOf": [
+    {
+      "$ref": "/schemas/req-image.json"
+    },
+    {
+      "$ref": "/schemas/req-video.json"
+    }
+  ]
+}

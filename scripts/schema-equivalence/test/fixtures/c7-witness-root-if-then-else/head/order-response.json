@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/order-response.json",
+  "type": "object",
+  "properties": {
+    "unchanged": {
+      "type": "boolean",
+      "const": true
+    },
+    "cache_scope": {
+      "type": "string",
+      "enum": [
+        "public",
+        "private"
+      ]
+    },
+    "lines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "product_id": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "product_id",
+          "currency"
+        ]
+      }
+    }
+  },
+  "if": {
+    "properties": {
+      "unchanged": {
+        "const": true
+      }
+    },
+    "required": [
+      "unchanged"
+    ]
+  },
+  "then": {
+    "required": [
+      "cache_scope"
+    ],
+    "not": {
+      "required": [
+        "lines"
+      ]
+    }
+  },
+  "else": {
+    "required": [
+      "lines"
+    ]
+  }
+}

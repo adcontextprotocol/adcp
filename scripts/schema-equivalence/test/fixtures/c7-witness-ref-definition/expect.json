@@ -1,0 +1,11 @@
+{
+  "why": "A site that now names a definition with an anyOf gets a witness: the anyOf is reverted for that site only, and the definition's other user keeps it.",
+  "exit": 0,
+  "class": 3,
+  "args": [
+    "--manifest",
+    "manifest.yaml",
+    "--witness"
+  ],
+  "witnesses": 1
+}

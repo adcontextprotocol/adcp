@@ -1,0 +1,5 @@
+{
+  "why": "An object split across allOf members on disjoint keywords (type and properties in one, required in another) equals the single object.",
+  "exit": 0,
+  "class": 1
+}

@@ -1,0 +1,9 @@
+changes:
+  - location: party.json#
+    keyword: required
+    old:
+      - email
+    new:
+      - name
+    direction: both
+    side: request

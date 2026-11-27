@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/identity-response.json",
+  "type": "object",
+  "properties": {
+    "names": {
+      "type": "array",
+      "items": {
+        "$ref": "/schemas/localized-name.json"
+      }
+    }
+  },
+  "required": [
+    "names"
+  ]
+}

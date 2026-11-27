@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/sync-error.json",
+  "allOf": [
+    {
+      "$ref": "/schemas/error.json"
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "NOT_FOUND"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "then": {
+        "required": [
+          "field"
+        ]
+      }
+    }
+  ]
+}

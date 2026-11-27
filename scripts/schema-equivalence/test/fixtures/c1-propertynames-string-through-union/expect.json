@@ -1,0 +1,5 @@
+{
+  "why": "Property names are strings at every depth: a string type reached through anyOf and $ref inside propertyNames always holds.",
+  "exit": 0,
+  "class": 1
+}

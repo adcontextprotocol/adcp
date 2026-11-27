@@ -546,7 +546,7 @@ async function runTests() {
   }
 }
 
-module.exports = { createAjvInstance, uriToLocalPath };
+module.exports = { createAjvInstance, uriToLocalPath, replaceMacros };
 
 // Run the documentation CLI; exported helpers also support dependency regressions.
 if (require.main === module) {

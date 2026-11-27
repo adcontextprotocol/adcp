@@ -1,0 +1,11 @@
+{
+  "why": "A recorded witness whose verdict changes because of another line (a mode the head adds) does not verify this line: with this line reverted, the head still accepts it.",
+  "exit": 1,
+  "class": 3,
+  "args": [
+    "--manifest",
+    "manifest.yaml",
+    "--witness"
+  ],
+  "witnesses": 1
+}

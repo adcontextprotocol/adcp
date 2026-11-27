@@ -1,0 +1,13 @@
+title: c9-recorded-witness
+changes:
+  - location: order-request.json#/properties/code
+    keyword: pattern
+    old: ^[a-z]+$
+    new: ^[a-z0-9]+$
+    direction: loosen
+    side: request
+    witness:
+      root: /schemas/order-request.json
+      instance:
+        token: abcdefghijk1
+        code: a1

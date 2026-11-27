@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/a.json",
+  "type": "object",
+  "properties": {
+    "a": {
+      "type": "integer",
+      "exclusiveMinimum": 0
+    },
+    "b": {
+      "type": "integer",
+      "exclusiveMaximum": 10
+    },
+    "c": {
+      "type": "integer",
+      "exclusiveMinimum": 0.5,
+      "exclusiveMaximum": 2.5
+    }
+  }
+}

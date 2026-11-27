@@ -1,0 +1,5 @@
+{
+  "why": "A root whose own object carries a `not` and properties that a composed definition now declares equals the inline form: properties combine across conjuncts and each `not` stays its own conjunct, however allOf groups them.",
+  "exit": 0,
+  "class": 1
+}

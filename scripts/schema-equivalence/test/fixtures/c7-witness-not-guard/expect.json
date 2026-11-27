@@ -1,0 +1,11 @@
+{
+  "why": "not guards added to both branches of an either/or oneOf get a witness each: an object that carries both keys, with a value the other branch rejects.",
+  "exit": 0,
+  "class": 3,
+  "args": [
+    "--manifest",
+    "manifest.yaml",
+    "--witness"
+  ],
+  "witnesses": 2
+}

@@ -1,0 +1,7 @@
+title: c7-witness-additional-properties-removed
+changes:
+  - location: pixel-size.json#
+    keyword: additionalProperties
+    old: false
+    direction: loosen
+    side: none

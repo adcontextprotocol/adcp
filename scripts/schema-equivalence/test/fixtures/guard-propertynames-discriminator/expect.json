@@ -1,0 +1,5 @@
+{
+  "why": "Inside propertyNames a discriminator passes every string (Ajv checks it only on objects and skips its oneOf), so it is not false.",
+  "exit": 1,
+  "class": 3
+}

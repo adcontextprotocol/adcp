@@ -1,0 +1,5 @@
+{
+  "why": "Three negations are one: not: {not: {not: X}} is not: X, not X.",
+  "exit": 1,
+  "class": 3
+}

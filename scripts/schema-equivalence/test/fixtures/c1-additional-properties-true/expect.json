@@ -1,0 +1,5 @@
+{
+  "why": "Absent additionalProperties equals additionalProperties: true and {}.",
+  "exit": 0,
+  "class": 1
+}

@@ -1,0 +1,12 @@
+changes:
+  - location: b-response.json#/properties/status
+    keyword: enum
+    old:
+      - active
+      - paused
+    new:
+      - active
+      - archived
+      - paused
+    direction: loosen
+    side: response

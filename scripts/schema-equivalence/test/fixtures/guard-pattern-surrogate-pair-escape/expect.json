@@ -1,0 +1,6 @@
+{
+  "why": "With the u flag, [\\uD83D\\uDE00] is the one code point U+1F600, while [\\u{D83D}\\u{DE00}] holds two lone surrogates.",
+  "exit": 1,
+  "class": 3,
+  "keyword": "pattern"
+}

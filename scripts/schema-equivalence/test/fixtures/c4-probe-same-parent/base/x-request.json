@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/x-request.json",
+  "type": "object",
+  "properties": {
+    "selector": {
+      "type": "object",
+      "properties": {
+        "system": {
+          "enum": [
+            "geonames",
+            "zip",
+            "postcode"
+          ]
+        }
+      }
+    }
+  }
+}

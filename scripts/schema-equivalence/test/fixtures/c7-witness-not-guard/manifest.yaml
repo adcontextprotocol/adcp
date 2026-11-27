@@ -1,0 +1,15 @@
+changes:
+  - location: pair.json#/oneOf/0
+    keyword: not
+    new:
+      required:
+        - structural
+    direction: tighten
+    side: none
+  - location: pair.json#/oneOf/1
+    keyword: not
+    new:
+      required:
+        - glob
+    direction: tighten
+    side: none

@@ -1,0 +1,1384 @@
+{
+  "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "oracle_frozen": "2026-11-20",
+  "subsumes_commit": "9a9d00afa3e1c46015949a74faa91b4ce71f4ab0",
+  "pairs": [
+    {
+      "id": "references/extract-to-file",
+      "rule": "A subschema extracted to its own file and referenced with $ref, with a description beside the $ref.",
+      "context": "files",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "price": {
+              "type": "object",
+              "properties": {
+                "amount": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "currency": {
+                  "type": "string",
+                  "pattern": "^[A-Z]{3}$"
+                }
+              },
+              "required": [
+                "amount",
+                "currency"
+              ],
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "price": {
+              "$ref": "/schemas/core/price.json",
+              "description": "Order price."
+            }
+          }
+        },
+        "core/price.json": {
+          "$id": "/schemas/core/price.json",
+          "type": "object",
+          "properties": {
+            "amount": {
+              "type": "number",
+              "minimum": 0
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            }
+          },
+          "required": [
+            "amount",
+            "currency"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "references/inline-from-file",
+      "rule": "A $ref to another file replaced by the target inlined.",
+      "context": "files",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "price": {
+              "$ref": "core/price.json"
+            }
+          }
+        },
+        "core/price.json": {
+          "$id": "/schemas/core/price.json",
+          "type": "object",
+          "properties": {
+            "amount": {
+              "type": "number",
+              "minimum": 0
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            }
+          },
+          "required": [
+            "amount",
+            "currency"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "price": {
+              "type": "object",
+              "properties": {
+                "amount": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "currency": {
+                  "type": "string",
+                  "pattern": "^[A-Z]{3}$"
+                }
+              },
+              "required": [
+                "amount",
+                "currency"
+              ],
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "references/definition-extracted-to-file",
+      "rule": "A local definition moved to its own file.",
+      "context": "files",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "price": {
+              "$ref": "#/definitions/price"
+            }
+          },
+          "definitions": {
+            "price": {
+              "type": "object",
+              "properties": {
+                "amount": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "currency": {
+                  "type": "string",
+                  "pattern": "^[A-Z]{3}$"
+                }
+              },
+              "required": [
+                "amount",
+                "currency"
+              ],
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "price": {
+              "$ref": "price.json"
+            }
+          }
+        },
+        "price.json": {
+          "$id": "/schemas/price.json",
+          "type": "object",
+          "properties": {
+            "amount": {
+              "type": "number",
+              "minimum": 0
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            }
+          },
+          "required": [
+            "amount",
+            "currency"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "references/ref-spelling",
+      "rule": "A relative $ref respelled as an $id-absolute one.",
+      "context": "files",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "p": {
+              "$ref": "core/price.json"
+            }
+          }
+        },
+        "core/price.json": {
+          "$id": "/schemas/core/price.json",
+          "type": "object",
+          "properties": {
+            "amount": {
+              "type": "number",
+              "minimum": 0
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            }
+          },
+          "required": [
+            "amount",
+            "currency"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "p": {
+              "$ref": "/schemas/core/price.json"
+            }
+          }
+        },
+        "core/price.json": {
+          "$id": "/schemas/core/price.json",
+          "type": "object",
+          "properties": {
+            "amount": {
+              "type": "number",
+              "minimum": 0
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            }
+          },
+          "required": [
+            "amount",
+            "currency"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "references/ref-chain-alias",
+      "rule": "A $ref through an alias file that is only a $ref.",
+      "context": "files",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "p": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object",
+          "properties": {
+            "amount": {
+              "type": "number",
+              "minimum": 0
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            }
+          },
+          "required": [
+            "amount",
+            "currency"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "p": {
+              "$ref": "c.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object",
+          "properties": {
+            "amount": {
+              "type": "number",
+              "minimum": 0
+            },
+            "currency": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            }
+          },
+          "required": [
+            "amount",
+            "currency"
+          ],
+          "additionalProperties": false
+        },
+        "c.json": {
+          "$id": "/schemas/c.json",
+          "$ref": "b.json"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "references/ref-to-other-file-definition",
+      "rule": "A $ref into another file's definitions replaced by a $ref to an extracted file.",
+      "context": "files",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "c": {
+              "$ref": "defs.json#/definitions/code"
+            }
+          }
+        },
+        "defs.json": {
+          "$id": "/schemas/defs.json",
+          "definitions": {
+            "code": {
+              "type": "string",
+              "pattern": "^[A-Z]{2}$"
+            }
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "c": {
+              "$ref": "code.json"
+            }
+          }
+        },
+        "code.json": {
+          "$id": "/schemas/code.json",
+          "type": "string",
+          "pattern": "^[A-Z]{2}$"
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "references/ref-sibling-on-file-ref",
+      "rule": "A $ref to another file with a sibling keyword, inlined with the sibling merged.",
+      "context": "files",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "c": {
+              "$ref": "b.json",
+              "maxLength": 3
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "string"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "c": {
+              "type": "string",
+              "maxLength": 3
+            }
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "references/ref-sibling-on-file-ref-dropped",
+      "rule": "The sibling of a $ref to another file removed (Ajv 8 applies $ref siblings in draft-07).",
+      "context": "files",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "c": {
+              "$ref": "b.json",
+              "maxLength": 3
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "string"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "c": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "string"
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "c": "\u0000\u0000\u0000\u0000"
+          },
+          "base": false,
+          "head": true
+        }
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": {
+            "c": "aaaa"
+          }
+        }
+      }
+    },
+    {
+      "id": "references/target-file-tightened",
+      "rule": "The referenced file tightened, the referencing root unchanged.",
+      "context": "files",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "c": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "string",
+          "maxLength": 10
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "c": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "string",
+          "maxLength": 9
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "c": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000"
+          },
+          "base": true,
+          "head": false
+        }
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": {
+            "c": "aaaaaaaaaa"
+          }
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "references/target-file-loosened",
+      "rule": "The referenced file loosened, the referencing root unchanged.",
+      "context": "files",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "c": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "string",
+          "maxLength": 9
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "c": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "string",
+          "maxLength": 10
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "c": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000"
+          },
+          "base": false,
+          "head": true
+        }
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": {
+            "c": "aaaaaaaaaa"
+          }
+        }
+      }
+    },
+    {
+      "id": "references/ref-retargeted",
+      "rule": "A $ref pointed at a different file.",
+      "context": "files",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "c": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "string",
+          "maxLength": 9
+        },
+        "c.json": {
+          "$id": "/schemas/c.json",
+          "type": "string",
+          "maxLength": 8
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "c": {
+              "$ref": "c.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "string",
+          "maxLength": 9
+        },
+        "c.json": {
+          "$id": "/schemas/c.json",
+          "type": "string",
+          "maxLength": 8
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "c": "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000"
+          },
+          "base": true,
+          "head": false
+        }
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": {
+            "c": "aaaaaaaaa"
+          }
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "references/same-ref-string-different-files",
+      "rule": "Both sides spell the $ref the same way, but the files differ.",
+      "context": "files",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "c": {
+              "$ref": "x/common.json"
+            }
+          }
+        },
+        "x/common.json": {
+          "$id": "/schemas/x/common.json",
+          "type": "string"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "c": {
+              "$ref": "x/common.json"
+            }
+          }
+        },
+        "x/common.json": {
+          "$id": "/schemas/x/common.json",
+          "type": "number"
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "c": "a0"
+          },
+          "base": true,
+          "head": false
+        },
+        {
+          "payload": {
+            "c": 0
+          },
+          "base": false,
+          "head": true
+        }
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": {
+            "c": ""
+          }
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": {
+            "c": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "references/recursive-unrolled-once",
+      "rule": "A recursive definition unrolled one level at the root.",
+      "context": "files",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "n": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "integer"
+                },
+                "child": {
+                  "$ref": "#/definitions/n"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/n"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "type": "integer"
+            },
+            "child": {
+              "$ref": "#/definitions/n"
+            }
+          },
+          "definitions": {
+            "n": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "integer"
+                },
+                "child": {
+                  "$ref": "#/definitions/n"
+                }
+              }
+            }
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "references/recursive-root-ref",
+      "rule": "Recursion through a local definition respelled as recursion through the root.",
+      "context": "files",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "n": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "integer"
+                },
+                "child": {
+                  "$ref": "#/definitions/n"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/n"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "type": "integer"
+            },
+            "child": {
+              "$ref": "#"
+            }
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "references/recursive-across-files",
+      "rule": "A two-file cycle replaced by a one-file self-reference.",
+      "context": "files",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "type": "integer"
+            },
+            "child": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "type": "integer"
+            },
+            "child": {
+              "$ref": "a.json"
+            }
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "type": "integer"
+            },
+            "child": {
+              "$ref": "#"
+            }
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "references/recursive-extracted",
+      "rule": "A recursive definition extracted to its own file.",
+      "context": "files",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "n": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "integer"
+                },
+                "child": {
+                  "$ref": "#/definitions/n"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/n"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "$ref": "node.json"
+        },
+        "node.json": {
+          "$id": "/schemas/node.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "type": "integer"
+            },
+            "child": {
+              "$ref": "node.json"
+            }
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "references/cycle-entered-elsewhere",
+      "rule": "A two-definition cycle rewritten as one cycle through the root.",
+      "context": "files",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "A": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "$ref": "#/definitions/B"
+                }
+              }
+            },
+            "B": {
+              "type": "object",
+              "properties": {
+                "y": {
+                  "$ref": "#/definitions/A"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/A"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "object",
+              "properties": {
+                "y": {
+                  "$ref": "#"
+                }
+              }
+            }
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "references/recursive-tightened-one-level-down",
+      "rule": "A recursive schema tightened only at the second level.",
+      "context": "files",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "n": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "integer"
+                },
+                "child": {
+                  "$ref": "#/definitions/n"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/n"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "n": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "integer"
+                },
+                "child": {
+                  "$ref": "#/definitions/n"
+                }
+              }
+            },
+            "m": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "integer",
+                  "maximum": 9
+                },
+                "child": {
+                  "$ref": "#/definitions/n"
+                }
+              }
+            }
+          },
+          "type": "object",
+          "properties": {
+            "v": {
+              "type": "integer"
+            },
+            "child": {
+              "$ref": "#/definitions/m"
+            }
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "child": {
+              "v": 10
+            }
+          },
+          "base": true,
+          "head": false
+        }
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": {
+            "child": {
+              "v": 10
+            }
+          }
+        },
+        "head_in_base": {
+          "verdict": "unproven",
+          "reason": "type integer beside numeric bounds, which Ajv compares as doubles"
+        }
+      }
+    },
+    {
+      "id": "references/recursive-tightened-everywhere",
+      "rule": "A recursive schema tightened at every level.",
+      "context": "files",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "n": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "integer"
+                },
+                "child": {
+                  "$ref": "#/definitions/n"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/n"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "n": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "child": {
+                  "$ref": "#/definitions/n"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/n"
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "v": -1
+          },
+          "base": true,
+          "head": false
+        }
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": {
+            "v": -1
+          }
+        },
+        "head_in_base": {
+          "verdict": "unproven",
+          "reason": "type integer beside numeric bounds, which Ajv compares as doubles"
+        }
+      }
+    },
+    {
+      "id": "references/recursion-cut-at-depth-two",
+      "rule": "A recursion replaced by two unrolled levels and no deeper nesting.",
+      "context": "files",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "definitions": {
+            "n": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "integer"
+                },
+                "child": {
+                  "$ref": "#/definitions/n"
+                }
+              }
+            }
+          },
+          "$ref": "#/definitions/n"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "type": "integer"
+            },
+            "child": {
+              "type": "object",
+              "properties": {
+                "v": {
+                  "type": "integer"
+                },
+                "child": false
+              }
+            }
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "child": {
+              "child": {}
+            }
+          },
+          "base": true,
+          "head": false
+        }
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": {
+            "child": {
+              "child": {}
+            }
+          }
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    }
+  ]
+}

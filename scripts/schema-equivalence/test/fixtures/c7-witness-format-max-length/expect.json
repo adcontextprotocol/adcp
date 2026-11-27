@@ -1,0 +1,11 @@
+{
+  "why": "A lowered maxLength on an email address gets a witness: an address made long in its local part, which keeps the format, not a repetition that breaks it.",
+  "exit": 0,
+  "class": 3,
+  "args": [
+    "--manifest",
+    "manifest.yaml",
+    "--witness"
+  ],
+  "witnesses": 1
+}

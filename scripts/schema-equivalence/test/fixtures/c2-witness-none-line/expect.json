@@ -1,0 +1,11 @@
+{
+  "why": "The masked line declared \"none\": no payload changes verdict because of it alone, and the pattern line has its own witness.",
+  "exit": 0,
+  "class": 3,
+  "args": [
+    "--manifest",
+    "manifest.yaml",
+    "--witness"
+  ],
+  "witnesses": 2
+}

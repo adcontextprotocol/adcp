@@ -1,0 +1,11 @@
+{
+  "why": "A removed additionalProperties: false gets a loosen witness: the valid object with one more property.",
+  "exit": 0,
+  "class": 3,
+  "args": [
+    "--manifest",
+    "manifest.yaml",
+    "--witness"
+  ],
+  "witnesses": 1
+}

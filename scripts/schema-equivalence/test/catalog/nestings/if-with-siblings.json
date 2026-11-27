@@ -1,0 +1,275 @@
+{
+  "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "oracle_frozen": "2026-11-20",
+  "subsumes_commit": "9a9d00afa3e1c46015949a74faa91b4ce71f4ab0",
+  "pairs": [
+    {
+      "id": "nestings/if-with-siblings/then-in-single-allof/top",
+      "rule": "changes inside if-with-siblings",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "mode": {
+              "enum": [
+                "a",
+                "b"
+              ]
+            },
+            "x": {
+              "type": "string"
+            }
+          },
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "a"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          },
+          "then": {
+            "required": [
+              "x"
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "mode": {
+              "enum": [
+                "a",
+                "b"
+              ]
+            },
+            "x": {
+              "type": "string"
+            }
+          },
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "a"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          },
+          "then": {
+            "allOf": [
+              {
+                "required": [
+                  "x"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": true,
+        "base_in_head": true,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "nestings/if-with-siblings/if-broadened/top",
+      "rule": "changes inside if-with-siblings",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "mode": {
+              "enum": [
+                "a",
+                "b"
+              ]
+            },
+            "x": {
+              "type": "string"
+            }
+          },
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "a"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          },
+          "then": {
+            "required": [
+              "x"
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "mode": {
+              "enum": [
+                "a",
+                "b"
+              ]
+            },
+            "x": {
+              "type": "string"
+            }
+          },
+          "if": {
+            "properties": {
+              "mode": {
+                "enum": [
+                  "a",
+                  "b"
+                ]
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          },
+          "then": {
+            "required": [
+              "x"
+            ]
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "mode": "b"
+          },
+          "base": true,
+          "head": false
+        }
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": {
+            "mode": "b"
+          }
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "nestings/if-with-siblings/then-removed/top",
+      "rule": "changes inside if-with-siblings",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "mode": {
+              "enum": [
+                "a",
+                "b"
+              ]
+            },
+            "x": {
+              "type": "string"
+            }
+          },
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "a"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          },
+          "then": {
+            "required": [
+              "x"
+            ]
+          }
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "mode": {
+              "enum": [
+                "a",
+                "b"
+              ]
+            },
+            "x": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "oracle",
+      "witnesses": [
+        {
+          "payload": {
+            "mode": "a"
+          },
+          "base": false,
+          "head": true
+        }
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "yes"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": {
+            "mode": "a"
+          }
+        }
+      }
+    }
+  ]
+}

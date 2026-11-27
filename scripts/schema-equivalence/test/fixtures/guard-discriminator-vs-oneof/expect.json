@@ -1,0 +1,6 @@
+{
+  "why": "discriminator changes how Ajv evaluates oneOf (non-objects pass), so removing it is a change when the node admits non-objects.",
+  "exit": 1,
+  "class": 3,
+  "keyword": "discriminator"
+}

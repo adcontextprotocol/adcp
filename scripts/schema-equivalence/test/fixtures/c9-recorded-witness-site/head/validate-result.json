@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/validate-result.json",
+  "type": "object",
+  "properties": {
+    "token": {
+      "type": "string",
+      "pattern": "^(?=.*[0-9])(?=.*[a-z])[a-z0-9]{12}$"
+    },
+    "target": {
+      "type": "object",
+      "discriminator": {
+        "propertyName": "kind"
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "product"
+            },
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id"
+          ]
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "third_party_format"
+            },
+            "id": {
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "required": [
+            "kind",
+            "id"
+          ]
+        }
+      ]
+    }
+  },
+  "required": [
+    "token",
+    "target"
+  ]
+}

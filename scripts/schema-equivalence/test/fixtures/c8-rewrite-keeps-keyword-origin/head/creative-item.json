@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/creative-item.json",
+  "type": "object",
+  "properties": {
+    "format_id": {
+      "type": "string"
+    },
+    "format_kind": {
+      "type": "string"
+    },
+    "localization": {
+      "type": "object"
+    },
+    "assets": {
+      "type": "array"
+    }
+  },
+  "oneOf": [
+    {
+      "required": [
+        "format_id"
+      ],
+      "not": {
+        "required": [
+          "format_kind"
+        ]
+      }
+    },
+    {
+      "required": [
+        "format_kind"
+      ],
+      "not": {
+        "required": [
+          "format_id"
+        ]
+      }
+    }
+  ],
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "localization"
+        ]
+      },
+      "then": {
+        "required": [
+          "assets"
+        ]
+      }
+    },
+    {
+      "not": {
+        "required": [
+          "capability_id"
+        ]
+      }
+    }
+  ]
+}

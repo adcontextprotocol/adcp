@@ -1,0 +1,5 @@
+{
+  "why": "Property names are strings: type \"string\" inside propertyNames always holds.",
+  "exit": 0,
+  "class": 1
+}

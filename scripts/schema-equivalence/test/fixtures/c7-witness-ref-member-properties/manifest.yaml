@@ -1,0 +1,10 @@
+changes:
+  - location: package-line.json#/allOf/1
+    keyword: required
+    old:
+      - spend
+    new:
+      - package_id
+      - spend
+    direction: tighten
+    side: request

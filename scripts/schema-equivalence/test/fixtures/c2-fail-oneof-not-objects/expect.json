@@ -1,0 +1,6 @@
+{
+  "why": "oneOf -> anyOf, but the branches do not say type: object, so a string satisfies both.",
+  "exit": 1,
+  "class": 3,
+  "keyword": "anyOf"
+}

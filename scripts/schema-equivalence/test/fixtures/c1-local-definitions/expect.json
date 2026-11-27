@@ -1,0 +1,5 @@
+{
+  "why": "Head moves a subschema into definitions and references it with a local #/definitions ref.",
+  "exit": 0,
+  "class": 1
+}

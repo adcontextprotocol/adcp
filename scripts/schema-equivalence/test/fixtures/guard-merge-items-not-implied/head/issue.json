@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/issue.json",
+  "type": "object",
+  "properties": {
+    "field": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "field"
+  ]
+}

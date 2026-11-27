@@ -1,0 +1,11 @@
+{
+  "why": "A properties map that reaches a site through two refs (site to buyer.json to party.json) gets a witness: both refs are followed and the map is reverted for that site only.",
+  "exit": 0,
+  "class": 3,
+  "args": [
+    "--manifest",
+    "manifest.yaml",
+    "--witness"
+  ],
+  "witnesses": 1
+}

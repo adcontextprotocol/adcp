@@ -1,0 +1,5 @@
+{
+  "why": "not: {not: X} equals X, also when X or the double negation is a $ref target.",
+  "exit": 0,
+  "class": 1
+}

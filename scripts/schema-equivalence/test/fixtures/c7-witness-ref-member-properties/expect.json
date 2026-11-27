@@ -1,0 +1,11 @@
+{
+  "why": "A site that now names a definition requiring a property that a referenced member declares gets a witness: the instance takes that property's schema from behind the member's $ref.",
+  "exit": 0,
+  "class": 3,
+  "args": [
+    "--manifest",
+    "manifest.yaml",
+    "--witness"
+  ],
+  "witnesses": 1
+}

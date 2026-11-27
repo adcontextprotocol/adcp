@@ -1,0 +1,11 @@
+{
+  "why": "Two deliberate changes, both declared.",
+  "exit": 0,
+  "class": 3,
+  "args": [
+    "--manifest",
+    "manifest.yaml",
+    "--witness"
+  ],
+  "witnesses": 2
+}

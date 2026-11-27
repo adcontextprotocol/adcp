@@ -1,0 +1,5 @@
+{
+  "why": "$ref with assertion siblings is the conjunction of the target and the siblings (Ajv 8 applies siblings).",
+  "exit": 0,
+  "class": 1
+}

@@ -1,0 +1,11 @@
+{
+  "why": "An enum added beside an unchanged const changes no payload's verdict; declared none, the line passes, although an added enum alone would be a tightening.",
+  "exit": 0,
+  "class": 3,
+  "witnesses": 1,
+  "args": [
+    "--manifest",
+    "manifest.yaml",
+    "--witness"
+  ]
+}

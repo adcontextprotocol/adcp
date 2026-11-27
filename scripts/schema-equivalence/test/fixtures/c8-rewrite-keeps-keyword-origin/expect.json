@@ -1,0 +1,7 @@
+{
+  "why": "A not that a new allOf member adds to an object whose oneOf the guarded rewrite turns into an anyOf is reported at the member that writes it, not at the first member.",
+  "exit": 1,
+  "class": 3,
+  "keyword": "not",
+  "location": "creative-item.json#/allOf/1"
+}

@@ -1,0 +1,8 @@
+title: c7-witness-format-max-length
+changes:
+  - location: email-address.json#
+    keyword: maxLength
+    old: 255
+    new: 254
+    direction: tighten
+    side: request

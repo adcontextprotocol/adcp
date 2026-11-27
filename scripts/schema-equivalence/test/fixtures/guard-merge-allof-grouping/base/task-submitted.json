@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/task-submitted.json",
+  "type": "object",
+  "properties": {
+    "status": {
+      "const": "submitted"
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "status",
+    "task_id"
+  ]
+}

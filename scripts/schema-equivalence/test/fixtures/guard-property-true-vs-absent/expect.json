@@ -1,0 +1,6 @@
+{
+  "why": "properties.x: true is not absence when additionalProperties is false.",
+  "exit": 1,
+  "class": 3,
+  "keyword": "properties"
+}

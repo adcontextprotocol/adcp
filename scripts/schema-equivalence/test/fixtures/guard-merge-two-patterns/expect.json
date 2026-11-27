@@ -1,0 +1,5 @@
+{
+  "why": "Two different patterns in two members do not combine into one pattern: dropping one is a change.",
+  "exit": 1,
+  "class": 3
+}

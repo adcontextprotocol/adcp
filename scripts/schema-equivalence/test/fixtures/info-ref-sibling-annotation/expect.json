@@ -1,0 +1,6 @@
+{
+  "why": "An annotation written beside a $ref belongs to that location: moving the subschema behind a $ref and keeping its default is no informational change.",
+  "exit": 0,
+  "class": 1,
+  "infoEntries": 0
+}

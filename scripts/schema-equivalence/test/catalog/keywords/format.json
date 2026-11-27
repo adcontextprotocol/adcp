@@ -1,0 +1,561 @@
+{
+  "oracle_commit": "8064ad83a0dbdb4b02c0ce1632d273f7cbf736cf",
+  "oracle_frozen": "2026-11-20",
+  "subsumes_commit": "9a9d00afa3e1c46015949a74faa91b4ce71f4ab0",
+  "pairs": [
+    {
+      "id": "keywords/format/format-added/top",
+      "rule": "minimal format change",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "string"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "string",
+          "format": "email"
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "manual",
+      "manual_reason": "format adds a check to the same type, so the head is inside the base; \"x\" is no email address.",
+      "witnesses": [
+        {
+          "payload": "x",
+          "base": true,
+          "head": false
+        }
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "unknown",
+          "reason": "#/$defs/R0/format in schema A is not supported"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "keywords/format/format-added/ref",
+      "rule": "minimal format change",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "string"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "string",
+          "format": "email"
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "manual",
+      "manual_reason": "format adds a check to the same type, so the head is inside the base; \"x\" is no email address.",
+      "witnesses": [
+        {
+          "payload": {
+            "v": "x"
+          },
+          "base": true,
+          "head": false
+        }
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "unknown",
+          "reason": "#/$defs/R1/format in schema A is not supported"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "keywords/format/format-removed/top",
+      "rule": "minimal format change",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "string"
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "manual",
+      "manual_reason": "Removing format removes a check, so the base is inside the head; \"x\" is no uuid.",
+      "witnesses": [
+        {
+          "payload": "x",
+          "base": false,
+          "head": true
+        }
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "unproven",
+          "reason": "format uuid differs from ajv-formats"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": ""
+        }
+      }
+    },
+    {
+      "id": "keywords/format/format-removed/ref",
+      "rule": "minimal format change",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "string"
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": true,
+        "head_in_base": false
+      },
+      "decided_by": "manual",
+      "manual_reason": "Removing format removes a check, so the base is inside the head; \"x\" is no uuid.",
+      "witnesses": [
+        {
+          "payload": {
+            "v": "x"
+          },
+          "base": false,
+          "head": true
+        }
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "unproven",
+          "reason": "format uuid differs from ajv-formats"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": {
+            "v": ""
+          }
+        }
+      }
+    },
+    {
+      "id": "keywords/format/format-date-time-to-date/top",
+      "rule": "minimal format change",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "string",
+          "format": "date"
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": false
+      },
+      "decided_by": "manual",
+      "manual_reason": "A date-time is never a date (a date is exactly 10 characters) and the reverse.",
+      "witnesses": [
+        {
+          "payload": "2024-01-01T00:00:00Z",
+          "base": true,
+          "head": false
+        },
+        {
+          "payload": "2024-01-01",
+          "base": false,
+          "head": true
+        }
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": "0000-01-01t00:00:00z"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": "0000-01-01"
+        }
+      }
+    },
+    {
+      "id": "keywords/format/format-date-time-to-date/ref",
+      "rule": "minimal format change",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "string",
+          "format": "date"
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": false
+      },
+      "decided_by": "manual",
+      "manual_reason": "A date-time is never a date (a date is exactly 10 characters) and the reverse.",
+      "witnesses": [
+        {
+          "payload": {
+            "v": "2024-01-01T00:00:00Z"
+          },
+          "base": true,
+          "head": false
+        },
+        {
+          "payload": {
+            "v": "2024-01-01"
+          },
+          "base": false,
+          "head": true
+        }
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "no",
+          "counterexample": {
+            "v": "0000-01-01t00:00:00z"
+          }
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": {
+            "v": "0000-01-01"
+          }
+        }
+      }
+    },
+    {
+      "id": "keywords/format/format-uri-to-uri-reference/top",
+      "rule": "minimal format change",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "string",
+          "format": "uri"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "string",
+          "format": "uri-reference"
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": null,
+        "head_in_base": false
+      },
+      "decided_by": "manual",
+      "manual_reason": "A relative reference is a uri-reference and no uri.",
+      "witnesses": [
+        {
+          "payload": "/a",
+          "base": false,
+          "head": true
+        }
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "unproven",
+          "reason": "format uri differs from ajv-formats"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": ""
+        }
+      }
+    },
+    {
+      "id": "keywords/format/format-uri-to-uri-reference/ref",
+      "rule": "minimal format change",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "string",
+          "format": "uri"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "string",
+          "format": "uri-reference"
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": null,
+        "head_in_base": false
+      },
+      "decided_by": "manual",
+      "manual_reason": "A relative reference is a uri-reference and no uri.",
+      "witnesses": [
+        {
+          "payload": {
+            "v": "/a"
+          },
+          "base": false,
+          "head": true
+        }
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "unproven",
+          "reason": "format uri differs from ajv-formats"
+        },
+        "head_in_base": {
+          "verdict": "no",
+          "counterexample": {
+            "v": ""
+          }
+        }
+      }
+    },
+    {
+      "id": "keywords/format/format-hostname-bounded/top",
+      "rule": "minimal format change",
+      "context": "top",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "string",
+          "format": "hostname"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "string",
+          "format": "hostname",
+          "maxLength": 253
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "manual",
+      "manual_reason": "ajv-formats hostname admits 253 characters plus a trailing dot, which maxLength 253 removes; maxLength only removes strings.",
+      "witnesses": [
+        {
+          "payload": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.",
+          "base": true,
+          "head": false
+        }
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "unknown",
+          "reason": "#/$defs/R0/format in schema A is not supported"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    },
+    {
+      "id": "keywords/format/format-hostname-bounded/ref",
+      "rule": "minimal format change",
+      "context": "ref",
+      "root": "a.json",
+      "base": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "string",
+          "format": "hostname"
+        }
+      },
+      "head": {
+        "a.json": {
+          "$id": "/schemas/a.json",
+          "type": "object",
+          "properties": {
+            "v": {
+              "$ref": "b.json"
+            }
+          }
+        },
+        "b.json": {
+          "$id": "/schemas/b.json",
+          "type": "string",
+          "format": "hostname",
+          "maxLength": 253
+        }
+      },
+      "verdict": {
+        "equivalent": false,
+        "base_in_head": false,
+        "head_in_base": true
+      },
+      "decided_by": "manual",
+      "manual_reason": "ajv-formats hostname admits 253 characters plus a trailing dot, which maxLength 253 removes; maxLength only removes strings.",
+      "witnesses": [
+        {
+          "payload": {
+            "v": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa."
+          },
+          "base": true,
+          "head": false
+        }
+      ],
+      "subsumes": {
+        "base_in_head": {
+          "verdict": "unknown",
+          "reason": "#/$defs/R1/format in schema A is not supported"
+        },
+        "head_in_base": {
+          "verdict": "yes"
+        }
+      }
+    }
+  ]
+}

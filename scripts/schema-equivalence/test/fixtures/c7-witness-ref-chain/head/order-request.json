@@ -1,0 +1,10 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/order-request.json",
+  "type": "object",
+  "properties": {
+    "buyer": {
+      "$ref": "/schemas/buyer.json"
+    }
+  }
+}

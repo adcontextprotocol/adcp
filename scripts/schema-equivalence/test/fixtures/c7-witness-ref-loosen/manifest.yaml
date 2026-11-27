@@ -1,0 +1,10 @@
+changes:
+  - location: price.json#
+    keyword: properties
+    old:
+      amount:
+        minimum: 0
+        type:
+          - number
+    direction: loosen
+    side: request

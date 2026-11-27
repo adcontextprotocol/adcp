@@ -1,0 +1,5 @@
+{
+  "why": "A discriminator with its oneOf asserts nothing on a property name, so dropping it from propertyNames is a restructuring.",
+  "exit": 0,
+  "class": 1
+}

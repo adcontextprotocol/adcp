@@ -1,0 +1,5 @@
+{
+  "why": "A composed response whose narrower item definition does not build on error.json conjoins both item schemas: each item now also needs error.json's code and message, which the inline form did not ask for, so the difference is reported.",
+  "exit": 1,
+  "class": 3
+}

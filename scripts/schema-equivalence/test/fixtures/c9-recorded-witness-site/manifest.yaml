@@ -1,0 +1,52 @@
+title: c9-recorded-witness-site
+changes:
+  - location: validate-result.json#/properties/target
+    keyword: required
+    old:
+      - id
+      - kind
+    direction: none
+    side: none
+  - location: validate-result.json#/properties/target
+    keyword: oneOf
+    new:
+      - required:
+          - id
+          - kind
+        properties:
+          id:
+            type:
+              - string
+          kind:
+            const: product
+      - required:
+          - id
+          - kind
+        properties:
+          id:
+            format: uri
+            type:
+              - string
+          kind:
+            const: third_party_format
+    direction: tighten
+    side: none
+    witness:
+      root: /schemas/validate-result.json
+      instance:
+        token: abcdefghijk1
+        target:
+          kind: third_party_format
+          id: not a uri
+  - location: validate-result.json#/properties/target
+    keyword: properties
+    old:
+      id:
+        type:
+          - string
+      kind:
+        enum:
+          - product
+          - third_party_format
+    direction: none
+    side: none

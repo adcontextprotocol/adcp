@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/reference.json",
+  "type": "object",
+  "properties": {
+    "issuer": {
+      "$ref": "/schemas/party.json"
+    },
+    "subject": {
+      "$ref": "/schemas/party.json"
+    }
+  },
+  "required": [
+    "issuer",
+    "subject"
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/grant-reference.json",
+  "allOf": [
+    {
+      "$ref": "/schemas/reference.json"
+    },
+    {
+      "type": "object",
+      "properties": {
+        "issuer": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "agent"
+            }
+          },
+          "required": [
+            "type",
+            "agent_url"
+          ]
+        },
+        "subject": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "resource"
+            },
+            "resource_type": {
+              "type": "string",
+              "const": "https://example.com/claims/grant"
+            }
+          },
+          "required": [
+            "type",
+            "resource_type",
+            "id"
+          ]
+        }
+      }
+    }
+  ]
+}

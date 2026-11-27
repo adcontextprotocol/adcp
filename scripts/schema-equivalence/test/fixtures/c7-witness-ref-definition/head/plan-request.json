@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/plan-request.json",
+  "type": "object",
+  "properties": {
+    "budget": {
+      "$ref": "/schemas/budget-range.json"
+    },
+    "guidance": {
+      "$ref": "/schemas/budget-range.json"
+    }
+  },
+  "required": [
+    "budget"
+  ]
+}

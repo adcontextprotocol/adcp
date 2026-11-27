@@ -1,0 +1,5 @@
+{
+  "why": "allOf [union, {not: branch}] -> remaining branches, but a remaining branch overlaps the removed one.",
+  "exit": 1,
+  "class": 3
+}

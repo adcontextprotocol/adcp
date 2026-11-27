@@ -1,0 +1,6 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/a.json",
+  "type": "integer",
+  "maximum": 9007199254740995
+}

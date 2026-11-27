@@ -1,0 +1,14 @@
+changes:
+  - root: /schemas/a-request.json
+    pointer: /properties/name
+    keyword: maxLength
+    old: 200
+    new: 100
+    direction: tighten
+    side: request
+  - root: a-request.json
+    pointer: /properties/name
+    keyword: minLength
+    new: 1
+    direction: tighten
+    side: request

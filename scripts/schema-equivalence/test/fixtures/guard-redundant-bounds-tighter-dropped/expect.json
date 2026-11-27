@@ -1,0 +1,5 @@
+{
+  "why": "Dropping the tighter bound is a change: maximum 5 beside exclusiveMaximum 10 is not exclusiveMaximum 10 alone.",
+  "exit": 1,
+  "class": 3
+}
