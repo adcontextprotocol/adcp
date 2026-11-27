@@ -524,7 +524,7 @@ The wire-level `recovery: "correctable"` on the sandbox-only path is the registe
 |------|----------|-------------|------------|
 | [`PRODUCT_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-product-not-found) | correctable | Referenced product IDs are unknown | Remove invalid IDs, or re-discover with [`get_products`](/docs/media-buy/task-reference/get_products) |
 | [`PRODUCT_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-product-expired) | correctable | Referenced configured products passed `expires_at` and remain recognizable to the seller | Re-discover with [`get_products`](/docs/media-buy/task-reference/get_products) |
-| [`PRODUCT_UNAVAILABLE`](/docs/building/verification/compliance-catalog#error-code-product-unavailable) | correctable | Product is sold out or no longer available | Choose a different product |
+| [`PRODUCT_UNAVAILABLE`](/docs/building/verification/compliance-catalog#error-code-product-unavailable) | correctable | Product is sold out or no longer available, or a package asks for more than the seller can deliver | Use the [package availability details](#package-availability-recovery) to cut refused packages or move budget onto packages with room; otherwise choose a different product |
 | [`PROPOSAL_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-proposal-expired) | correctable | Referenced proposal has passed its `expires_at` | Call [`request_proposals`](/docs/media-buy/task-reference/request_proposals), then finalize a fresh proposal |
 | `PROPOSAL_NOT_FOUND` | correctable | `proposal_id` is unknown to the seller (never issued, wrong tenant, or evicted from cache) | Request and finalize a fresh proposal, then retry |
 | [`PROPOSAL_TERMS_CHANGED`](/docs/building/verification/compliance-catalog#error-code-proposal-terms-changed) | correctable | [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal) sent a `proposal_terms_digest` that does not match the committed proposal's current `terms_digest`; nothing was accepted | Re-read the proposal. If it is `accepted`, find the existing MediaBuy through [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys); otherwise accept the current terms with the current digest and a fresh `idempotency_key` |
@@ -537,6 +537,149 @@ The wire-level `recovery: "correctable"` on the sandbox-only path is the registe
 For `UNSUPPORTED_FEATURE` rejecting an unsupported or removed targeting dimension, details SHOULD follow [`error-details/unsupported-targeting-dimension.json`](https://adcontextprotocol.org/schemas/latest/error-details/unsupported-targeting-dimension.json); see [Rejected targeting dimensions](/docs/media-buy/advanced-topics/targeting#rejected-targeting-dimensions). For `REQUOTE_REQUIRED`, details SHOULD follow [`error-details/requote-required.json`](https://adcontextprotocol.org/schemas/v3/error-details/requote-required.json). For [`ACTION_NOT_ALLOWED`](/docs/building/verification/compliance-catalog#error-code-action-not-allowed) with `reason: "not_supported_on_buy"`, the existing [`error-details/action-not-allowed.json`](https://adcontextprotocol.org/schemas/v3/error-details/action-not-allowed.json) shape also permits `decline_reason`. Sellers SHOULD emit the coarse reason when they have a structured seller-policy classification and disclosure does not expose private thresholds or enforcement controls. Buyers MUST tolerate its absence and MUST NOT infer that an undisclosed policy does not exist. Structural action denials SHOULD omit it.
 
 **Implementation note (non-normative).** Repeated out-of-envelope controls can be used to map a seller's exact share-of-voice, notice-window, frequency, or commitment thresholds. Consider rate-limiting these deterministic probes using the same posture as [`refine_proposals`](/docs/media-buy/product-discovery/proposal-negotiation#log-for-audit-without-leaking-terms), and omit `decline_reason` when even the coarse category would disclose sensitive enforcement logic.
+
+#### Package availability recovery
+
+{/* /schemas/latest/ link: schema unreleased (added in 4.0); switch to the v4 alias after 4.0 ships. */}
+A seller can refuse to book or grow packages because one or more of them asks for more than it can deliver. `PRODUCT_UNAVAILABLE` details for that refusal SHOULD follow [`error-details/product-unavailable.json`](https://adcontextprotocol.org/schemas/latest/error-details/product-unavailable.json). The shape is the same on every task that books or grows packages: [`buy_products`](/docs/media-buy/task-reference/buy_products), [`accept_proposal`](/docs/media-buy/task-reference/accept_proposal), [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy), and the 3.x [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) and [`update_media_buy`](/docs/media-buy/task-reference/update_media_buy) facades. Each entry in `details.packages` describes one package:
+
+| Field | Meaning |
+|---|---|
+| `package_field` | JSONPath-lite locator of the package's row: `purchases[i]` on `buy_products`, `packages[i]` on `create_media_buy`, `update_media_buy` and `control_media_buy`, and `new_packages[i]` on `update_media_buy`. On `accept_proposal` it is rooted at the committed proposal: `commercial_terms.purchases[i]`. Omitted for a package with no such row, such as an existing package listed only for its headroom. |
+| `package_id` | Seller-assigned ID of a package that already exists. |
+| `product_id` | The package's product. Always present. |
+| `unit` | The delivery unit the figures are counted in, named as in [forecasts](/docs/media-buy/product-discovery/media-products#delivery-forecasts): `impressions`, `viewable_impressions`, `measured_impressions`, `clicks`, `views`, `completed_views`, `grps`, `plays`, or `downloads`. Never money. |
+| `requested` | What the package asks for, in `unit`. For an increase, the resulting package total, not the increment. |
+| `available` | The advisory forecast, a forecast range (`low`, `mid`, `high`) in `unit`. Optional. |
+| `bookable` | The most the seller will accept for this package right now, in `unit`. It may exceed `available.mid`, for a seller that books above its forecast. |
+| `max_budget` | The largest package budget that fits within `bookable`: `amount`, `currency`, and the `pricing_option_id` it was computed at. Optional. |
+| `availability_status` | `unavailable` when the seller refuses the package as requested. `available` when the package fits and the entry reports its headroom. |
+| `reason` | On `unavailable` entries only: `over_forecast`, `not_forecastable`, or `forecast_unavailable`. |
+
+These rules apply whenever a seller uses the shape:
+
+- **Every refused package is listed and located.** A seller MUST include an entry for every package it refuses, so the buyer can correct the whole request in one resubmission. Every entry carries `package_field`, `package_id`, or both, because one request can buy the same product twice. `error.field` SHOULD be the `package_field` of the first refused entry when that entry has one.
+- **Size.** For a multi-package buy the details can exceed the [500-byte size guideline](/docs/building/operating/transport-errors#size-guidance). Listing every refused package takes precedence over it, and headroom entries are the ones to drop when space matters. The complete details travel on the payload `errors[]` entry. Buyers discard an extracted transport-envelope `adcp_error` larger than 4096 bytes ([Buyer agent requirements](/docs/building/operating/transport-errors#buyer-agent-requirements)), so the envelope copy carries `details` only when the whole error fits. Otherwise it omits `details`, and the buyer reads them from the payload, or from `tasks/get` or the webhook's `result.errors[]` for an async task.
+- **Headroom.** A seller MAY list packages that fit, with `availability_status: "available"` and `requested` at or below `bookable`, so the buyer can move budget onto them instead of only cutting. A package absent from `packages` was not refused, but carries no availability claim. The seller says nothing about its room to grow, and the buyer MUST NOT read its absence as headroom. Each entry's `bookable` assumes every other package stays as requested. Packages that draw on the same inventory can share headroom, so moving budget onto several of them at once can still be refused.
+- **A snapshot, not a hold.** The figures describe the seller's state when it refused. A resubmission at or below `bookable` can still be refused if inventory moved in between.
+- **Async refusals.** A seller whose availability check outlasts the synchronous response returns `submitted` and refuses later, when the task ends in `failed`. The same details MUST then appear on that task's `errors[]` entry, whether the buyer reads it from `tasks/get` or from a webhook's `result.errors[]`.
+- **Disclosure.** `available` and `max_budget` reveal inventory information. Sellers MAY round, coarsen, or omit `available`, and SHOULD still give `bookable` on every package they refuse for `over_forecast`. A seller that rounds `bookable` or `max_budget` MUST round down, so a resubmission at the stated figure is not refused for rounding. Sellers MUST NOT disclose who holds competing bookings.
+- **Envelope first.** An increase outside the accepted commercial envelope returns [`REQUOTE_REQUIRED`](/docs/building/verification/compliance-catalog#error-code-requote-required) with `error-details/requote-required.json`, whether or not inventory exists. That covers a [`control_media_buy`](/docs/media-buy/task-reference/control_media_buy) control and an impression or budget increase on `update_media_buy`. `PRODUCT_UNAVAILABLE` with these details is for an increase inside the envelope that inventory cannot fill, and for packages a request would create.
+- **Ranked holds are excluded.** On `accept_proposal`, a [ranked hold](/docs/media-buy/task-reference/refine_proposals#hold-ranking-experimental) declined while a hold ahead of it stands is not a shortfall the buyer can correct. The buyer keeps the hold and can accept later, so the seller does not use these details for that decline.
+
+**Budget-only packages.** Buyers usually set a budget rather than an impression count. For a package that states only a budget, `unit` is the delivery unit of its pricing option: `impressions` for `cpm`, `viewable_impressions` for `vcpm`, `clicks` for `cpc`, `completed_views` for `cpcv`, `views` for `cpv`, and `grps` for `cpp`. Money is never a `unit`, because a money figure needs a currency and a pricing option, and `max_budget` carries both. How far the seller can convert between budget and quantity depends on the pricing and the allocation:
+
+| Package | `requested` | `max_budget` |
+|---|---|---|
+| Fixed allocation, pricing option with a positive `fixed_price` | The quantity the budget buys at `fixed_price`, rounded down | The cost of `bookable` at `fixed_price`, rounded down to the currency's minor unit |
+| Auction pricing (`floor_price` or `price_guidance` only) | Only the package's own goal in `unit`, if it states one | Omitted |
+| Seller-optimized allocation | Only the package's own goal in `unit`, if it states one | Omitted |
+| `flat_rate` or `time` pricing, or not countable in one unit | Omitted, with `unit`, `available`, and `bookable` | Omitted |
+
+`fixed_price` is per 1,000 for `cpm` and `vcpm`, and per unit for the other models. In the worked example below, 36,377 impressions at a 15.00 CPM cost 36,377 × 15.00 / 1,000 = 545.655, so `max_budget` is 545.65. A floor, price guidance, or a bid is not a rate the budget is guaranteed to buy at, and a zero `fixed_price` gives no conversion, so sellers MUST NOT derive `requested` or `max_budget` from any of them. In seller-optimized allocation a package budget is a ceiling, not an allocation, so there is no package amount to cut. The buyer corrects the aggregate `total_budget` or the package mix instead. It adds a package budget cap only where the seller declares `media_buy.features.seller_optimized_package_budgets`.
+
+**Recovery by reason:**
+
+| `reason` | Meaning | Recovery |
+|---|---|---|
+| `over_forecast` | The package asks for more than `bookable`. | correctable: reduce the package to `bookable`, or its budget to `max_budget.amount` at `max_budget.pricing_option_id`; move the difference to packages listed with headroom; or choose another product. |
+| `not_forecastable` | The seller cannot forecast this goal or targeting, so it will not book it. | correctable: change the goal unit or targeting to one the seller can forecast, or choose another product. Resubmitting the package unchanged is refused again. |
+| `forecast_unavailable` | The seller's forecast timed out or errored. | transient: resend the request unchanged after `retry_after`, or with backoff, using the idempotency key that **Retrying and resubmitting** below prescribes. |
+
+`error.recovery` is `transient` only when every `unavailable` entry has reason `forecast_unavailable`. Otherwise it is `correctable`.
+
+**Retrying and resubmitting.** The two recoveries use idempotency keys differently:
+
+- **Correct only after nothing committed.** A seller that refuses packages before any write SHOULD set [`mutation_outcome`](#mutation-outcome) `not_applied`, following the pre-commit evidence test. A buyer changes the request (cuts, moves budget, or drops packages) and resubmits it with a new `idempotency_key` only once the refusal is known to have committed nothing. On `unknown`, `applied`, or an unrecognized value, the buyer reconciles first under the [mutation outcome](#mutation-outcome) buyer obligations, as for any failed mutation. A buyer that moves budget between packages stays within its own authorization, as for any reallocation.
+- **Same key or new key for `forecast_unavailable`.** A synchronous refusal released the key ([Idempotency](/docs/building/by-layer/L1/security#idempotency), rule 3), so the buyer resends the same request with the same `idempotency_key` after `retry_after`, or with backoff. After a `submitted` task ends in `failed`, the same key only replays the original `submitted` response (rule 2), never a fresh attempt. So once the failure is known to have committed nothing, the buyer resends the same request as a new request with a new `idempotency_key`.
+
+**Example: a six-package video buy.** A seller refuses a guaranteed video [`buy_products`](/docs/media-buy/task-reference/buy_products) request because two purchases ask for more than it can book. The seller books up to 5% above its forecast, and two other purchases have room. Every purchase states a budget only, in a fixed allocation, at a pricing option with a `fixed_price` CPM in USD:
+
+| Row | Product | CPM | Budget | Impressions the budget buys | Seller's answer |
+|---|---|---|---|---|---|
+| `purchases[0]` | `ctv_primetime_30s` | 12.00 | 480.00 | 40,000 | Fits, with room up to 80,000 |
+| `purchases[1]` | `olv_sports_15s` | 15.00 | 750.00 | 50,000 | Over: forecast 34,645, bookable 36,377 |
+| `purchases[2]` | `olv_news_15s` | 10.00 | 300.00 | 30,000 | Not listed |
+| `purchases[3]` | `ctv_family_15s` | 20.00 | 600.00 | 30,000 | Over: forecast 22,000, bookable 23,100 |
+| `purchases[4]` | `olv_lifestyle_15s` | 18.00 | 450.00 | 25,000 | Fits, with room up to 60,000 |
+| `purchases[5]` | `ctv_late_night_30s` | 14.00 | 280.00 | 20,000 | Not listed |
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/error.json",
+  "code": "PRODUCT_UNAVAILABLE",
+  "message": "Two purchases exceed bookable inventory; two others have room",
+  "recovery": "correctable",
+  "mutation_outcome": "not_applied",
+  "field": "purchases[1]",
+  "details": {
+    "packages": [
+      {
+        "package_field": "purchases[1]",
+        "product_id": "olv_sports_15s",
+        "unit": "impressions",
+        "requested": 50000,
+        "available": { "mid": 34645 },
+        "bookable": 36377,
+        "max_budget": { "amount": 545.65, "currency": "USD", "pricing_option_id": "olv_sports_cpm" },
+        "availability_status": "unavailable",
+        "reason": "over_forecast"
+      },
+      {
+        "package_field": "purchases[3]",
+        "product_id": "ctv_family_15s",
+        "unit": "impressions",
+        "requested": 30000,
+        "available": { "low": 19800, "mid": 22000, "high": 24200 },
+        "bookable": 23100,
+        "max_budget": { "amount": 462.00, "currency": "USD", "pricing_option_id": "ctv_family_cpm" },
+        "availability_status": "unavailable",
+        "reason": "over_forecast"
+      },
+      {
+        "package_field": "purchases[0]",
+        "product_id": "ctv_primetime_30s",
+        "unit": "impressions",
+        "requested": 40000,
+        "bookable": 80000,
+        "max_budget": { "amount": 960.00, "currency": "USD", "pricing_option_id": "ctv_primetime_cpm" },
+        "availability_status": "available"
+      },
+      {
+        "package_field": "purchases[4]",
+        "product_id": "olv_lifestyle_15s",
+        "unit": "impressions",
+        "requested": 25000,
+        "bookable": 60000,
+        "max_budget": { "amount": 1080.00, "currency": "USD", "pricing_option_id": "olv_lifestyle_cpm" },
+        "availability_status": "available"
+      }
+    ]
+  }
+}
+```
+
+The refusal is `not_applied`, so the buyer can change the request. It cuts `purchases[1]` to 545.65 and `purchases[3]` to 462.00, freeing 342.35. It moves 204.35 to `purchases[0]` (to 684.35, within its 960.00) and 138.00 to `purchases[4]` (to 588.00, within its 1,080.00). The four products draw on separate inventory, so the moves don't compete. It then resubmits all six purchases with a new `idempotency_key`, at the same total budget. Without the headroom entries, it could only cut. `purchases[2]` and `purchases[5]` were not refused, and their absence says nothing about their room to grow.
+
+If the seller's forecast had timed out for both refused purchases instead, it would refuse them with nothing for the buyer to correct. This refusal is synchronous, so the buyer resends the same request with the same `idempotency_key` after 30 seconds:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/core/error.json",
+  "code": "PRODUCT_UNAVAILABLE",
+  "message": "Availability could not be checked; retry shortly",
+  "recovery": "transient",
+  "retry_after": 30,
+  "mutation_outcome": "not_applied",
+  "field": "purchases[1]",
+  "details": {
+    "packages": [
+      { "package_field": "purchases[1]", "product_id": "olv_sports_15s", "availability_status": "unavailable", "reason": "forecast_unavailable" },
+      { "package_field": "purchases[3]", "product_id": "ctv_family_15s", "availability_status": "unavailable", "reason": "forecast_unavailable" }
+    ]
+  }
+}
+```
 
 ### Budget and Creative
 

@@ -1181,7 +1181,7 @@ Common errors and resolutions:
 |------------|-------------|------------|
 | [`PRODUCT_NOT_FOUND`](/docs/building/verification/compliance-catalog#error-code-product-not-found) | Invalid product_id | Verify product exists via [`get_products`](/docs/media-buy/task-reference/get_products) |
 | [`PRODUCT_EXPIRED`](/docs/building/verification/compliance-catalog#error-code-product-expired) | Configured product passed `expires_at` and remains recognizable to the seller | Re-run [`get_products`](/docs/media-buy/task-reference/get_products) and select a current configuration |
-| [`PRODUCT_UNAVAILABLE`](/docs/building/verification/compliance-catalog#error-code-product-unavailable) | The product or a supported targeting selection has no current inventory | Re-run [`get_products`](/docs/media-buy/task-reference/get_products) with the concrete targeting values or choose another product; the seller does not silently substitute values or reprice |
+| [`PRODUCT_UNAVAILABLE`](/docs/building/verification/compliance-catalog#error-code-product-unavailable) | The product or a supported targeting selection has no current inventory, or a package asks for more than the seller can book | With [package availability details](/docs/building/by-layer/L3/error-handling#package-availability-recovery), reduce each refused package to `bookable` or `max_budget`, or move budget to packages listed with room. Otherwise re-run [`get_products`](/docs/media-buy/task-reference/get_products) with the concrete targeting values or choose another product. The seller does not silently substitute values or reprice |
 | [`UNSUPPORTED_FEATURE`](/docs/building/verification/compliance-catalog#error-code-unsupported-feature) | Canonical or legacy compatibility selector does not resolve or satisfy the product's closed accepted set | Re-author against the product's `format_options[]`, include required canonical parameters, or select a published `format_option_id`. |
 | [`CONFLICTING_SELECTORS`](/docs/building/verification/compliance-catalog#error-code-conflicting-selectors) | Co-present, resolvable package format selector routes select different product format contracts | Emit one canonical selector route, or correct the required legacy projection so it selects the same contract under the canonical v2-narrows-v1 comparison. |
 | [`BUDGET_TOO_LOW`](/docs/building/verification/compliance-catalog#error-code-budget-too-low) | Budget below product minimum | Increase budget or choose different product |
@@ -1203,6 +1203,8 @@ Example error response:
   }]
 }
 ```
+
+When the seller refuses packages because they ask for more than it can book, `PRODUCT_UNAVAILABLE` details SHOULD follow the [package availability shape](/docs/building/by-layer/L3/error-handling#package-availability-recovery) (added in 4.0, for this 3.x facade while it exists). Each refused package is located by `package_field: "packages[i]"`. The details give each package's `bookable` quantity and an optional `max_budget`, and can list packages with room. A refusal that arrives after a `submitted` response, when the task ends in `failed`, carries the same details on that task's `errors[]` entry.
 
 ## Key Concepts
 

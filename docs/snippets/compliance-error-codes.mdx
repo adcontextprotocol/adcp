@@ -99,7 +99,7 @@ description: "Canonical AdCP error codes with recovery classifications, remediat
 | `PRIVATE_FIELD_IN_PUBLIC_PLACEMENT` | correctable | seller-side fix needed: remove private operational fields (<code>{"visibility"}</code>, <code>{"source"}</code>, <code>{"origin"}</code>, <code>{"delivery_mappings"}</code>, or similar) from public placement objects. Consumers MUST fail closed for the affected placement and alert operators; do not echo private field values in logs or error details |
 | `PRODUCT_EXPIRED` | correctable | re-discover with get_products to find current inventory |
 | `PRODUCT_NOT_FOUND` | correctable | remove invalid IDs and retry, or re-discover with get_products |
-| `PRODUCT_UNAVAILABLE` | correctable | choose a different product |
+| `PRODUCT_UNAVAILABLE` | correctable | reduce each refused package in error.details.packages to its bookable amount or max_budget, move budget to packages listed with headroom, or choose a different product; when every refused package has reason forecast_unavailable, resend the same request later |
 | `PROPOSAL_EXPIRED` | correctable | call request_proposals and finalize a fresh proposal, or re-discover and finalize through legacy get_products |
 | `PROPOSAL_NOT_COMMITTED` | correctable | finalize the draft through refine_proposals, or through the legacy get_products refine action |
 | `PROPOSAL_NOT_FOUND` | correctable | request and finalize a fresh proposal, then retry |
@@ -993,9 +993,9 @@ One or more referenced product IDs are unknown or are not resolvable within the 
 
 <Accordion title="PRODUCT_UNAVAILABLE — correctable">
 
-**Suggested action:** choose a different product
+**Suggested action:** reduce each refused package in error.details.packages to its bookable amount or max_budget, move budget to packages listed with headroom, or choose a different product; when every refused package has reason forecast_unavailable, resend the same request later
 
-The requested product is sold out or no longer available. On accept_proposal for an experimental ranked hold behind first position (media_buy.hold_ranking), it means a hold ahead still stands: the committed proposal stays acceptable until expires_at and a later acceptance may succeed. Recovery: correctable (choose a different product).
+The requested product is sold out or no longer available, or a package asks for more than the seller can deliver. On accept_proposal for an experimental ranked hold behind first position (media_buy.hold_ranking), it means a hold ahead still stands: the committed proposal stays acceptable until expires_at and a later acceptance may succeed. When buy_products, accept_proposal, control_media_buy, create_media_buy, or update_media_buy refuses packages for availability, error.details SHOULD conform to error-details/product-unavailable.json: an entry for every refused package with its unit, requested, bookable, optional available forecast, optional max_budget at a named pricing option, and reason, plus optional entries for packages with headroom. A seller sets error.recovery to transient when every refused package has reason forecast_unavailable. Recovery: correctable (reduce each refused package to its bookable amount or max_budget, move budget to packages listed with headroom, or choose a different product).
 
 </Accordion>
 <a id="error-code-proposal-expired"></a>
