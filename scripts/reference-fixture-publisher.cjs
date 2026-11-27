@@ -23,7 +23,6 @@
 'use strict';
 
 const fs = require('node:fs');
-const path = require('node:path');
 const http = require('node:http');
 const crypto = require('node:crypto');
 
@@ -359,7 +358,7 @@ function handleControlMediaBuy(body) {
   return response;
 }
 
-function handleGetMediaBuys(body) {
+function handleGetMediaBuys(_body) {
   const activeBuy = fixture.active_buy;
   if (activeBuy) {
     return { media_buys: [activeBuy] };

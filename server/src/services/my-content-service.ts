@@ -21,7 +21,6 @@ export type MyContentStatus = 'draft' | 'pending_review' | 'published' | 'archiv
 const VALID_STATUSES: readonly MyContentStatus[] = ['draft', 'pending_review', 'published', 'archived', 'rejected', 'needs_revisions'];
 
 export type MyContentRelationship = 'author' | 'proposer' | 'owner';
-const VALID_RELATIONSHIPS: readonly MyContentRelationship[] = ['author', 'proposer', 'owner'];
 
 export interface MyContentItem {
   id: string;

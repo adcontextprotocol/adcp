@@ -15,7 +15,6 @@ import {
 } from './fixed-trace-architecture-diagnostic.js';
 import { fixedTraceArchitectureArm, fixedTraceCommonToolDefinitions, fixedTraceHybridPolicy } from './fixed-trace-architecture.js';
 import {
-  BudgetedFixedTraceProvider,
   FixedTraceBudget,
   claimFixedTraceBudgetDiagnosticLease,
   fixedTraceArchitectureDiagnosticRouterResponsePricingPolicy,

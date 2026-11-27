@@ -15,7 +15,6 @@ import { decodeHtmlEntities } from "../utils/html-entities.js";
 import {
   getWebsiteChannels,
   getChannelByWebsiteSlug,
-  type NotificationChannel,
 } from "../db/notification-channels-db.js";
 import { query } from "../db/client.js";
 

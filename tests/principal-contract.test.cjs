@@ -246,7 +246,7 @@ describe('sync_principal contract', () => {
     assert.match(rules.suspension_and_revocation, /stop initiating new deliveries/);
     assert.match(rules.suspension_and_revocation, /revokes/);
 
-    const state = readSchema('/schemas/core/agent-reporting-destination-state.json');
+    assert.ok(readSchema('/schemas/core/agent-reporting-destination-state.json'));
     assert.match(readSchema('/schemas/enums/reporting-destination-setup-state.json').description, /recipient readability/);
   });
 

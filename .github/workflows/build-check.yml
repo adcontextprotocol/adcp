@@ -44,6 +44,11 @@ jobs:
         env:
           PUPPETEER_SKIP_DOWNLOAD: "true"
 
+      - name: Lint (oxlint)
+        # Rules live in .oxlintrc.json. oxlint runs through a pinned npx
+        # version until it is added to devDependencies.
+        run: npm run lint
+
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
 

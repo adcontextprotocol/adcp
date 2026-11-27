@@ -20,10 +20,7 @@ import {
 import { getChannelMembers } from '../slack/client.js';
 import type {
   CreateMeetingInput,
-  UpdateMeetingInput,
   Meeting,
-  MeetingSeries,
-  CreateMeetingSeriesInput,
   RecurrenceRule,
 } from '../types.js';
 
@@ -145,7 +142,7 @@ export async function scheduleMeeting(options: ScheduleMeetingOptions): Promise<
   }
 
   // Invite members to the meeting based on inviteMode
-  let invitedCount = 0;
+  let invitedCount: number;
   const inviteMode = options.inviteMode || 'all_members';
 
   if (inviteMode === 'slack_channel' && options.inviteSlackChannelId) {

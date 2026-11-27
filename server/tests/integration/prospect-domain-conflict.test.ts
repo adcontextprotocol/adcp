@@ -74,7 +74,7 @@ vi.mock('../../src/services/lusha.js', () => ({
   isLushaConfigured: () => false,
 }));
 
-import { initializeDatabase, closeDatabase, getPool } from '../../src/db/client.js';
+import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { createProspect, updateProspect } from '../../src/services/prospect.js';
 import type { Pool } from 'pg';

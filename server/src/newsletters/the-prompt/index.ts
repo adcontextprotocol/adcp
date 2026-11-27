@@ -31,7 +31,7 @@ import {
   type DigestContent,
   type DigestRecord,
 } from '../../db/digest-db.js';
-import type { EditionRecord, NewsletterEditionDB, SendStats, NewsletterRecipient } from '../config.js';
+import type { EditionRecord, NewsletterEditionDB } from '../config.js';
 
 // ─── Palette ───────────────────────────────────────────────────────────
 

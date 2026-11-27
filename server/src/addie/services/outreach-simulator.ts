@@ -11,11 +11,7 @@
  * to characterize how aggressive Addie has been.
  */
 
-import { createLogger } from '../../logger.js';
 import {
-  shouldContact,
-  composeMessage,
-  computeNextContactDate,
   computeEngagementOpportunities,
   buildComposePrompt,
   COMPOSE_SYSTEM_PROMPT,
@@ -25,12 +21,10 @@ import {
   MONTHLY_PULSE_DAYS,
   DISENGAGING_PULSE_DAYS,
 } from './engagement-planner.js';
-import type { RelationshipContext, ComposedMessage, EngagementContext } from './engagement-planner.js';
+import type { RelationshipContext } from './engagement-planner.js';
 import type { PersonRelationship, RelationshipStage } from '../../db/relationship-db.js';
 import { STAGE_ORDER } from '../../db/relationship-db.js';
 import { getPool } from '../../db/client.js';
-
-const logger = createLogger('outreach-simulator');
 
 // ---------------------------------------------------------------------------
 // Types
@@ -258,7 +252,6 @@ export function simulate(persona: SimulatedPersona, durationDays: number = 60, o
   let nextContactAfterDay: number | null = null;
   let interactionCount = 0;
   let messagesSentToPersona = 0;
-  let lastChannel: 'slack' | 'email' | null = null;
   /** Days with no contact before negative sentiment recovers to neutral */
   const NEGATIVE_RECOVERY_DAYS = 30;
 
@@ -393,7 +386,6 @@ export function simulate(persona: SimulatedPersona, durationDays: number = 60, o
       content: `[Simulated ${reason}]`,
       channel,
     });
-    lastChannel = channel;
 
     // Stage transition: prospect → welcomed on first message
     if (stage === 'prospect' && messagesSentToPersona === 1) {

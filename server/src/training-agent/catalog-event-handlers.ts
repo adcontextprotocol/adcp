@@ -6,7 +6,7 @@
  */
 
 import { createHash, randomUUID } from 'node:crypto';
-import { TRAINING_AGENT_CURRENT_ADCP_VERSION, type TrainingContext, type ToolArgs, type AccountRef } from './types.js';
+import { TRAINING_AGENT_CURRENT_ADCP_VERSION, type TrainingContext, type ToolArgs } from './types.js';
 import { omitFieldsAddedAfterRelease } from './served-release-fields.js';
 import { getSession, sessionKeyFromArgs, findMediaBuyAcrossSessions } from './state.js';
 

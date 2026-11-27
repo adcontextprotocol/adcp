@@ -6,9 +6,6 @@
  */
 
 import { query, getPool } from './client.js';
-import { createLogger } from '../logger.js';
-
-const logger = createLogger('portrait-db');
 
 export interface MemberPortrait {
   id: string;

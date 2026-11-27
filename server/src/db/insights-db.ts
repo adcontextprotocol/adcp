@@ -1,5 +1,4 @@
 import { query } from './client.js';
-import { logger } from '../logger.js';
 import { isUuid } from '../utils/uuid.js';
 
 // =====================================================

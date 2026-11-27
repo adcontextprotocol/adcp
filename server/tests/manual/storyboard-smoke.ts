@@ -18,7 +18,6 @@ import {
   runStoryboard,
   listAllComplianceStoryboards,
   type StoryboardResult,
-  type StoryboardStepResult,
 } from '@adcp/sdk/testing';
 import { PUBLIC_TEST_AGENT } from '../../src/config/test-agent.js';
 import {

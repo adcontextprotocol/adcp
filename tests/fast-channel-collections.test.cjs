@@ -355,11 +355,6 @@ test('response collection fields are experimental and added in 3.3.0', () => {
   }
 });
 
-// Review fixes on #8141: opt-in flag, https url, brand link keys, feature ids, pin exclusion.
-// Every discovery request accepts unknown fields. 3.2 published the three
-// proposal-flow requests closed, so their flag warns that a 3.2 validator
-// rejects it.
-const ACCEPTS_UNKNOWN_FIELDS = /This request accepts unknown fields/;
 const CLOSED_IN_3_2 = /The 3\.2 schema of this request rejects unknown fields/;
 const requestCases = [
   ['/schemas/media-buy/list-products-request.json', { brand: { domain: 'nova-brands.example' } }, CLOSED_IN_3_2],

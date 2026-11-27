@@ -236,6 +236,7 @@ function fixedTraceNullableEnum<Domain extends string>() {
 
 // Compile-time negative probes: deleting a member from any closed domain is
 // an error. These are type-only checks; no unreachable runtime statements.
+/* oxlint-disable no-unused-vars -- type-only negative probes, checked by @ts-expect-error */
 // @ts-expect-error closed schemaVersion domain cannot omit its only value
 type FixedTraceMissingSchemaVersion = FixedTraceAssertTrue<FixedTraceEnumIsExhaustive<"addie-fixed-trace-sealed-evidence-v1", []>>;
 // @ts-expect-error invocation stages must be exhaustive
@@ -264,6 +265,7 @@ type FixedTraceExtraCompleteness = FixedTraceAssertTrue<FixedTraceEnumIsExhausti
 type FixedTraceExtraTamperClass = FixedTraceAssertTrue<FixedTraceEnumIsExhaustive<FixedTraceTamperClass, ["none", "omission", "insertion", "duplication", "substitution", "reordering", "forged"]>>;
 // @ts-expect-error replay status cannot admit a member outside its closed domain
 type FixedTraceExtraReplayStatus = FixedTraceAssertTrue<FixedTraceEnumIsExhaustive<FixedTraceReplayStatus, ["consumed", "available"]>>;
+/* oxlint-enable no-unused-vars */
 
 function deepFreeze<Value>(value: Value): Value {
   if (value && typeof value === "object") {

@@ -1,7 +1,4 @@
 import { query } from './client.js';
-import { createLogger } from '../logger.js';
-
-const logger = createLogger('registry-requests-db');
 
 type EntityType = 'brand' | 'property';
 const MAX_DOMAIN_LENGTH = 253;

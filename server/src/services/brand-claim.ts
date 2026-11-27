@@ -426,7 +426,7 @@ export async function verifyDomainChallenge(input: {
     };
   }
 
-  let updated: HostedBrand | null = null;
+  let updated: HostedBrand | null;
   try {
     updated = await brandDb.applyVerifiedBrandClaim(domain, orgId, method, { adoptPriorManifest });
   } catch (err) {

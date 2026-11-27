@@ -43,7 +43,6 @@ import {
   type SlackMessageContent,
 } from './slack-message-content.js';
 import type { SlackFile } from '../slack/types.js';
-import { captureEvent } from '../utils/posthog.js';
 import {
   AddieClaudeClient,
   ADMIN_MAX_ITERATIONS,
@@ -205,9 +204,8 @@ import { createProductionRouter } from './router-runtime.js';
 import {
   getToolsForSets,
   buildUnavailableSetsHint,
-  SAFE_KNOWLEDGE_FALLBACK_TOOL_SETS,
 } from './tool-sets.js';
-import { getHomeContent, renderHomeView, renderErrorView, invalidateHomeCache } from './home/index.js';
+import { getHomeContent, renderHomeView, renderErrorView } from './home/index.js';
 import { URL_TOOLS, createUrlToolHandlers } from './mcp/url-tools.js';
 import { GOOGLE_DOCS_TOOLS, createGoogleDocsToolHandlers } from './mcp/google-docs.js';
 import { ILLUSTRATION_TOOLS, createIllustrationToolHandlers } from './mcp/illustration-tools.js';
@@ -388,24 +386,6 @@ async function recordPersonInboundMessage(
     // Not all Slack users have person_relationships records yet — that's OK
     logger.debug({ error, slackUserId }, 'Addie Bolt: Could not record person inbound message');
   }
-}
-
-/**
- * Extract URLs from message text for context.
- * Returns a list of URLs that could be fetched for more context.
- */
-function extractUrls(text: string): string[] {
-  // Match URLs in Slack format <url|label> or plain URLs
-  const slackUrlPattern = /<(https?:\/\/[^|>]+)(?:\|[^>]*)?>|(?<![<|])(https?:\/\/[^\s<>]+)/gi;
-  const urls: string[] = [];
-  let match;
-  while ((match = slackUrlPattern.exec(text)) !== null) {
-    const url = match[1] || match[2];
-    if (url && !urls.includes(url)) {
-      urls.push(url);
-    }
-  }
-  return urls;
 }
 
 /**
@@ -6055,7 +6035,6 @@ async function handleReactionAdded({
   } else {
     // Not a confirmation, just feedback
     if (isPositive) {
-      userInput = '[User reacted with ' + reaction + ' emoji as positive feedback]';
       // Record as positive feedback
       try {
         await threadService.addMessageFeedback(thread.thread_id, lastAssistantMessage.message_id, {
@@ -6071,7 +6050,6 @@ async function handleReactionAdded({
       // Don't respond to general positive feedback
       return;
     } else {
-      userInput = '[User reacted with ' + reaction + ' emoji as negative feedback]';
       // Record as negative feedback
       try {
         await threadService.addMessageFeedback(thread.thread_id, lastAssistantMessage.message_id, {

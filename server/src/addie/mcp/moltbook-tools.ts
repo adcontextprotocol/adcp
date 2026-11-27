@@ -19,7 +19,6 @@ import {
   getAgentStatus,
   getFeed,
   type MoltbookPost,
-  type MoltbookAgentStatus,
 } from '../services/moltbook-service.js';
 import {
   canPost,

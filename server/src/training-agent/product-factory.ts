@@ -10,8 +10,6 @@ import type {
   LegacyProduct as Product,
   Proposal,
   LegacyFormatID as FormatID,
-  CPAPricingOption,
-  CatalogType,
 } from '@adcp/sdk';
 // Derive structural types from Product's own fields — these types are defined in
 // core.generated but not re-exported from @adcp/sdk's main entry.
@@ -21,9 +19,7 @@ type Installment = NonNullable<Product['installments']>[number];
 type InstallmentStatus = NonNullable<Installment['status']>;
 type MediaChannel = NonNullable<Product['channels']>[number];
 type DeliveryType = Product['delivery_type'];
-type PublisherPropertySelector = Product['publisher_properties'][number];
 type FlatRatePricingOption = Extract<PricingOption, { pricing_model: 'flat_rate' }>;
-type TimeBasedPricingOption = Extract<PricingOption, { pricing_model: 'time' }>;
 type ProductFormatDeclaration = NonNullable<Product['format_options']>[number];
 type ProductCardImage = NonNullable<NonNullable<Product['product_card']>['image']>;
 type CollectionSelector = NonNullable<Product['collections']>[number];
@@ -73,18 +69,6 @@ export const TRAINING_AUDIENCE_ACTIVATION_METHODS = [{
 }] as const;
 
 const logger = createLogger('training-agent-catalog');
-
-/**
- * Parse ISO 8601 duration (e.g. "PT60M", "PT180M", "PT1H30M") to seconds.
- */
-function parseDurationToSeconds(iso: string): number | null {
-  const match = iso.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
-  if (!match) return null;
-  const hours = parseInt(match[1] || '0', 10);
-  const minutes = parseInt(match[2] || '0', 10);
-  const seconds = parseInt(match[3] || '0', 10);
-  return hours * 3600 + minutes * 60 + seconds;
-}
 
 function inferPrimaryAssetType(channels: string[]): string {
   if (channels.some(c => ['olv', 'ctv', 'linear_tv'].includes(c))) return 'video';

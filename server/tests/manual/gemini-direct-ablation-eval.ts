@@ -10,7 +10,6 @@ import type { ModelProvider, ModelRequest } from '../../src/addie/model-provider
 import { modelProviderAdapterFailure } from '../../src/addie/model-providers/model-provider.js';
 import { FixedTraceToolLoopBoundaryError, executeFixedTraceToolLoop, type FixedTraceEvaluatorToolEnvironment, type FixedTraceProviderExposure, type FixedTraceToolExecution } from '../../src/addie/eval/fixed-trace-tool-loop.js';
 import type { FixedTraceCase } from '../../src/addie/eval/fixed-trace-suite.js';
-import type { AddieTool } from '../../src/addie/types.js';
 import { BudgetedFixedTraceProvider, FixedTraceBudget, FixedTraceBudgetAdmissionError, fixedTraceDirectFullSuiteResponsePricingPolicy } from '../../src/addie/eval/fixed-trace-budget.js';
 import { datedPricingProfilesForFixedTrace, datedPricingReservationCostUsd } from '../../src/addie/eval/dated-pricing-cohort.js';
 import { githubIssueCreatedResult, githubIssueReceiptFromHandlerResult } from '../../src/addie/github-issue-receipt.js';

@@ -20,7 +20,6 @@ import { ModelConfig } from '../../src/config/models.js';
 import { trackApiCall } from '../../src/addie/services/api-tracker.js';
 import {
   getToolSetDescriptionsForRouter,
-  TOOL_SETS,
   getToolsForSets,
   getValidToolSetNames,
 } from '../../src/addie/tool-sets.js';

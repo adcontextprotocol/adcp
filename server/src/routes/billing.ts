@@ -30,7 +30,6 @@ import {
   deleteDraftInvoice,
   type CreateProductInput,
   type UpdateProductInput,
-  type PendingInvoice,
 } from "../billing/stripe-client.js";
 import { OrganizationDatabase, TIER_PRESERVING_STATUSES, buildSubscriptionUpdate } from "../db/organization-db.js";
 import { invalidateMembershipCache } from "../db/org-filters.js";

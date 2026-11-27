@@ -13,7 +13,6 @@ import { requireAuth } from "../middleware/auth.js";
 import {
   getProductsForCustomer,
   createAndSendInvoice,
-  getInvoiceableProducts,
   createCheckoutSession,
   createCoupon,
   getPendingInvoices,

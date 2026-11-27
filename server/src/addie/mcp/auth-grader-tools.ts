@@ -19,7 +19,6 @@ import { promisify } from 'node:util';
 import { runAuthDiagnosis, type AuthDiagnosisReport } from '@adcp/sdk/auth';
 import type {
   GradeReport,
-  VectorGradeResult,
 } from '@adcp/sdk/testing/storyboard/request-signing';
 import type { AddieTool } from '../types.js';
 import type { AgentConfig } from '@adcp/sdk/types';

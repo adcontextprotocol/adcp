@@ -15,7 +15,7 @@ import {
   isDevModeEnabled,
   DEV_USERS,
 } from "../middleware/auth.js";
-import { query, getPool } from "../db/client.js";
+import { getPool } from "../db/client.js";
 import { MemberDatabase } from "../db/member-db.js";
 import { BrandDatabase, canSurfaceBrandForMember, resolveBrandFromJson } from "../db/brand-db.js";
 import { BrandManager } from "../brand-manager.js";
@@ -43,14 +43,13 @@ import { AgentSnapshotDatabase } from "../db/agent-snapshot-db.js";
 import { validateCrawlDomain } from "../utils/url-security.js";
 import { canonicalizeBrandDomain } from "../services/identifier-normalization.js";
 import { issueDomainChallenge, verifyDomainChallenge } from "../services/brand-claim.js";
-import { resolveUserRole } from "../utils/resolve-user-role.js";
 import { resolveUserOrgMembership } from "../utils/resolve-user-org-membership.js";
 import { updateBrandIdentity, BrandIdentityError } from "../services/brand-identity.js";
 import { renameDefaultedAgentLabels, sameName } from "../services/identity-rename.js";
 import { createEscalation } from "../db/escalation-db.js";
 import { insertTypeReclassification } from "../db/type-reclassification-log-db.js";
 import { recordProfilePublishedIfNeeded } from "../services/profile-publish-event.js";
-import { gateAgentVisibilityForCaller, computeAgentVisibilityGate, type VisibilityWarning, type AgentVisibilityGate } from "../services/agent-visibility-gate.js";
+import { gateAgentVisibilityForCaller, computeAgentVisibilityGate, type VisibilityWarning } from "../services/agent-visibility-gate.js";
 import { getBrandPrimaryDomain, getBrandPrimaryDomainRecord } from "../services/brand-domain-resolver.js";
 import { normalizeFoundingMemberGrant } from "../services/founding-member-grant.js";
 import { validateMemberProfileUrlFields } from "../utils/member-profile-url.js";

@@ -7,8 +7,7 @@ import { respondToAdminAuthorizationError } from '../auth/admin-authorization-re
  */
 
 import { Router, Request, Response } from "express";
-import { WorkOS } from "@workos-inc/node";
-import { getPool, query } from "../db/client.js";
+import { getPool } from "../db/client.js";
 import { createLogger } from "../logger.js";
 import { isUuid } from "../utils/uuid.js";
 import {
@@ -25,7 +24,6 @@ import { invalidateWebAdminStatusCache } from "../addie/admin-status-cache.js";
 import { isAuthenticatedUserAAOAdmin } from "../addie/admin-status-lookup.js";
 import { syncWorkingGroupMembersFromSlack, syncAllWorkingGroupMembersFromSlack } from "../slack/sync.js";
 import { notifyPublishedPost } from "../notifications/slack.js";
-import { notifyUser } from "../notifications/notification-service.js";
 import { decodeHtmlEntities } from "../utils/html-entities.js";
 import { validateFetchUrl, validateRedirectTarget, sanitizeUrl } from "../utils/url-security.js";
 import { normalizePerspectiveExternalUrl } from "../utils/perspective-url.js";
@@ -33,9 +31,7 @@ import { reindexDocument } from "../addie/jobs/committee-document-indexer.js";
 import { refreshWorkingGroupDocs } from "../addie/mcp/docs-indexer.js";
 import { createChannel, setChannelPurpose, sendChannelMessage, inviteToChannel, isSlackConfigured } from "../slack/client.js";
 import { SlackDatabase } from "../db/slack-db.js";
-import { CommunityDatabase } from "../db/community-db.js";
 import multer from 'multer';
-import { sendWgWelcomeMessage } from "../addie/services/wg-welcome.js";
 import {
   joinWorkingGroup as joinWorkingGroupService,
   expressCommitteeInterest as expressCommitteeInterestService,
@@ -123,20 +119,6 @@ function isValidCommitteeSlug(slug: string, committeeType?: string): boolean {
   return /^[a-z0-9-]+$/.test(slug) && !slug.includes('--');
 }
 type CommitteeType = typeof VALID_COMMITTEE_TYPES[number];
-
-// Initialize WorkOS client only if authentication is enabled
-const AUTH_ENABLED = !!(
-  process.env.WORKOS_API_KEY &&
-  process.env.WORKOS_CLIENT_ID &&
-  process.env.WORKOS_COOKIE_PASSWORD &&
-  process.env.WORKOS_COOKIE_PASSWORD.length >= 32
-);
-
-const workos = AUTH_ENABLED
-  ? new WorkOS(process.env.WORKOS_API_KEY!, {
-      clientId: process.env.WORKOS_CLIENT_ID!,
-    })
-  : null;
 
 /**
  * Fetch and extract metadata from a URL (for link posts)

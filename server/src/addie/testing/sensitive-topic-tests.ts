@@ -555,7 +555,7 @@ export async function runSensitiveTopicTests(): Promise<{
     const result = await db.checkSensitiveTopic(scenario.message);
 
     // Check if the result matches expectations
-    let testPassed = false;
+    let testPassed: boolean;
 
     if (scenario.expectDeflect) {
       // Should have detected as sensitive with expected category/severity

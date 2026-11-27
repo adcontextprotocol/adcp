@@ -4603,16 +4603,11 @@
 
     async function viewSynthesisRun(id) {
       try {
-        const [synthesisRes, configRes] = await Promise.all([
-          fetch(`/api/admin/addie/synthesis/${id}`),
-          fetch('/api/admin/addie/config/current')
-        ]);
+        const synthesisRes = await fetch(`/api/admin/addie/synthesis/${id}`);
 
         const data = await synthesisRes.json();
-        const configData = await configRes.json();
 
         currentSynthesisRun = data.run;
-        const configVersion = configData.config_version;
 
         const content = document.getElementById('synthesis-review-content');
         const run = data.run;

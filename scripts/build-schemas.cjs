@@ -2468,10 +2468,10 @@ function stripIdsFromSubtreesWithLocalRefs(schema) {
  */
 function dedupBundledSchemaIds(schema) {
   const seen = new Set();
-  function walk(node, isRoot) {
+  function walk(node) {
     if (!node || typeof node !== 'object') return;
     if (Array.isArray(node)) {
-      for (const item of node) walk(item, false);
+      for (const item of node) walk(item);
       return;
     }
     if (typeof node.$id === 'string') {
@@ -2482,10 +2482,10 @@ function dedupBundledSchemaIds(schema) {
       }
     }
     for (const value of Object.values(node)) {
-      if (value && typeof value === 'object') walk(value, false);
+      if (value && typeof value === 'object') walk(value);
     }
   }
-  walk(schema, true);
+  walk(schema);
 }
 
 /**
@@ -2859,7 +2859,6 @@ function generateSkillSchemas(versionDir, version) {
 async function main() {
   const version = getVersion();
   const majorVersion = getMajorVersion(version);
-  const minorVersion = getMinorVersion(version);
   const latestReleasedVersion = findLatestReleasedVersion();
 
   if (isRelease) {

@@ -9,7 +9,7 @@
  * insert, exponential backoff on failure, deletion on success.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
-import { initializeDatabase, closeDatabase, query } from '../../src/db/client.js';
+import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { PublisherDatabase } from '../../src/db/publisher-db.js';
 import type { Pool } from 'pg';

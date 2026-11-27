@@ -9,7 +9,6 @@ const { ensureBuiltSchemas, readBuiltSchema } = require('../scripts/built-schema
 ensureBuiltSchemas();
 
 const ROOT = path.join(__dirname, '..');
-const SCHEMA_BASE_DIR = path.join(ROOT, 'static/schemas/source');
 
 function readSchema(relativePath) {
   return readBuiltSchema(`/schemas/${relativePath}`);

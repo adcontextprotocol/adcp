@@ -1195,7 +1195,7 @@ class AddieMatchedV4PrivateAuthority {
         executedTurns.push(
           await (async (a: AddieMatchedV4ExecutionAssignment) => {
             const ds = [];
-            let passed = false,
+            let passed: boolean,
               latencyMs = 0,
               finalText = "",
               terminalStatus: "stop" | "tool_choice_rejected" | null = null,

@@ -232,7 +232,7 @@ function analyzeOutreachResult(outreach: OutreachWithActivity): OutreachAnalysis
   let title = '';
   let description = '';
   let priority: 'high' | 'medium' | 'low' = 'medium';
-  let reason = '';
+  let reason: string;
 
   if (outreach.user_responded) {
     // They responded - check if conversion happened

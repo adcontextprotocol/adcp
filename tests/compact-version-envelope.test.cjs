@@ -1,6 +1,5 @@
 'use strict';
 
-const path = require('node:path');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const Ajv = require('ajv');
@@ -10,7 +9,6 @@ const { ensureBuiltSchemas, readBuiltSchema } = require('../scripts/built-schema
 
 ensureBuiltSchemas();
 
-const SOURCE_DIR = path.resolve(__dirname, '..', 'static', 'schemas', 'source');
 const ADCP_VERSION = '3.2.0-beta.0';
 const COMPACT_SCHEMAS_WITHOUT_MAJOR = new Set([
   'buy_products',

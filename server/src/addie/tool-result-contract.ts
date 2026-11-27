@@ -333,7 +333,7 @@ function classifySearchResult(toolName: string, text: string): {
 }
 
 /** GitHub issue strings are never receipts; success uses the typed handler result. */
-function classifyMutationResult(toolName: string, text: string): ToolResultStatus | null {
+function classifyMutationResult(toolName: string): ToolResultStatus | null {
   if (toolName !== 'create_github_issue') return null;
   return 'error';
 }
@@ -394,7 +394,7 @@ function normalizeLegacy(toolName: string, raw: string): NormalizedToolResult {
   }
 
   const classified = classifyDirectoryResult(toolName, raw) ?? classifySearchResult(toolName, raw);
-  const mutationStatus = classifyMutationResult(toolName, raw);
+  const mutationStatus = classifyMutationResult(toolName);
   const workflowFailure = classifyWorkflowFailure(toolName, raw);
   const status = mutationStatus ?? workflowFailure ?? classified?.status ?? (legacyResultIndicatesFailure(raw) ? 'error' : 'ok');
   const source = classified || mutationStatus || workflowFailure ? 'classified' : 'legacy';

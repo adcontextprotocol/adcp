@@ -88,7 +88,7 @@ export class CatalogDisputesDatabase {
 
     params.push(limit, offset);
     const result = await query<CatalogDispute>(
-      `SELECT * FROM catalog_disputes ${where} ORDER BY created_at DESC LIMIT $${idx++} OFFSET $${idx++}`,
+      `SELECT * FROM catalog_disputes ${where} ORDER BY created_at DESC LIMIT $${idx++} OFFSET $${idx}`,
       params
     );
 

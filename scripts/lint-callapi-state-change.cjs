@@ -69,7 +69,7 @@ function scanFile(filePath) {
   // Scan as a single string with a global multi-line regex so calls
   // split across lines (e.g. `callApi(\n  'POST',\n  ...)`) are caught.
   // Compute the line number by counting newlines up to the match.
-  const re = /callApi\s*\(\s*['"`](POST|PUT|DELETE|PATCH)['"`]/g;
+  const re = new RegExp(FORBIDDEN_RE.source, 'g');
   let match;
   while ((match = re.exec(source)) !== null) {
     const line = source.slice(0, match.index).split('\n').length;

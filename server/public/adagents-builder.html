@@ -3991,7 +3991,6 @@
         document.getElementById('quick-add-tag').value = '';
 
         // Update the property tag checkboxes
-        const index = parseInt(document.getElementById('property-edit-index').value);
         const currentTags = [];
         document.querySelectorAll('#property-tags-checkboxes input[type="checkbox"]:checked').forEach(cb => {
           currentTags.push(cb.value);

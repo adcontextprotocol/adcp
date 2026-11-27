@@ -966,7 +966,6 @@
     const membersUrl = isLocal ? '/members' : `${aaoBaseUrl}/members`;
     const eventsUrl = isLocal ? '/events' : `${aaoBaseUrl}/events`;
     const committeesUrl = isLocal ? '/committees' : `${aaoBaseUrl}/committees`;
-    const latestBaseUrl = isLocal ? '/latest' : `${aaoBaseUrl}/latest`;
 
     return `
       <footer class="aao-footer">
@@ -1483,7 +1482,7 @@
     }
 
     // Close all menus when clicking outside
-    document.addEventListener('click', (e) => {
+    document.addEventListener('click', () => {
       if (accountDropdown) accountDropdown.classList.remove('open');
       if (notifDropdown) notifDropdown.classList.remove('open');
       if (mobileMenu && mobileMenu.classList.contains('open')) {

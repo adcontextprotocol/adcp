@@ -8,7 +8,6 @@ import type {
   Proposal,
   BrandReference,
   LegacyFormatID as FormatID,
-  LegacyCreateMediaBuyRequest as CreateMediaBuyRequest,
   EventType,
   CanonicalProposal,
 } from '@adcp/sdk';
@@ -309,9 +308,6 @@ export function servesOutcomeInEnvelopeStatus(servedVersion: string | undefined)
   const parsed = parseAdcpReleaseVersion(servedVersion);
   return parsed !== undefined && parsed.major === 3 && parsed.minor === 0;
 }
-
-/** AccountReference from SDK — identifies an account on create_media_buy */
-type AccountReference = CreateMediaBuyRequest['account'];
 
 export interface TrainingContext {
   mode: 'open' | 'training';

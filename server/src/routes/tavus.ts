@@ -918,7 +918,7 @@ export function createTavusRouter(options?: {
     // Look up the thread to get user identity and build user-scoped tools.
     // This gives voice Addie the same capabilities as chat Addie.
     let voiceRequestTools: RequestTools | undefined;
-    let routedVoiceTools: RoutedTavusVoiceTools | null = null;
+    let routedVoiceTools: RoutedTavusVoiceTools | null;
     let pendingVoiceToolSelection: {
       memberContext: MemberContext | null;
       isAAOAdmin: boolean;
@@ -927,10 +927,10 @@ export function createTavusRouter(options?: {
       forceSafeFallback?: boolean;
     } | null = null;
     let memberRequestContext = "";
-    let userDisplayName: string | null = null;
-    let voiceUserId: string | null = null;
-    let voiceFillersDisabled = false;
-    let sessionGuidance = "";
+    let userDisplayName: string | null;
+    let voiceUserId: string | null;
+    let voiceFillersDisabled: boolean;
+    let sessionGuidance: string;
     let authorization: Awaited<ReturnType<typeof resolveVoiceAuthorization>>;
     try {
       authorization = await resolveVoiceAuthorization(thread.context?.voice_authorization);
@@ -1342,14 +1342,13 @@ export function createTavusRouter(options?: {
           fullResponse += event.text;
           sendChunk({ content: event.text });
         } else if (event.type === "stream_error") {
-          // Mid-stream upstream failure (#4797). Drop the partial so we
-          // don't persist a truncated assistant turn into thread history
-          // and confuse the next-turn prompt assembly.
+          // Mid-stream upstream failure (#4797). streamError keeps the
+          // truncated assistant turn out of thread history so it can't
+          // confuse the next-turn prompt assembly.
           logger.warn(
             { reason: event.reason, deltasBeforeError: event.deltasBeforeError, partialLength: fullResponse.length },
             "Tavus: Addie stream interrupted mid-reply — discarding partial turn"
           );
-          fullResponse = '';
           streamError = true;
           break;
         } else if (event.type === "error") {

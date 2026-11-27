@@ -19,8 +19,6 @@ import { MemberSearchAnalyticsDatabase } from "../../db/member-search-analytics-
 import { MemberDatabase } from "../../db/member-db.js";
 import {
   MEMBER_FILTER,
-  HAS_USER,
-  HAS_ENGAGED_USER,
   ENGAGED_FILTER,
   REGISTERED_FILTER,
 } from "../../db/org-filters.js";

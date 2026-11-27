@@ -32,7 +32,6 @@ import {
   TIER_PRESERVING_STATUSES,
   buildSubscriptionUpdate,
 } from "../../db/organization-db.js";
-import type { MembershipTier } from "../../db/organization-db.js";
 import { SlackDatabase } from "../../db/slack-db.js";
 import { WorkingGroupDatabase } from "../../db/working-group-db.js";
 import { getPool, escapeLikePattern } from "../../db/client.js";
@@ -90,8 +89,6 @@ import {
   approveProposal,
   rejectProposal,
   getProposalStats,
-  type FeedWithStats,
-  type FeedProposal,
 } from "../../db/industry-feeds-db.js";
 import { InsightsDatabase } from "../../db/insights-db.js";
 import { resolveUserRole } from "../../utils/resolve-user-role.js";
@@ -146,7 +143,6 @@ import {
   PIPELINE_STAGE_EMOJI,
   computeEngagementLevel,
   ENGAGEMENT_LABELS,
-  type PipelineStage,
 } from "../../services/account-lifecycle.js";
 import {
   sendRelationshipMessage,
@@ -4759,7 +4755,7 @@ export function createAdminToolHandlers(
       discount_amount_cents?: number;
       stripe_coupon_id?: string;
       stripe_promotion_code?: string;
-    } | null = null;
+    } | null;
     let created = false;
 
     // Step 1: Find the organization
@@ -4801,7 +4797,7 @@ export function createAdminToolHandlers(
         : "";
       if (domain) searchParams.push(`%${domain}%`);
       const exactIdx = paramIdx++;
-      const prefixIdx = paramIdx++;
+      const prefixIdx = paramIdx;
       searchParams.push(companyName, `${companyName}%`);
       searchResult = await pool.query(
         `SELECT workos_organization_id, name, is_personal, company_type, revenue_tier,
@@ -5814,7 +5810,7 @@ export function createAdminToolHandlers(
     try {
       const workosUserId =
         memberContext?.workos_user?.workos_user_id || "unknown";
-      const { proposal, feed } = await approveProposal(
+      const { feed } = await approveProposal(
         proposalId,
         workosUserId,
         feedName,
@@ -5854,7 +5850,7 @@ export function createAdminToolHandlers(
     try {
       const workosUserId =
         memberContext?.workos_user?.workos_user_id || "unknown";
-      const proposal = await rejectProposal(proposalId, workosUserId, reason);
+      await rejectProposal(proposalId, workosUserId, reason);
 
       let response = `✅ **Proposal #${proposalId} rejected.**\n`;
       if (reason) response += `**Reason:** ${reason}\n`;
@@ -8837,7 +8833,7 @@ Use add_committee_leader to assign a leader.`;
           const isToday = task.due_date.getTime() === today.getTime();
           const isTomorrow =
             task.due_date.getTime() === today.getTime() + 86400000;
-          let label = dateStr;
+          let label: string;
           if (isToday) label = `📌 Today (${dateStr})`;
           else if (isTomorrow) label = `📅 Tomorrow (${dateStr})`;
           else label = `📅 ${dateStr}`;

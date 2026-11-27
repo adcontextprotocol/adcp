@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { resolveOrgForStripeCustomer } from '../../src/billing/webhook-helpers.js';
 import { StripeCustomerConflictError } from '../../src/db/organization-db.js';
 

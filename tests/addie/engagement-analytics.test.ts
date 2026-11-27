@@ -16,7 +16,6 @@ import {
   type JourneyScenario,
   type UserJourney,
   type UserPersona,
-  type ActivityEvent,
 } from '../../server/src/addie/testing/user-journey-simulator.js';
 
 // ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-import { query, getPool } from './client.js';
+import { query } from './client.js';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('join-request-db');

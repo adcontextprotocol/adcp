@@ -31,7 +31,7 @@ import {
   invalidateRulesCache,
 } from './rules/index.js';
 import { isAllowedImageType } from './mcp/url-tools.js';
-import { withRetry, isRetryableError, RetriesExhaustedError, type RetryConfig } from '../utils/anthropic-retry.js';
+import { withRetry, isRetryableError, RetriesExhaustedError } from '../utils/anthropic-retry.js';
 import { formatTokenCount, getConversationTokenLimit, buildDroppedMessagesSummary, type MessageTurn } from '../utils/token-limiter.js';
 import { notifySystemError } from './error-notifier.js';
 import {
@@ -209,25 +209,6 @@ function hashPreparedPayload(
 
 function boundedModelContentTypes(content: ModelMessageContent[]): string[] {
   return [...new Set(content.map((block) => block.type))].sort();
-}
-
-function boundedContentTypes(
-  content: Anthropic.Beta.BetaMessage['content'],
-): string[] {
-  const categories = content.map((block) => {
-    switch (block.type) {
-      case 'text':
-      case 'thinking':
-      case 'redacted_thinking':
-      case 'tool_use':
-      case 'server_tool_use':
-      case 'web_search_tool_result':
-        return block.type;
-      default:
-        return 'other';
-    }
-  });
-  return [...new Set(categories)].sort();
 }
 
 /** Build the provider-neutral form of historical turns for live orchestration. */
@@ -2013,10 +1994,9 @@ export class AddieClaudeClient {
     const toolExecutions = executionLedger.executions;
 
     // Timing metrics
-    const timingStart = Date.now();
-    let systemPromptMs = 0;
+    let systemPromptMs: number;
     let totalLlmMs = 0;
-    let totalToolExecutionMs = 0;
+    let totalToolExecutionMs: number;
 
     const prepared = this.prepareFirstInvocation(
       userMessage,
@@ -2676,7 +2656,6 @@ export class AddieClaudeClient {
     try {
 
     // Timing metrics
-    const timingStart = Date.now();
     let systemPromptMs = 0;
     let totalLlmMs = 0;
     let totalToolExecutionMs = 0;

@@ -18,7 +18,7 @@ import { responseClient } from '../addie/response-client.js';
  * - bookmark_resource: Writes to database
  */
 
-import { AddieClaudeClient, type RequestTools } from '../addie/claude-client.js';
+import { AddieClaudeClient } from '../addie/claude-client.js';
 import { AddieModelConfig } from '../config/models.js';
 import {
   KNOWLEDGE_TOOLS,
@@ -66,14 +66,6 @@ export const ANONYMOUS_SAFE_KNOWLEDGE_TOOLS = new Set([
 interface ConversationMessage {
   role: 'user' | 'assistant';
   content: string;
-}
-
-/**
- * Chat tool input schema
- */
-interface ChatInput {
-  message: string;
-  history?: ConversationMessage[];
 }
 
 /**

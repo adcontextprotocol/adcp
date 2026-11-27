@@ -848,7 +848,7 @@ export async function prepareRequestWithMemberTools(
 ): Promise<PreparedRequest> {
   const messageToProcess = sanitizedInput;
   let memberContext: MemberContext | null = null;
-  let siRetrievalTimeMs: number | null = null;
+  let siRetrievalTimeMs: number | null;
 
   // Run member context fetch and SI retrieval in parallel
   const [memberContextResult, siRetrievalResult] = await Promise.all([

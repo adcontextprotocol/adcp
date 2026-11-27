@@ -1949,7 +1949,6 @@ export function createCertificationToolHandlers(
       if (!prereqs.met) {
         // Include target module context so Sage can name specific mechanisms even in prereq redirects
         const lp = mod.lesson_plan as certDb.LessonPlan | null;
-        const objectives = lp?.objectives?.slice(0, 3).map(o => `- ${o}`).join('\n') || '';
         // Extract key concept topics so Sage knows what mechanisms to reference
         const keyConcepts = (lp?.key_concepts as Array<{ topic: string; teaching_notes: string }> | undefined) || [];
         const conceptSummary = keyConcepts.map(c => `- **${c.topic}**: ${c.teaching_notes.substring(0, 200)}`).join('\n');
@@ -2476,7 +2475,6 @@ export function createCertificationToolHandlers(
       const prereqs = await certDb.checkPrerequisites(userId, moduleId);
       if (!prereqs.met) {
         const lp = mod.lesson_plan as certDb.LessonPlan | null;
-        const objectives = lp?.objectives?.slice(0, 3).map(o => `- ${o}`).join('\n') || '';
         const keyConcepts = (lp?.key_concepts as Array<{ topic: string; teaching_notes: string }> | undefined) || [];
         const conceptSummary = keyConcepts.map(c => `- **${c.topic}**: ${c.teaching_notes.substring(0, 200)}`).join('\n');
         const missingIds = prereqs.missing.map(m => m.moduleId);

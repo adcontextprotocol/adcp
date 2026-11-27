@@ -338,7 +338,7 @@ async function runVariant(
     const runs: SingleRun[] = [];
     for (let i = 0; i < runsPerQuestion; i++) {
       const t0 = Date.now();
-      let response = '';
+      let response: string;
       try {
         const result = await client.messages.create({
           model,

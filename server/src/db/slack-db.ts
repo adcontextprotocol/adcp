@@ -250,7 +250,7 @@ export class SlackDatabase {
     }
 
     if (options.offset) {
-      sql += ` OFFSET $${paramIndex++}`;
+      sql += ` OFFSET $${paramIndex}`;
       params.push(options.offset);
     }
 
@@ -293,7 +293,7 @@ export class SlackDatabase {
     `;
 
     if (options.limit) {
-      sql += ` LIMIT $${paramIndex++}`;
+      sql += ` LIMIT $${paramIndex}`;
       params.push(options.limit);
     }
 

@@ -901,7 +901,6 @@
           headers: { 'Content-Type': 'application/json' }
         });
         if (!response.ok) throw new Error('Enrichment failed');
-        const result = await response.json();
         alert('Enrichment complete!');
         document.getElementById('aiAnalysisModal')?.remove();
         loadDataCleanup();

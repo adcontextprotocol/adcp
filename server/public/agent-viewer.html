@@ -437,7 +437,7 @@
       }
 
       function renderShell() {
-        let title = state.agentUrl || "Unknown agent";
+        let title;
         try {
           title = new URL(state.agentUrl).hostname;
         } catch (_) {

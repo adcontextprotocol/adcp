@@ -35,7 +35,6 @@ export const FIXED_TRACE_COMPONENT_SMOKE_RESPONSE_HMAC_DOMAIN =
 export const FIXED_TRACE_COMPONENT_SMOKE_LEDGER_LOCK_TIMEOUT_MS = 250 as const;
 export const FIXED_TRACE_COMPONENT_SMOKE_LEDGER_STATEMENT_TIMEOUT_MS = 1_000 as const;
 
-type Disposition = FixedTraceComponentSmokePrivateAuthorityPlanEntry['disposition'];
 export type FixedTraceComponentSmokeLedgerRefusal =
   | 'grant_not_active' | 'grant_already_consumed' | 'admission_drift'
   | 'unknown_exposure' | 'run_halted' | 'duplicate_attempt_id' | 'intent_required'
@@ -349,7 +348,7 @@ export class PostgresFixedTraceComponentSmokePrivateLedger {
         if (parsed.usage && !fixedTraceComponentSmokePrivateAuthorityIdentityMatches(row.pricing_profile_id, {
           provider: row.requested_provider, model: row.requested_model,
         })) return this.settlePostIntentFailure(client, parsed, 'pricing_unavailable', 'unknown_exposure');
-        let spent: number | null = null;
+        let spent: number | null;
         try { spent = parsed.usage ? fixedTraceComponentSmokePrivateAuthorityCostMicros(row.pricing_profile_id, parsed.usage) : null; } catch { return this.settlePostIntentFailure(client, parsed, 'pricing_unavailable', 'unknown_exposure'); }
         if (parsed.status === 'succeeded' && parsed.responseDisposition === 'tool_continuation_required'
           && (maximumInvocations === null || ordinal === maximumInvocations)) {

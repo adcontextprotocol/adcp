@@ -14,7 +14,6 @@ import DOMPurify from 'isomorphic-dompurify';
 
 
 const BASE_URL = process.env.BASE_URL || 'https://agenticadvertising.org';
-const SLACK_WORKSPACE_URL = process.env.SLACK_WORKSPACE_URL || 'https://agenticads.slack.com';
 
 function isHtml(text: string): boolean {
   return /<(?:p|div|br|strong|em|ul|ol|li|a\s)[>\s/]/i.test(text);

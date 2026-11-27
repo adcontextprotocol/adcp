@@ -42,7 +42,7 @@ import {
   AccountRequiredError,
 } from "@adcp/sdk";
 import { getFirstStepPreview, testCapabilityDiscovery, loadComplianceIndex, listAllComplianceStoryboards } from "@adcp/sdk/testing";
-import type { Agent, AgentType, AgentWithStats } from "../types.js";
+import type { AgentType, AgentWithStats } from "../types.js";
 import { isValidAgentType } from "../types.js";
 import { MemberDatabase } from "../db/member-db.js";
 import { query, withDatabaseDeadline } from "../db/client.js";
@@ -115,13 +115,12 @@ import { PUBLIC_TEST_AGENT } from "../config/test-agent.js";
 import * as policiesDb from "../db/policies-db.js";
 import { createLogger } from "../logger.js";
 import { captureEvent } from "../utils/posthog.js";
-import { validateCrawlDomain, validateExternalUrl, safeFetchAxiosLike } from "../utils/url-security.js";
+import { validateCrawlDomain, validateExternalUrl } from "../utils/url-security.js";
 import {
   brandResolveCacheControl,
   type BrandResolutionOutcome,
 } from "../services/brand-resolution-cache-policy.js";
 import { verifySupplyPath } from "../services/supply-path-verifier.js";
-import { canonicalizePublisherDomain } from "../services/publisher-domain.js";
 
 import { fetchHostInventoryPartnerDomains } from '../services/supply-path-evidence.js';
 
@@ -7294,7 +7293,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
           if (withProperties && enrichedAgent.type === "sales") {
             const agentProperties = results[resultIndex++] as any[];
-            const publisherDomains = results[resultIndex++] as string[];
+            const publisherDomains = results[resultIndex] as string[];
 
             if (agentProperties && agentProperties.length > 0) {
               enrichedAgent.publisher_domains = publisherDomains;
@@ -8315,8 +8314,8 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       }
 
       let modes: string[] = [];
-      let gradingProfile: 'legacy' | 'spec' = 'legacy';
-      let gradingRevision = '0';
+      let gradingProfile: 'legacy' | 'spec';
+      let gradingRevision: string;
       try {
         const badge = await complianceDb.getActiveBadge(agentUrl, role as any, version);
         if (badge) {
@@ -8403,7 +8402,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
 
       let verified = false;
       let adcpVersion: string | undefined;
-      let gradingProfile: 'legacy' | 'spec' = 'legacy';
+      let gradingProfile: 'legacy' | 'spec';
       try {
         const badge = await complianceDb.getHighestVersionActiveBadge(agentUrl, role as any);
         verified = !!badge;
@@ -8454,7 +8453,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
       }
 
       let verified = false;
-      let gradingProfile: 'legacy' | 'spec' = 'legacy';
+      let gradingProfile: 'legacy' | 'spec';
       try {
         const badge = await complianceDb.getActiveBadge(agentUrl, role as any, version);
         verified = !!badge;
@@ -10408,7 +10407,7 @@ export function createRegistryApiRouters(config: RegistryApiConfig): {
           }
         }
 
-        const { context, dry_run } = req.body;
+        const { context } = req.body;
         if (context && (typeof context !== "object" || Array.isArray(context))) {
           return res.status(400).json({ error: "context must be a JSON object" });
         }

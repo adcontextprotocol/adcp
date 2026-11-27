@@ -33,7 +33,6 @@ import { CommunityDatabase } from '../db/community-db.js';
 import {
   upsertEmailContact,
   parseEmailAddress,
-  type EmailContactResult,
 } from '../db/contacts-db.js';
 import {
   handleEmailConversation,

@@ -303,8 +303,7 @@ describe('network-health global authorization boundary', () => {
         mocks.resolveEffectiveMembership.mockResolvedValue({ is_member: true });
         mocks.checkPlatformBanForApiKey.mockResolvedValue({ banned: false });
 
-        const response = await request(app)
-          [endpoint.method](endpoint.path)
+        const response = await request(app)[endpoint.method](endpoint.path)
           .set('Authorization', `Bearer sk_tenant_${permission}`)
           .send('body' in endpoint ? endpoint.body : undefined);
 
@@ -318,8 +317,7 @@ describe('network-health global authorization boundary', () => {
   it('rejects unauthenticated callers before every network-health query', async () => {
     for (const endpoint of endpointsFor('org_target')) {
       vi.clearAllMocks();
-      const response = await withCsrf(request(app)
-        [endpoint.method](endpoint.path)
+      const response = await withCsrf(request(app)[endpoint.method](endpoint.path)
         .set('Accept', 'application/json')
         .send('body' in endpoint ? endpoint.body : undefined));
 

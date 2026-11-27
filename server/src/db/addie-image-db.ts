@@ -60,7 +60,7 @@ export async function searchImages(
   // "governance workflow" matches images containing either term. ts_rank
   // naturally boosts results matching more terms.
   let hasTextSearch = false;
-  let tsqueryExpr = '';
+  let tsqueryExpr: string;
   if (searchQuery) {
     const words = searchQuery.replace(/[^a-zA-Z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
     if (words.length > 0) {

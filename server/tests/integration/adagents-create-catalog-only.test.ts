@@ -9,7 +9,6 @@
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
-import type { Pool } from 'pg';
 
 vi.hoisted(() => {
   process.env.WORKOS_API_KEY = process.env.WORKOS_API_KEY ?? 'test';
@@ -64,10 +63,9 @@ const MINIMAL_PROPERTY = {
 describe('POST /api/adagents/create — catalog-only community mirror', () => {
   let server: HTTPServer;
   let app: unknown;
-  let pool: Pool;
 
   beforeAll(async () => {
-    pool = initializeDatabase({
+    initializeDatabase({
       connectionString:
         process.env.DATABASE_URL || 'postgresql://adcp:localdev@localhost:5432/adcp_test',
     });

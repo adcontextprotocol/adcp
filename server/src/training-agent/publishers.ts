@@ -6,7 +6,7 @@
  * factory uses these to generate schema-compliant products.
  */
 
-import type { PublisherProfile, ShowDefinition } from './types.js';
+import type { PublisherProfile } from './types.js';
 import { CREATOR_PUBLISHER } from './creators.js';
 
 const dma = (...codes: string[]) => codes.map(code => ({ system: 'nielsen_dma' as const, code }));

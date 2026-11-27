@@ -178,7 +178,6 @@ export async function sendWelcomeEmail(data: {
 
     // Build tracked URLs
     const dashboardUrl = trackedUrl(trackingId, 'cta_dashboard', 'https://agenticadvertising.org/dashboard');
-    const websiteUrl = trackedUrl(trackingId, 'footer_website', 'https://agenticadvertising.org');
 
     // Welcome email is transactional - no unsubscribe link
     const footerHtml = generateFooterHtml(trackingId, null);

@@ -808,7 +808,6 @@ export function setupOrganizationRoutes(
 
         const org = orgResult.rows[0];
         const orgName = org.name;
-        const emailDomain = org.email_domain;
 
         // Get linked domains
         const domainsResult = await pool.query(

@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { HomeContentCache } from '../../server/src/addie/home/cache.js';
 import { renderHomeView, renderErrorView } from '../../server/src/addie/home/slack-renderer.js';
-import type { HomeContent, AlertSection, QuickAction, ActivityItem, UserStats, AdminPanel } from '../../server/src/addie/home/types.js';
+import type { HomeContent } from '../../server/src/addie/home/types.js';
 
 describe('HomeContentCache', () => {
   let cache: HomeContentCache;

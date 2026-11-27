@@ -14,7 +14,7 @@ import * as fs from "fs/promises";
 import { readFileSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { WorkOS, DomainDataState } from "@workos-inc/node";
+import { WorkOS } from "@workos-inc/node";
 import { AgentService } from "./agent-service.js";
 import { AgentValidator } from "./validator.js";
 import { configureMCPRoutes, isMCPServerReady, resolveMCPServerURL } from "./mcp/index.js";
@@ -38,10 +38,10 @@ import { ComplianceRefreshRequestsDatabase } from "./db/compliance-refresh-reque
 import { AuthenticationRequiredError, CreativeAgentClient, SingleAgentClient } from "@adcp/sdk";
 import { withSdkSafeTransport } from "./utils/sdk-safe-fetch.js";
 import { jsonBodyLimitForPath } from './utils/json-body-limit.js';
-import type { Agent, AgentType, AgentWithStats, Company } from "./types.js";
-import { isValidAgentType, VALID_MEMBER_OFFERINGS, VALID_LEGAL_DOCUMENT_TYPES } from "./types.js";
+import type { AgentType } from "./types.js";
+import { VALID_LEGAL_DOCUMENT_TYPES } from "./types.js";
 import type { Server } from "http";
-import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPortalSession, createCustomerSession, fetchAllPaidInvoices, fetchAllRefunds, getPendingInvoices, type RevenueEvent } from "./billing/stripe-client.js";
+import { stripe, STRIPE_WEBHOOK_SECRET, fetchAllPaidInvoices, fetchAllRefunds } from "./billing/stripe-client.js";
 import { handleSubscriptionCreated, type ActivationAdminContext } from "./billing/handle-subscription-created.js";
 import { resolveOrgForStripeCustomer } from "./billing/webhook-helpers.js";
 import { dedupOnSubscriptionCreated } from "./billing/dedup-on-subscription-created.js";
@@ -70,9 +70,7 @@ import { JoinRequestDatabase } from "./db/join-request-db.js";
 import { cancelJoinRequestForExactCredential, toPublicMembershipMutationError } from "./services/organization-membership-mutation.js";
 import { getOrganizationAuthorizationUserId } from "./auth/organization-principal.js";
 import { SlackDatabase } from "./db/slack-db.js";
-import { syncSlackUsers, getSyncStatus, tryAutoLinkWebsiteUserToSlack } from "./slack/sync.js";
-import { isSlackConfigured, testSlackConnection } from "./slack/client.js";
-import { handleSlashCommand } from "./slack/commands.js";
+import { tryAutoLinkWebsiteUserToSlack } from "./slack/sync.js";
 import { getCompanyDomain, getGoogleEmailAliases } from "./utils/email-domain.js";
 import { assertIdentityConsolidationAllowed } from "./db/identity-mutation-policy.js";
 import {
@@ -86,15 +84,14 @@ import { scrubCommunityAuthorizedAgents } from "./utils/community-adagents.js";
 import { isRegistryDomain } from "./services/registry-domain.js";
 import { formatPerspectiveUrlAsMarkdownDestination, normalizePerspectiveExternalUrl } from "./utils/perspective-url.js";
 import { decodeHtmlEntities } from "./utils/html-entities.js";
-import { requireAuth, requireAdmin, requireGlobalAdmin, optionalAuth, invalidateSessionCache, resolvePageSession, type PageSession, type PageSessionUser, switchSessionOrganization, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, encodeDevSessionCookie, DEV_USERS, type DevUserConfig } from "./middleware/auth.js";
+import { requireAuth, requireAdmin, requireGlobalAdmin, optionalAuth, invalidateSessionCache, resolvePageSession, type PageSession, type PageSessionUser, switchSessionOrganization, isDevModeEnabled, getDevUser, getAvailableDevUsers, getDevSessionCookieName, encodeDevSessionCookie, DEV_USERS } from "./middleware/auth.js";
 import { invitationRateLimiter, brandCreationRateLimiter, notificationRateLimiter, emailPrefsRateLimiter, adminContentWriteRateLimiter, newsletterSubscribeRateLimiter, newsletterConfirmRateLimiter, agentCardValidationRateLimiter } from "./middleware/rate-limit.js";
 import { findOrCreateUserByEmail } from "./auth/workos-client.js";
 import { sendNewsletterConfirmation } from "./notifications/email.js";
 import { getPerspectiveWithIllustration, getIllustrationData } from "./db/illustration-db.js";
 import { getAssetData as getPerspectiveAssetData } from "./db/perspective-asset-db.js";
 import { generatePerspectiveCard, compositePerspectiveCard } from "./services/perspective-cards.js";
-import { validateOrganizationName, validateEmail } from "./middleware/validation.js";
-import jwt from "jsonwebtoken";
+import { validateEmail } from "./middleware/validation.js";
 import crypto from "crypto";
 import {
   notifyNewSubscription,
@@ -191,11 +188,10 @@ import { createCreativeAgentRouter } from "./creative-agent/index.js";
 import { sendWelcomeEmail, sendUserSignupEmail, sendDuplicateSubscriptionNotice, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
 import { pendingConfirmationsDb } from "./db/pending-confirmations-db.js";
-import { queuePerspectiveLink } from "./addie/services/content-curator.js";
 import { resolveEscalationsForPerspective } from "./db/escalation-db.js";
 import { serveHtmlWithMetaTags, injectMetaTagsIntoHtml, enrichUserWithMembership, enrichUserWithAdmin } from "./utils/html-config.js";
 import { complete, isLLMConfigured } from "./utils/llm.js";
-import { notifyMemberAdded, notifySubscriptionThankYou } from "./slack/org-group-dm.js";
+import { notifySubscriptionThankYou } from "./slack/org-group-dm.js";
 import { BansDatabase } from "./db/bans-db.js";
 import { registryRequestsDb } from "./db/registry-requests-db.js";
 import { notifyRegistryEdit, notifyRegistryCreate, notifyRegistryRollback, notifyRegistryBan } from "./notifications/registry.js";
@@ -823,17 +819,6 @@ const READY_BLOCKED_LOG_INTERVAL_MS = 60_000;
 let lastReadyBlockers = '';
 let lastReadyBlockedLogAt = 0;
 
-/**
- * Validate slug format and check against reserved keywords
- */
-function isValidSlug(slug: string): boolean {
-  const reserved = ['admin', 'api', 'auth', 'dashboard', 'members', 'registry', 'onboarding'];
-  if (reserved.includes(slug.toLowerCase())) {
-    return false;
-  }
-  return /^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$/.test(slug.toLowerCase());
-}
-
 function formatPublicMemberCount(count: number): string {
   return `${Math.max(0, Math.trunc(count))}+`;
 }
@@ -884,12 +869,6 @@ const WORKOS_REDIRECT_URI = process.env.WORKOS_REDIRECT_URI || 'http://localhost
 const WORKOS_COOKIE_PASSWORD = process.env.WORKOS_COOKIE_PASSWORD || '';
 // Allow insecure cookies for local Docker development
 const ALLOW_INSECURE_COOKIES = process.env.ALLOW_INSECURE_COOKIES === 'true';
-
-// Dev mode: bypass auth with a mock user for local testing
-// Set DEV_USER_EMAIL and DEV_USER_ID in .env.local to enable
-const DEV_USER_EMAIL = process.env.DEV_USER_EMAIL;
-const DEV_USER_ID = process.env.DEV_USER_ID;
-const DEV_MODE_ENABLED = !!(DEV_USER_EMAIL && DEV_USER_ID);
 
 // System user ID for audit logs from webhook/automated contexts
 const SYSTEM_USER_ID = 'system';

@@ -3,7 +3,6 @@
  */
 
 import type { SuggestedPrompt } from './types.js';
-import { createLogger } from '../logger.js';
 import { SLACK_INVITE_URL } from '../notifications/email.js';
 import { PUBLIC_TEST_AGENT } from '../config/test-agent.js';
 import {
@@ -19,11 +18,8 @@ import {
   trimConversationHistory,
   getConversationTokenLimit,
   compactOldToolResults,
-  estimateTokens,
   type MessageTurn,
 } from '../utils/token-limiter.js';
-
-const logger = createLogger('addie-prompts');
 
 /**
  * Tool reference documentation appended to the system prompt.

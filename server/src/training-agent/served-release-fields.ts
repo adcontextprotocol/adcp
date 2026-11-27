@@ -372,7 +372,7 @@ function firstStableReleaseDefiningTool(toolName: string): StableReleaseLine | n
   if (cached !== undefined) return cached;
   let first: StableReleaseLine | null = null;
   for (const line of STABLE_RELEASE_LINES) {
-    let defined = false;
+    let defined: boolean;
     try {
       defined = getToolInputSchema(toolName, { adcpVersion: line }) !== undefined;
     } catch {

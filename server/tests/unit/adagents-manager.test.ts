@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
 vi.mock('../../src/utils/url-security.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/utils/url-security.js')>();

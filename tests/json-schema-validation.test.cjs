@@ -33,7 +33,6 @@ let totalBlocks = 0;
 let validatedBlocks = 0;
 let passedBlocks = 0;
 let failedBlocks = 0;
-let skippedBlocks = 0;
 let placeholderBlocks = 0;
 let invalidBlocks = 0;
 
@@ -362,7 +361,6 @@ function replaceMacros(obj) {
  */
 async function validateJsonBlock(ajv, block) {
   if (!block.hasSchema) {
-    skippedBlocks++;
     return { status: 'skipped', reason: 'No $schema field' };
   }
 

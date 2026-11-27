@@ -34,7 +34,7 @@ vi.mock('../../src/services/brand-logo-service.js', async () => {
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { BrandDatabase } from '../../src/db/brand-db.js';
-import { BrandIdentityError, updateBrandIdentity } from '../../src/services/brand-identity.js';
+import { updateBrandIdentity } from '../../src/services/brand-identity.js';
 import type { Pool } from 'pg';
 
 const TEST_DOMAIN = 'orphan-adopt.example.com';

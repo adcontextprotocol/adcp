@@ -12,10 +12,6 @@ const SCHEMA_BASE_DIR = path.join(__dirname, '../static/schemas/source');
 const DIGEST_A = `sha256:${'1'.repeat(64)}`;
 const DIGEST_B = `sha256:${'2'.repeat(64)}`;
 
-function schemaPathFromId(schemaId) {
-  return path.join(SCHEMA_BASE_DIR, schemaId.replace('/schemas/', ''));
-}
-
 async function loadExternalSchema(uri) {
   if (!uri.startsWith('/schemas/')) throw new Error(`Cannot load external schema: ${uri}`);
   return readBuiltSchema(uri);

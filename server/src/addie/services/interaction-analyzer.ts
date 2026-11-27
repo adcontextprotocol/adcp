@@ -355,8 +355,8 @@ export async function analyzeInteraction(
  */
 export async function applyTaskActions(
   analysis: InteractionAnalysis,
-  adminUserId?: string,
-  adminName?: string
+  _adminUserId?: string,
+  _adminName?: string
 ): Promise<{
   completed: number;
   rescheduled: number;

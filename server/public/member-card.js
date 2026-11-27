@@ -32,6 +32,7 @@ const offeringLabels = {
  * @param {boolean} options.showVisibilityBadge - If true, shows public/private badge (for dashboard)
  * @returns {string} HTML string for the member card
  */
+// oxlint-disable-next-line no-unused-vars -- page global used by other scripts and inline handlers
 function renderMemberCard(member, options = {}) {
   const { isPreview = false, showVisibilityBadge = false } = options;
   const brand = member.resolved_brand;
@@ -393,6 +394,7 @@ function getMemberCardStyles() {
  * Inject member card styles into the page
  * Call this once on pages that need member card styling
  */
+// oxlint-disable-next-line no-unused-vars -- page global used by other scripts and inline handlers
 function injectMemberCardStyles() {
   if (document.getElementById('member-card-styles')) return;
 
@@ -442,6 +444,7 @@ const agentTypeColors = {
  * @param {boolean} options.compact - Use compact layout (for member cards)
  * @returns {string} HTML string
  */
+// oxlint-disable-next-line no-unused-vars -- page global used by other scripts and inline handlers
 function renderAgentCard(agentInfo, agentUrl, options = {}) {
   const {
     showVisibilityToggle = false,
@@ -835,6 +838,7 @@ function getAgentCardStyles() {
 /**
  * Inject agent card styles into the page
  */
+// oxlint-disable-next-line no-unused-vars -- page global used by other scripts and inline handlers
 function injectAgentCardStyles() {
   if (document.getElementById('agent-card-styles')) return;
 
@@ -885,6 +889,7 @@ function getSafeHttpsUrl(value) {
  * @param {boolean} options.compact - Use compact layout (for member cards)
  * @returns {string} HTML string
  */
+// oxlint-disable-next-line no-unused-vars -- page global used by other scripts and inline handlers
 function renderPublisherCard(publisherInfo, publisherDomain, options = {}) {
   const {
     showVisibilityToggle = false,
@@ -1251,6 +1256,7 @@ function getPublisherCardStyles() {
 /**
  * Inject publisher card styles into the page
  */
+// oxlint-disable-next-line no-unused-vars -- page global used by other scripts and inline handlers
 function injectPublisherCardStyles() {
   if (document.getElementById('publisher-card-styles')) return;
 

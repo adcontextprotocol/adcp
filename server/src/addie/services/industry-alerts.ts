@@ -20,8 +20,6 @@ import { escapeSlackText } from '../../utils/slack-escape.js';
 import {
   getActiveChannels,
   isWebsiteOnlyChannel,
-  type NotificationChannel,
-  type FallbackRules,
 } from '../../db/notification-channels-db.js';
 
 // Minimum hours of quiet before posting a quality 4 article
@@ -56,50 +54,6 @@ function determineAlertLevel(article: ArticleToAlert): 'urgent' | 'high' | 'medi
     return 'medium';
   }
   return 'digest';
-}
-
-/**
- * Evaluate fallback rules for a channel against an article
- * Returns true if the article matches the channel's criteria
- */
-function evaluateFallbackRules(
-  article: ArticleToAlert,
-  rules: FallbackRules
-): boolean {
-  // If no rules, don't match by default
-  if (!rules || Object.keys(rules).length === 0) {
-    return false;
-  }
-
-  // Check minimum quality
-  if (rules.min_quality !== undefined) {
-    if (!article.quality_score || article.quality_score < rules.min_quality) {
-      return false;
-    }
-  }
-
-  // Check required tags (at least one must match)
-  if (rules.require_tags && rules.require_tags.length > 0) {
-    const articleTags = article.relevance_tags || [];
-    const hasRequiredTag = rules.require_tags.some(tag =>
-      articleTags.includes(tag)
-    );
-    if (!hasRequiredTag) {
-      return false;
-    }
-  }
-
-  // Check AdCP mention requirement
-  if (rules.require_mentions_adcp && !article.mentions_adcp) {
-    return false;
-  }
-
-  // Check agentic mention requirement
-  if (rules.require_mentions_agentic && !article.mentions_agentic) {
-    return false;
-  }
-
-  return true;
 }
 
 /**

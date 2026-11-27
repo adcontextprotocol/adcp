@@ -27,9 +27,6 @@ async function main() {
         excerpt: art.excerpt,
       });
 
-      // Insert with explicit \\x hex encoding for BYTEA
-      const hexData = '\\x' + imageBuffer.toString('hex');
-
       const insertResult = await pool.query(
         `INSERT INTO perspective_illustrations (perspective_id, image_data, prompt_used, status, approved_at)
          VALUES ($1, decode($2, 'base64'), $3, 'approved', NOW())

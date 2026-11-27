@@ -1442,7 +1442,7 @@ describe('fixed cross-provider trace suite', () => {
       traceId: `${trace.id}-${index}`,
       terminalStatus,
     }));
-    const syntheticSuite = observations.map((observation, index) => ({
+    const syntheticSuite = observations.map((observation) => ({
       ...trace,
       id: observation.traceId,
       expectation: { ...trace.expectation, terminalStatuses: ['complete'] as const },

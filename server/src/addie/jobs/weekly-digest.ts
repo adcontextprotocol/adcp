@@ -11,7 +11,6 @@ import {
   getUserWorkingGroupMap,
   isLegacyContent,
   getPersonaCluster,
-  type DigestContent,
   type DigestRecord,
   type DigestSendStats,
 } from '../../db/digest-db.js';

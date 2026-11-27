@@ -6,7 +6,6 @@
  */
 
 import { vi } from 'vitest';
-import type { TimelineEvent, CannedResponse } from './types.js';
 import type { SimulationClock } from './clock.js';
 
 // ---------------------------------------------------------------------------
@@ -104,7 +103,7 @@ export interface AnthropicInterceptor {
   reset(): void;
 }
 
-export function createAnthropicInterceptor(clock: SimulationClock): AnthropicInterceptor {
+export function createAnthropicInterceptor(_clock: SimulationClock): AnthropicInterceptor {
   const interceptor: AnthropicInterceptor = {
     calls: [],
     cannedResponses: new Map(),
@@ -198,7 +197,7 @@ export interface ResendInterceptor {
   reset(): void;
 }
 
-export function createResendInterceptor(clock: SimulationClock): ResendInterceptor {
+export function createResendInterceptor(_clock: SimulationClock): ResendInterceptor {
   const interceptor: ResendInterceptor = {
     sentEmails: [],
     reset() {

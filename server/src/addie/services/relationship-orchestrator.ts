@@ -581,16 +581,13 @@ export async function runRelationshipOrchestratorCycle(options: {
       }).catch(err => logger.warn({ err }, 'Failed to record person event'));
 
       // 7. Route by channel
-      let channelId: string | undefined;
-
       if (channel === 'slack') {
         try {
-          const result = await deliverRelationshipMessage({
+          await deliverRelationshipMessage({
             relationship: candidate,
             channel,
             composed,
           });
-          channelId = result.channelId;
         } catch (err) {
           errors++;
           logger.warn({ person_id: candidate.id, err }, 'Failed to send Slack message');

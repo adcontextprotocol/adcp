@@ -17,7 +17,7 @@ export function detectEnvMismatch(): string | null {
   // Parse the URL and inspect its host explicitly. Substring checks against
   // the raw URL string would match a hostile path/query like
   // postgres://user@evil.example/?aao-prod=1.
-  let host = '';
+  let host: string;
   try {
     host = new URL(databaseUrl).hostname.toLowerCase();
   } catch {

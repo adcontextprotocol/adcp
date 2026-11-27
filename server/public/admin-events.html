@@ -1140,7 +1140,6 @@
 
     // Load event group info
     async function loadEventGroupInfo(eventId) {
-      const section = document.getElementById('eventGroupSection');
       const exists = document.getElementById('eventGroupExists');
       const notExists = document.getElementById('eventGroupNotExists');
       const loading = document.getElementById('eventGroupLoading');
@@ -1697,7 +1696,6 @@
           body: JSON.stringify({ emails }),
         });
         if (!res.ok) throw new Error('Failed to add invites');
-        const data = await res.json();
         document.getElementById('inviteEmails').value = '';
         await loadInvites(editingEventId);
       } catch (error) {

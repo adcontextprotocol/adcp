@@ -973,7 +973,6 @@
                     const coreTools = ['get_products', 'create_media_buy', 'update_media_buy', 'get_media_buy_delivery'];
                     const optionalTools = ['sync_creatives', 'list_authorized_properties', 'build_creative'];
                     const coreImplemented = coreTools.filter(tool => toolNames.has(tool));
-                    const optionalImplemented = optionalTools.filter(tool => toolNames.has(tool));
                     const hasCoreTools = coreImplemented.length >= 2; // at minimum get_products + one buy tool
 
                     const capLabels = [];

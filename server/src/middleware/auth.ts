@@ -35,7 +35,6 @@ const apiKeyWorkos = new WorkOS(process.env.WORKOS_API_KEY!, {
   timeout: 5_000,
   maxRetries: 0,
 });
-const WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID!;
 const WORKOS_COOKIE_PASSWORD = process.env.WORKOS_COOKIE_PASSWORD!;
 
 // Session validation cache to reduce WorkOS API calls

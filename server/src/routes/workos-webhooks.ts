@@ -735,7 +735,7 @@ export async function upsertOrganizationDomain(domainData: OrganizationDomainEve
   const pool = getPool();
   const client = await pool.connect();
 
-  let isPersonal = false;
+  let isPersonal: boolean;
   try {
     await client.query('BEGIN');
 

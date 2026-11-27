@@ -424,7 +424,7 @@ async function resolveSchemaPath(
   schemaPath: string,
   version: string,
 ): Promise<{ resolved: string; corrected: boolean; registry: SchemaRegistry | null }> {
-  let registry: SchemaRegistry | null = null;
+  let registry: SchemaRegistry | null;
   try {
     registry = await fetchRegistry(version);
   } catch (error) {
@@ -836,7 +836,7 @@ ${formatCandidates(requestedPath, registry)}`);
     const version = resolveSchemaVersion(input.version);
     const baseUrl = SCHEMA_BASE_URLS[version];
 
-    let registry: SchemaRegistry | null = null;
+    let registry: SchemaRegistry | null;
     try {
       registry = await fetchRegistry(version);
     } catch (error) {
@@ -931,7 +931,6 @@ ${formatCandidates(requestedPath, registry)}`;
 
       const added = [...toKeys].filter((k) => !fromKeys.has(k));
       const removed = [...fromKeys].filter((k) => !toKeys.has(k));
-      const common = [...fromKeys].filter((k) => toKeys.has(k));
 
       if (added.length > 0) {
         report += `### Added in ${toVersion}\n`;

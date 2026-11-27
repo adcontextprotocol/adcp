@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
-import { getPool, initializeDatabase, closeDatabase } from '../../src/db/client.js';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import type { Pool } from 'pg';
 
@@ -8,7 +8,6 @@ import {
   ThreadService,
   type CreateThreadInput,
   type CreateMessageInput,
-  type ThreadListFilters,
 } from '../../src/addie/thread-service.js';
 import { AddieDatabase } from '../../src/db/addie-db.js';
 import { getGeminiDirectResults, GEMINI_DIRECT_EXPERIMENT } from '../../src/addie/gemini-direct-experiment.js';

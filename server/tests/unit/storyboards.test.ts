@@ -10,7 +10,6 @@ import {
   compareAdcpVersions,
   getStoryboardsForVersion,
   getStoryboardIdsForVersion,
-  type Storyboard,
   type StoryboardSummary,
 } from '../../src/services/storyboards.js';
 import {

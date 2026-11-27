@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { query } from '../db/client.js';
 import { createLogger } from '../logger.js';
-import type { AddieClaudeClient, AddieResponse, ProcessMessageOptions, RequestTools, StreamEvent } from './claude-client.js';
+import type { AddieClaudeClient, AddieResponse, ProcessMessageOptions, RequestTools } from './claude-client.js';
 import type { CostEvent } from './claude-cost-tracker.js';
 import { createGeminiDirectTools, type DirectToolContext } from './gemini-direct-tools.js';
 import { resolveModelCostPricing } from './model-cost-pricing.js';

@@ -632,13 +632,8 @@ export function analyzeJourney(journey: UserJourney): JourneyAnalysis {
 
   // Calculate days since various events
   const now = new Date();
-  const outreachEvents = events.filter(e => e.type === 'outreach_received');
   const responseEvents = events.filter(e => e.type === 'outreach_response');
   const lastActivity = events[events.length - 1];
-
-  const daysSinceLastOutreach = outreachEvents.length > 0
-    ? Math.floor((now.getTime() - outreachEvents[outreachEvents.length - 1].timestamp.getTime()) / (1000 * 60 * 60 * 24))
-    : 999;
 
   const daysSinceLastActivity = lastActivity
     ? Math.floor((now.getTime() - lastActivity.timestamp.getTime()) / (1000 * 60 * 60 * 24))

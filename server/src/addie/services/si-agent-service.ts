@@ -146,19 +146,6 @@ function path(p: string): A2UIBoundValue {
   return { path: p };
 }
 
-function buildText(text: string | A2UIBoundValue, variant?: string): A2UIComponent {
-  const id = generateComponentId("text");
-  return {
-    id,
-    component: {
-      Text: {
-        text: typeof text === "string" ? literal(text) : text,
-        ...(variant && { variant }),
-      },
-    },
-  };
-}
-
 function buildButton(
   label: string | A2UIBoundValue,
   action: A2UIAction,
@@ -172,24 +159,6 @@ function buildButton(
         label: typeof label === "string" ? literal(label) : label,
         action,
         ...(variant && { variant }),
-      },
-    },
-  };
-}
-
-function buildLink(
-  label: string | A2UIBoundValue,
-  url: string | A2UIBoundValue,
-  external = true
-): A2UIComponent {
-  const id = generateComponentId("link");
-  return {
-    id,
-    component: {
-      Link: {
-        label: typeof label === "string" ? literal(label) : label,
-        url: typeof url === "string" ? literal(url) : url,
-        external,
       },
     },
   };
@@ -1183,13 +1152,8 @@ export class SiAgentService {
         },
       });
 
-      // A2UI format - create list with product cards
-      const offeringsData = member.offerings.slice(0, 5).map((offering, idx) => ({
-        id: `offering-${idx}`,
-        title: offering,
-        subtitle: member.display_name,
-      }));
-
+      // A2UI format - create list with product cards; the offerings data
+      // model is attached to the surface below.
       // Create template for list items
       const cardTemplate = buildProductCard(
         path("/item/title"),
@@ -1395,8 +1359,8 @@ export class SiAgentService {
   private async handleSignupSkill(
     session: SiSession,
     skill: SiSkill,
-    payload: Record<string, unknown> | undefined,
-    relationship: SiRelationshipMemory
+    _payload: Record<string, unknown> | undefined,
+    _relationship: SiRelationshipMemory
   ): Promise<SiResponse> {
     const config = skill.config as {
       redirect_url?: string;
@@ -1434,8 +1398,8 @@ export class SiAgentService {
   private async handleDemoRequestSkill(
     session: SiSession,
     skill: SiSkill,
-    payload: Record<string, unknown> | undefined,
-    relationship: SiRelationshipMemory
+    _payload: Record<string, unknown> | undefined,
+    _relationship: SiRelationshipMemory
   ): Promise<SiResponse> {
     const config = skill.config as {
       calendar_link?: string;
@@ -1475,9 +1439,9 @@ export class SiAgentService {
   }
 
   private async handleImplementationHelpSkill(
-    session: SiSession,
-    skill: SiSkill,
-    relationship: SiRelationshipMemory
+    _session: SiSession,
+    _skill: SiSkill,
+    _relationship: SiRelationshipMemory
   ): Promise<SiResponse> {
     return {
       message: `I can help guide you through implementation! What specific aspect are you working on? Are you:
@@ -1493,7 +1457,7 @@ Let me know and I'll point you in the right direction.`,
   private async handleContactSalesSkill(
     session: SiSession,
     skill: SiSkill,
-    relationship: SiRelationshipMemory
+    _relationship: SiRelationshipMemory
   ): Promise<SiResponse> {
     const config = skill.config as {
       sales_email?: string;
@@ -1554,7 +1518,7 @@ Let me know and I'll point you in the right direction.`,
 
   private extractMemoryUpdates(
     userMessage: string | undefined,
-    response: SiResponse
+    _response: SiResponse
   ): Record<string, unknown> {
     const updates: Record<string, unknown> = {};
 

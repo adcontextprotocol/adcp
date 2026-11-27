@@ -352,7 +352,6 @@
     }
 
     async function handleAccept(connectionId, btn) {
-      const card = btn.closest('.pc-card');
       btn.disabled = true;
       btn.textContent = 'Accepting...';
 
@@ -382,7 +381,6 @@
     }
 
     async function handleDecline(connectionId, btn) {
-      const card = btn.closest('.pc-card');
       btn.disabled = true;
       btn.textContent = 'Declining...';
 
