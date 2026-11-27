@@ -62,6 +62,28 @@ through this lens: **is this worth the tokens it will cost to complete?**
 The goal is to spend tokens on things that make the spec better and
 prevent pain later — and *not* spend tokens on things that don't.
 
+### Development agent model defaults
+
+Prefer **Sonnet 5.5** (`claude-sonnet-5-5`) for coding, debugging, reasoning,
+and code or security review. Prefer **Haiku 5.5** (`claude-haiku-5-5`) for
+bounded lookups, inventories, formatting, and straightforward mechanical
+tasks. Choose the smallest model that can reliably complete the task while
+preserving the required checks and review quality.
+
+These defaults apply to development agents and delegated work. Shared Claude
+Code settings in `.claude/settings.json` pin Sonnet as the session and
+subagent default and pin both family aliases to 5.5; select Haiku explicitly
+for suitable tasks. The automated PR review workflow also selects Sonnet.
+Use Claude Code 2.1.293 or later for both models. Explicit per-task model
+selection remains available; see the [model configuration reference](https://code.claude.com/docs/en/model-config).
+Do not change application runtime models to implement this policy.
+
+Use a larger model when a concrete complexity or unresolved failure warrants
+it, and explain the reason. When a host cannot use these models, disclose
+the limitation and use its best available appropriate model. Repository
+settings do not change an already-running host session's model. Model choice
+does not waive any required checks or human review.
+
 ## Critical Rules
 
 ### Organization Naming
