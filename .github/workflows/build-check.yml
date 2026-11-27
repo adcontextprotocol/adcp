@@ -310,6 +310,60 @@ jobs:
       - name: Run server unit test shard
         run: npm run test:server-unit -- --shard=${{ matrix.shard }}/4
 
+  # Contributors run the husky pre-commit hook (npm run precommit) on Windows
+  # too. Run its root unit stage there so path, spawn and symlink assumptions
+  # that only hold on POSIX are caught in review rather than in someone's hook.
+  # Not part of the aggregate `build` context below; make it required through
+  # branch protection once it has a track record.
+  unit-windows:
+    name: Unit tests (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Configure git for the Windows checkout
+        # Match the LF checkout every other job and contributor gets (byte-exact
+        # vectors and generated files are compared as committed), and allow the
+        # deep dist/schemas paths past MAX_PATH.
+        shell: bash
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.longpaths true
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          # Same sparse set as build-worker: the release tarballs under
+          # dist/protocol/ are not read by the unit suite.
+          filter: blob:none
+          sparse-checkout: |
+            /*
+            !/dist/protocol/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: "true"
+
+      - name: Run unit tests
+        run: npm run test:unit
+
+      - name: Run the other pre-commit stages
+        # Everything `npm run precommit` runs except the server unit suite,
+        # which the Linux shards above cover.
+        shell: bash
+        run: |
+          npm run test:test-dynamic-imports
+          npm run test:format-identity-boundaries
+          npm run test:callapi-state-change
+          npm run typecheck
+
   # Keep the existing required-check context stable while worker jobs fan out.
   build:
     name: TypeScript Build

@@ -2,7 +2,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterEach, beforeAll, describe, it, expect, vi } from 'vitest';
 import YAML from 'yaml';
 import {
@@ -157,7 +157,13 @@ describe('handleIssueComment (signature-write path)', () => {
 // Several AAO repos call ipr-check-callable.yml, and Actions concurrency groups
 // are per repo, so two signature writes can reach the shared ledger at the same
 // time. These tests use real git against a local bare remote.
-describe('recording a signature when another repo pushed first', () => {
+//
+// Each test here drives real git against a file:// remote: a bare init, three
+// clones, then the fetch/commit/push retry loop -- roughly 30 git processes,
+// several of which start upload-pack/receive-pack children. Process creation
+// costs ~100 ms per git.exe on Windows, so one test takes ~5 s on an idle
+// machine and can pass the 10 s default under a loaded parallel run.
+describe('recording a signature when another repo pushed first', { timeout: 30_000 }, () => {
   const tmpRoots = [];
 
   beforeAll(() => {
@@ -188,7 +194,8 @@ describe('recording a signature when another repo pushed first', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ipr-ledger-'));
     tmpRoots.push(root);
     g(root, 'init', '-q', '--bare', '-b', 'main', 'origin.git');
-    const remote = `file://${path.join(root, 'origin.git')}`;
+    // pathToFileURL gives file:///C:/... on Windows; `file://${path}` would be file://C:...
+    const remote = pathToFileURL(path.join(root, 'origin.git')).href;
     const seed = path.join(root, 'seed');
     g(root, 'clone', '-q', remote, 'seed');
     writeSignatures({ signedContributors: [seedSignature] }, seed);

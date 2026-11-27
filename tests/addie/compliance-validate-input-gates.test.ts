@@ -24,12 +24,15 @@ const sourceDir = path.resolve('static/compliance/source');
 const targets = ['ctv-experience-validate-input', 'premium-display-canonical-validation'];
 let bundleDir: string;
 
+// buildTo writes the whole compliance bundle (~700 files). That takes ~2 s on an
+// idle Windows machine, where file creation is far slower than on Linux, and
+// can exceed the 10 s default hook timeout under a loaded parallel run.
 beforeAll(() => {
   bundleDir = mkdtempSync(path.join(tmpdir(), 'validate-input-gates-'));
   // Exercise the publication builder and SDK cache loader without rewriting
   // any immutable released bundle or depending on a stale local latest build.
   buildTo(bundleDir, version, sourceDir);
-});
+}, 30_000);
 
 afterAll(() => rmSync(bundleDir, { recursive: true, force: true }));
 
