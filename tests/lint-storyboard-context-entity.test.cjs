@@ -476,3 +476,11 @@ test('loadRegistry: core x-entity-types.json is valid and non-empty', () => {
   assert.ok(registry.has('governance_inline_policy'), 'governance_inline_policy must be registered');
   assert.ok(!registry.has('governance_policy'), 'governance_policy should have been split and removed');
 });
+
+test('resolveEntityAtPath: reads properties from allOf when the root also carries oneOf', () => {
+  const schema = {
+    allOf: [{ properties: { brand_id: { type: 'string', 'x-entity': 'advertiser_brand' } } }],
+    oneOf: [{ required: ['brand_id'] }, { required: ['other'] }],
+  };
+  assert.equal(resolveEntityAtPath(schema, ['brand_id']), 'advertiser_brand');
+});

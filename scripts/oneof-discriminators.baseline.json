@@ -151,11 +151,6 @@
       "variants": 2,
       "note": "0:[summary,results] | 1:[errors]"
     },
-    "core/account-ref.json##/oneOf": {
-      "kind": "narrowable",
-      "variants": 2,
-      "note": "0:[account_id] | 1:[brand,operator]"
-    },
     "core/audience-selector.json##/oneOf": {
       "kind": "dangerous",
       "variants": 4,
@@ -176,15 +171,15 @@
       "variants": 2,
       "note": "shared-required=[∅]; 0:nested-union(/schemas/core/assets/asset-union.json) | 1:array"
     },
+    "core/creative-manifest-base.json##/properties/assets/patternProperties/^/oneOf": {
+      "kind": "dangerous",
+      "variants": 2,
+      "note": "shared-required=[∅]; 0:nested-union(/schemas/core/assets/asset-union.json) | 1:array"
+    },
     "core/creative-manifest.json##/oneOf": {
       "kind": "narrowable",
       "variants": 2,
       "note": "0:[format_id] | 1:[format_kind]"
-    },
-    "core/creative-manifest.json##/properties/assets/patternProperties/^/oneOf": {
-      "kind": "dangerous",
-      "variants": 2,
-      "note": "shared-required=[∅]; 0:nested-union(/schemas/core/assets/asset-union.json) | 1:array"
     },
     "core/daypart-target.json##/oneOf": {
       "kind": "narrowable",

@@ -1,0 +1,52 @@
+title: Reference the canonical manifest branch from creative-representation (#9103, #8922, #8921)
+changes:
+  - location: core/creative-manifest-base.json#/allOf/0
+    keyword: oneOf
+    old:
+      - required:
+          - format_id
+        not:
+          required:
+            - format_kind
+      - required:
+          - format_kind
+        not:
+          required:
+            - format_id
+    direction: none
+    side: request
+    note: >-
+      creative-representation now references the manifest's shared fields and its canonical-format branch instead of the whole manifest union minus the named-format branch, so the format_id guard moves from the representation's own not into the branch. The conjuncts that differ, oneOf[named, canonical] AND {required format_kind, not anyOf[format_id, format_option_ref, representation_selection]} against canonical AND {not anyOf[format_option_ref, representation_selection]} AND {required format_kind}, are equivalent: independent containment oracle, both directions unsat (a control that allows representation_selection is sat). The other conjuncts are the same schemas on both sides.
+  - location: core/creative-manifest.json#/oneOf/1/not
+    keyword: required
+    new:
+      - format_id
+    direction: none
+    side: request
+    note: >-
+      creative-representation now references the manifest's shared fields and its canonical-format branch instead of the whole manifest union minus the named-format branch, so the format_id guard moves from the representation's own not into the branch. The conjuncts that differ, oneOf[named, canonical] AND {required format_kind, not anyOf[format_id, format_option_ref, representation_selection]} against canonical AND {not anyOf[format_option_ref, representation_selection]} AND {required format_kind}, are equivalent: independent containment oracle, both directions unsat (a control that allows representation_selection is sat). The other conjuncts are the same schemas on both sides.
+  - location: core/creative-manifest.json#/oneOf/1/not
+    keyword: anyOf
+    old:
+      - required:
+          - format_id
+      - required:
+          - format_option_ref
+      - required:
+          - representation_selection
+    direction: none
+    side: request
+    note: >-
+      creative-representation now references the manifest's shared fields and its canonical-format branch instead of the whole manifest union minus the named-format branch, so the format_id guard moves from the representation's own not into the branch. The conjuncts that differ, oneOf[named, canonical] AND {required format_kind, not anyOf[format_id, format_option_ref, representation_selection]} against canonical AND {not anyOf[format_option_ref, representation_selection]} AND {required format_kind}, are equivalent: independent containment oracle, both directions unsat (a control that allows representation_selection is sat). The other conjuncts are the same schemas on both sides.
+  - location: core/creative-representation.json#/allOf/2
+    keyword: not
+    new:
+      anyOf:
+        - required:
+            - format_option_ref
+        - required:
+            - representation_selection
+    direction: none
+    side: request
+    note: >-
+      creative-representation now references the manifest's shared fields and its canonical-format branch instead of the whole manifest union minus the named-format branch, so the format_id guard moves from the representation's own not into the branch. The conjuncts that differ, oneOf[named, canonical] AND {required format_kind, not anyOf[format_id, format_option_ref, representation_selection]} against canonical AND {not anyOf[format_option_ref, representation_selection]} AND {required format_kind}, are equivalent: independent containment oracle, both directions unsat (a control that allows representation_selection is sat). The other conjuncts are the same schemas on both sides.

@@ -543,7 +543,7 @@ schema_removals_not_checked:
       - "error-details/requote-required.json#/properties/envelope_field/oneOf/0"
       - "core/creative-asset.json#/properties/assets/patternProperties/^/oneOf/0"
       - "core/creative-assets.json#/patternProperties/^/anyOf/0"
-      - "core/creative-manifest.json#/properties/assets/patternProperties/^/oneOf/0"
+      - "core/creative-manifest-base.json#/properties/assets/patternProperties/^/oneOf/0"
       - "creative/list-creatives-response.json#/properties/creatives/items/properties/assets/patternProperties/^/oneOf/0"
       - "core/creative-localization.json#/properties/target_variants/items/properties/assets/patternProperties/^[a-z0-9_]+$/anyOf/0"
       - "core/creative-localization-readback.json#/definitions/resolvedAssets/patternProperties/^[a-z0-9_]+$/anyOf/0"

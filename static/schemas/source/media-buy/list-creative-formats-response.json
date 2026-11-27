@@ -14,7 +14,7 @@
     "formats": {
       "type": "array",
       "deprecated": true,
-      "description": "Deprecated named-format definitions projected for older 3.x callers. This list is neither the publisher acceptance catalog nor the seller's canonical product deliverability contract.",
+      "description": "Deprecated named-format definitions projected for older 3.x callers. This list is neither the publisher acceptance catalog nor the seller's canonical product deliverability contract. A canonical format declaration appears in this list only through its `v1_format_ref`, because v2 to v1 projection relies on that field alone (`registries/v1-canonical-mapping.json`); a declaration without it is discoverable only through `Product.format_options` and get_adcp_capabilities `creative.supported_formats[]`.",
       "items": {
         "$ref": "/schemas/core/format.json"
       }
