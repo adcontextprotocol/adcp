@@ -46,8 +46,8 @@ must not be uploaded as public artifacts. They live until runner cleanup.
 SIGINT/SIGTERM/SIGHUP are forwarded to npm's process group, including lifecycle
 children, and the wrapper preserves signal termination even if npm traps it.
 
-The helper covers 12 root installs: Build Check (4 job definitions), migration
-smoke (2), training storyboards (2), broken links, external smoke, schema PR
+The helper covers 13 root installs: Build Check (4 job definitions), migration
+smoke (2), training storyboards (3), broken links, external smoke, schema PR
 bundle construction, and the untrusted runtime-attestation build. Existing workflow gates, environment
 variables, permissions and timeouts remain in force. `release.yml` and
 `deploy.yml` stay outside this CI-only change, including release verification.
