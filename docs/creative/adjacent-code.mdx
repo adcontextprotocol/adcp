@@ -1,0 +1,172 @@
+---
+title: Adjacent code
+description: Product disclosure and assignment readback for seller-side code alongside a buyer creative.
+---
+
+<Warning>
+Proposed for AdCP 3.4 under [#6700](https://github.com/adcontextprotocol/adcp/issues/6700).
+Working Group approval is pending. This draft follows
+[Bokelley's proposed split](https://github.com/adcontextprotocol/adcp/issues/6700#issuecomment-6921184576).
+Fragment delivery and assembly signing remain a separate proposal, with no release commitment.
+</Warning>
+
+`adjacent_code` describes seller-side code applied alongside a buyer creative,
+including the seller's own first-party measurement code. It gives buyers a
+product declaration before purchase and a current application snapshot for each
+package–creative assignment. Buyer-supplied assignment `trackers` and code already
+inside the creative remain on their existing surfaces and MUST NOT be included
+in this array.
+
+## Product declaration
+
+In AdCP 3.4, `canonical-product` and `product` MAY carry `adjacent_code[]`.
+When present, it MUST be the complete declaration of adjacent code for the
+product. Omission means undeclared; it MUST NOT be interpreted as no code.
+`[]` explicitly declares no adjacent code.
+
+Each entry contains:
+
+| Field | Meaning |
+| --- | --- |
+| `provider` | An opaque reference scoped to the selling agent. `seller` is reserved for that agent's own first-party code. Other references identify providers without publishing an integration endpoint or global vendor directory. |
+| `purpose` | A buyer-readable description such as `measurement` or `verification`; the vocabulary is open. |
+| `required` | Whether the seller requires the code for delivery. This is an explicit boolean, with no default. |
+
+Provider references MUST remain stable across a seller's product declarations
+and assignment snapshots, and MUST NOT be reused for a different provider.
+They are meaningful only together with the selling agent's identity. A provider
+reference is not a BrandRef, an authentication credential, or a URL to resolve.
+Integration URLs and configuration MUST remain seller-local, including when
+using `ext` or future extension properties.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/core/canonical-product.json",
+  "product_id": "display_homepage",
+  "name": "Homepage display",
+  "adjacent_code": [
+    { "provider": "seller", "purpose": "measurement", "required": true },
+    { "provider": "provider_7", "purpose": "verification", "required": false }
+  ]
+}
+```
+
+Buyers that need this information SHOULD request `adjacent_code` in the product
+`fields` projection. Projection does not imply a negative declaration: a field
+excluded by projection remains unknown. Buyers MUST NOT send the new projection
+value to a seller serving a release before 3.4. The field follows existing
+product feed and cache invalidation rules when its declaration changes.
+
+## Assignment readback
+
+The assignment snapshot is available at:
+
+- `list_creatives.creatives[].assignments.assigned_packages[].adjacent_code`
+- `get_media_buys.media_buys[].packages[].creative_approvals[].adjacent_code`
+
+A seller disclosing adjacent code for a product MUST include the complete array
+on returned assignments for that product. If it exposes both reads, their
+arrays MUST agree for the same relationship and current state. `get_media_buys`
+remains the complete relationship read; `list_creatives` remains a bounded
+reverse projection and retains its existing truncation rules. Omission means
+undeclared, and `[]` reports no adjacent code for this assignment.
+
+Each entry carries the declaration fields plus `position` and `status`.
+`position` is `prepend` or `append` relative to the unchanged buyer creative in
+the seller's delivery representation. Pending or omitted entries report their
+intended position. Array order is not an instruction to the seller and does not
+guarantee browser execution order. Multiple applications of one provider's
+code may appear as separate entries.
+
+| `status` | Meaning |
+| --- | --- |
+| `applied` | The seller has applied the code to this assignment's current delivery representation. |
+| `pending` | Application has not completed. |
+| `omitted` | The code is absent from that representation. Retain the entry so omission is visible. |
+
+For example, this entry can coexist with assignment `approval_status: "approved"`
+and library creative `status: "approved"`:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/latest/core/adjacent-code-application.json",
+  "provider": "seller",
+  "purpose": "measurement",
+  "required": true,
+  "position": "append",
+  "status": "pending"
+}
+```
+
+This snapshot is the seller's assertion about its current delivery
+representation. It does not prove that the code executed in a browser or that
+measurement succeeded. It is not a historical per-impression log. In particular,
+`approval_status_as_of` remains the freshness clock for creative review, not
+for adjacent-code application.
+
+## Delivery and changes after purchase
+
+When any entry is `required: true` and has `status: pending` or `omitted`, the
+seller MUST hold delivery of that assignment. The hold applies both before
+initial delivery and after delivery has begun. It MUST NOT change the creative's
+library status or the assignment's `approval_status`, which describes creative
+review. The per-entry status represents this hold; no new general assignment
+status or approval enum value is introduced.
+
+Optional pending or omitted code does not create this hold. When all required
+entries become `applied`, this particular hold ends; existing approval and
+serving constraints still apply. Other assignments remain subject to their own
+eligibility and existing package-level rules. Sellers MUST NOT erase an
+unavailable required entry or silently downgrade `required` to bypass the hold.
+Retry scheduling, hold deadlines, and vendor failure feedback are seller-local.
+
+After purchase, readback MUST reflect the effective policy and application state
+of the existing assignment. A product declaration describes the current offer;
+changing it does not retrospectively rewrite an assignment's application state.
+A seller changing an existing assignment's effective policy MUST update that
+assignment's readback and apply the delivery rule above. Removing a requirement
+through an authorized policy change can release the hold and is subject to the
+notification rule below.
+
+These fields do not change accepted commercial terms or grant consent to add
+code. Publisher and seller-operator authorization remain prerequisites managed
+outside this buyer-facing contract. Existing commercial agreements continue to
+govern permitted changes; this proposal adds no buyer acceptance token or
+binding commercial-term field. It introduces no new prohibition on legacy
+purchase paths. The same readback rules apply to existing assignments regardless
+of how they were purchased, when the seller serves this 3.4 feature.
+
+## Delivery-affecting invalidation
+
+Sellers supporting the existing `creative.assignment_changed` notification use
+`change_kind: "adjacent_code_changed"` when required adjacent-code state affects
+an assignment's delivery. Publish the updated readback before firing. Apply the
+existing account subscription, authentication, and deduplication rules; this
+change adds no signing profile. Receivers reread `get_media_buys` instead of
+applying state from the invalidation payload.
+
+| Transition | Emit `adjacent_code_changed`? |
+| --- | --- |
+| Required code enters or leaves `pending` | Yes, including recovery to `applied` or transition to `omitted`. |
+| Required code becomes `omitted`, or recovers from `omitted` to `applied` | Yes. |
+| Adding, removing, or changing a requirement blocks or releases the assignment | Yes. |
+| An unrelated configuration or purpose edit; optional code changes state | No. |
+| The seller rereads identical state | No. |
+
+A required entry's pending/omitted transition still fires when another required
+entry also blocks the assignment: buyers need the updated reason for the hold.
+An assignment's initial creation and removal continue to use `assigned` and
+`unassigned`; they do not require a second adjacent-code event for the same
+creation or removal. Creative approval changes retain `approval_changed`.
+
+Subscriptions remain prospective. A buyer establishes its baseline using the
+existing complete-read procedure and can poll when notifications are unsupported.
+The new change kind is introduced in 3.4 and follows the protocol's existing
+unknown-enum tolerance rule; an unknown kind must not be treated as an approval
+outcome. Product and readback fields follow served-release conformance under
+[DR-0024](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0024-responses-conform-to-served-release.md).
+
+The schemas are open for additive extensions under
+[DR-0036](https://github.com/adcontextprotocol/adcp/blob/main/governance/decisions/DR-0036-closed-schemas-stay-closed-within-a-major.md).
+This proposal adds no fragment task, vendor registration API, or assembly
+attestation. Those require separate WG review.

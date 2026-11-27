@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/adjacent-code.json",
+  "title": "Adjacent Code Declaration",
+  "description": "Optional seller disclosure of code applied alongside a buyer creative. Describes a provider and purpose without exposing integration configuration or authorizing the integration. First-party seller code uses provider 'seller'.",
+  "x-added-in": "3.4.0",
+  "type": "object",
+  "properties": {
+    "provider": {
+      "type": "string",
+      "$comment": "x-entity deliberately omitted: read-only seller-scoped reference; no task accepts this value.",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "description": "Opaque reference scoped to the selling agent. Stable across its product declarations and assignment readback; MUST NOT be reassigned to a different provider. Reserved value 'seller' identifies the selling agent's own first-party code. Other values identify providers without naming integration endpoints, credentials, or a globally resolvable vendor identity."
+    },
+    "purpose": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "description": "Buyer-readable purpose, such as measurement or verification. This is an extensible description, not a vendor capability or an instruction to run code."
+    },
+    "required": {
+      "type": "boolean",
+      "description": "Whether the seller requires this code for delivery. On assignment readback, required code whose status is pending or omitted MUST block delivery of that assignment without changing creative status or approval_status."
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": ["provider", "purpose", "required"],
+  "additionalProperties": true
+}

@@ -16,7 +16,7 @@ const CAPABILITIES = 'protocol/get-adcp-capabilities-response.json';
 describe('served-release field gate (#8487)', () => {
   beforeAll(() => ensureCreative33SchemaBundle());
 
-  it('withholds the 3.3 canonical-product fields from 3.2, and only fields 3.2 lacks', () => {
+  it('withholds canonical-product fields added after the served release', () => {
     const withheld = propertiesAddedAfterRelease('core/canonical-product.json', '3.2');
     expect(withheld).toContain('installments');
     const bundled = getSchemaDocumentByRef('core/canonical-product.json', '3.2');
@@ -25,7 +25,10 @@ describe('served-release field gate (#8487)', () => {
       { properties?: Record<string, unknown>; additionalProperties?: unknown } | undefined;
     expect(threeTwo?.additionalProperties).toBe(true);
     for (const field of withheld) expect(threeTwo?.properties, field).not.toHaveProperty(field);
-    expect(propertiesAddedAfterRelease('core/canonical-product.json', '3.3-beta.1')).toEqual(new Set());
+    // Adjacent-code disclosure starts in 3.4, including for 3.3 prerelease callers.
+    expect(propertiesAddedAfterRelease('core/canonical-product.json', '3.3-beta.1')).toEqual(new Set(['adjacent_code']));
+    expect(propertiesAddedAfterRelease('core/canonical-product.json', '3.3')).toEqual(new Set(['adjacent_code']));
+    expect(propertiesAddedAfterRelease('core/canonical-product.json', '3.4')).toEqual(new Set());
   });
 
   it('finds 3.3 fields under objects 3.2 leaves open, and leaves undeclared keys alone', () => {
