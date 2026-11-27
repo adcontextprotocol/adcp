@@ -877,7 +877,7 @@
       "properties": {
         "domain": {
           "$ref": "#/definitions/domain",
-          "description": "Domain of the authorized operator (e.g., 'groupm.com')"
+          "description": "Registrable domain (eTLD+1 under the Public Suffix List, ICANN and private sections) of the authorized operator, such as 'pinnacle-media.com', not a subdomain of it. It names the same organization as an account's operator."
         },
         "brands": {
           "type": "array",
@@ -1835,7 +1835,7 @@
         "contact": { "$ref": "#/definitions/contact" },
         "authorized_operators": {
           "type": "array",
-          "description": "Entities authorized to represent brands from this house. Third parties (sellers, platforms) can verify an operator's authorization by checking this list. Operators are identified by domain.",
+          "description": "Entities authorized to represent brands from this house. Third parties (sellers, platforms) can verify an operator's authorization by checking this list. Operators are identified by registrable domain.",
           "items": { "$ref": "#/definitions/authorized_operator" }
         },
         "trademarks": {

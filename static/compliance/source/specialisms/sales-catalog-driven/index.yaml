@@ -142,7 +142,7 @@ phases:
           accounts:
             - brand:
                 domain: "amsterdam-steakhouse.example"
-              operator: "catalog-driven.pinnacle-agency.example"
+              operator: "pinnacle-catalog-driven.example"
               billing: "operator"
               sandbox: true
 
@@ -206,7 +206,7 @@ phases:
           account:
             brand:
               domain: "amsterdam-steakhouse.example"
-            operator: "catalog-driven.pinnacle-agency.example"
+            operator: "pinnacle-catalog-driven.example"
             sandbox: true
           catalogs:
             - catalog_id: "menu_spring_2026"
@@ -308,7 +308,7 @@ phases:
           account:
             brand:
               domain: "amsterdam-steakhouse.example"
-            operator: "catalog-driven.pinnacle-agency.example"
+            operator: "pinnacle-catalog-driven.example"
             sandbox: true
           catalogs:
             - catalog_id: "substitution_safety_probe_v1"
@@ -369,7 +369,7 @@ phases:
           account:
             brand:
               domain: "amsterdam-steakhouse.example"
-            operator: "catalog-driven.pinnacle-agency.example"
+            operator: "pinnacle-catalog-driven.example"
             sandbox: true
           quality: "draft"
           include_preview: true
@@ -448,7 +448,7 @@ phases:
           account:
             brand:
               domain: "amsterdam-steakhouse.example"
-            operator: "catalog-driven.pinnacle-agency.example"
+            operator: "pinnacle-catalog-driven.example"
             sandbox: true
 
           context:
@@ -504,7 +504,7 @@ phases:
           account:
             brand:
               domain: "amsterdam-steakhouse.example"
-            operator: "catalog-driven.pinnacle-agency.example"
+            operator: "pinnacle-catalog-driven.example"
             sandbox: true
           start_time: "asap"
           end_time: "2099-06-30T23:59:59Z"
@@ -566,7 +566,7 @@ phases:
           account:
             brand:
               domain: "amsterdam-steakhouse.example"
-            operator: "catalog-driven.pinnacle-agency.example"
+            operator: "pinnacle-catalog-driven.example"
             sandbox: true
           event_sources:
             - event_source_id: "amsterdam_website"
@@ -626,7 +626,7 @@ phases:
           account:
             brand:
               domain: "amsterdam-steakhouse.example"
-            operator: "catalog-driven.pinnacle-agency.example"
+            operator: "pinnacle-catalog-driven.example"
             sandbox: true
           event_source_id: "amsterdam_website"
           events:
@@ -695,7 +695,7 @@ phases:
           account:
             brand:
               domain: "amsterdam-steakhouse.example"
-            operator: "catalog-driven.pinnacle-agency.example"
+            operator: "pinnacle-catalog-driven.example"
             sandbox: true
           media_buy_id: "$context.media_buy_id"
           measurement_period:
@@ -751,7 +751,7 @@ phases:
           account:
             brand:
               domain: "amsterdam-steakhouse.example"
-            operator: "catalog-driven.pinnacle-agency.example"
+            operator: "pinnacle-catalog-driven.example"
             sandbox: true
           media_buy_ids:
             - "$context.media_buy_id"
