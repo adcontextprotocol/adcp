@@ -263,9 +263,11 @@ AdCP 3.2 contains a bounded set of stable-surface changes that can reject a payl
 
 Experimental surfaces changed under their own notice contract and are not exceptions to these guarantees. See the [migration guide](/docs/reference/migration/3-1-to-3-2#wire-changes-from-3-1-to-3-2) for the governance, Trusted Match, and brand-rights changes.
 
-### 3.3 exceptions to 3.x compatibility (beta)
+<a id="3-3-exceptions-to-3-x-compatibility-beta"></a>
 
-AdCP 3.3 adds optional stable fields, enum values, and capability declarations, and removes no stable field. Its one removal is on an [experimental surface](#experimental-surfaces): the `build_creative.evaluator.evaluator_id` source form ([migration guide](/docs/reference/migration/3-2-to-3-3#experimental-creative-evaluator-drops-evaluator_id)). It deprecates `seller_id` on event source and audience results in favor of `platform_id`, and deprecates using the natural key as the account reference after provisioning. It also deprecates the account identity-rekey machinery: `account.identity_updates`, `operator_identity`, `ACCOUNT_MOVED`, `ACCOUNT_IDENTITY_CONFLICT`, and `account.stable_account_id`. All remain functional throughout 3.x ([migration guide](/docs/reference/migration/3-2-to-3-3#deprecations)). It also deprecates condition (b) of `request_signature_required`, which the already-deprecated webhook `authentication` block triggers. The changes below alter what a conformant implementation may do, including targeted validation tightening, defined property list resolution requirements, and loosening a required field. They are recorded here under the rule above for core-security and normative behavior. This list is refreshed at each beta cut.
+### 3.3 exceptions to 3.x compatibility
+
+AdCP 3.3 adds optional stable fields, enum values, and capability declarations, and removes no stable field. Its one removal is on an [experimental surface](#experimental-surfaces): the `build_creative.evaluator.evaluator_id` source form ([migration guide](/docs/reference/migration/3-2-to-3-3#experimental-creative-evaluator-drops-evaluator_id)). It deprecates `seller_id` on event source and audience results in favor of `platform_id`, and deprecates using the natural key as the account reference after provisioning. It also deprecates the account identity-rekey machinery: `account.identity_updates`, `operator_identity`, `ACCOUNT_MOVED`, `ACCOUNT_IDENTITY_CONFLICT`, and `account.stable_account_id`. All remain functional throughout 3.x ([migration guide](/docs/reference/migration/3-2-to-3-3#deprecations)). It also deprecates condition (b) of `request_signature_required`, which the already-deprecated webhook `authentication` block triggers. The changes below alter what a conformant implementation may do, including targeted validation tightening, defined property list resolution requirements, and loosening a required field. They are recorded here under the rule above for core-security and normative behavior.
 
 | Change | What changes | Basis |
 |---|---|---|
@@ -345,8 +347,8 @@ Within a version, releases land every 6–8 weeks early in the cycle and stretch
 
 The 18-month major-release spacing commitment applies from 4.0 onward. It does
 not govern the 3.x-to-4.0 transition or delay the established early-2027 target.
-The proposed development sequence is to finish 3.3, then develop 4.0 as the next
-feature release. The prior-major support commitment remains applicable.
+3.3 is the last planned 3.x minor, and 4.0 is the next feature
+release. The prior-major support commitment remains applicable.
 
 ### Support window for previous major
 
@@ -361,15 +363,17 @@ The v2 sunset is the documented exception to this commitment: v2 predates this p
 | **3.0** | April 2026 — GA release |
 | **3.1** | Late June 2026 |
 | **3.2** | GA September 30, 2026 (release `3.2.1`; `3.2.0` was never released) |
-| **3.3** | Minor release; protocol-first beta cycle under way (see the [3.3 beta program](/docs/reference/3-3-beta)) |
+| **3.3** | GA December 3, 2026 (release `3.3.0`); the last planned 3.x minor |
 | **4.0** | Early 2027 — next major, accumulated breaking changes |
 
 3.2 shipped after a protocol-first beta and seven published release candidates; see the
-[3.2 prerelease history](/docs/reference/3-2-beta). The stable TypeScript
-(`@adcp/sdk@14.0.0`) and Python (`adcp==8.0.0`) SDKs follow the protocol
-release; see [SDK versions for 3.2](/docs/reference/migration/3-1-to-3-2#sdk-versions-for-3-2).
+[3.2 prerelease history](/docs/reference/3-2-beta). 3.3 shipped after seven betas
+and three published release candidates; see the
+[3.3 prerelease history](/docs/reference/3-3-beta). The stable TypeScript
+(`@adcp/sdk@17.0.0`) and Python (`adcp==10.0.0`) SDKs follow the protocol
+release; see [Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk).
 
-Further 3.x releases are scheduled based on implementation feedback and working group priorities, with at least 8 weeks between stable releases. Planned scope for each release is tracked on the [GitHub milestones page](https://github.com/adcontextprotocol/adcp/milestones) — open issues on the next release milestone reflect current candidate work, not fixed commitments.
+3.3 is the last planned 3.x minor. The 3.3.x line continues with patches, and the next feature release is 4.0. Planned scope for each release is tracked on the [GitHub milestones page](https://github.com/adcontextprotocol/adcp/milestones) — open issues on the next release milestone reflect current candidate work, not fixed commitments.
 
 ---
 

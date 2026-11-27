@@ -323,6 +323,33 @@ See the [creative governance overview](/docs/governance/creative/index) for the 
 
 Traditional sellers apply governance as a post-delivery filter — classify content, then block what fails. Sponsored Intelligence platforms generate creative at serve time, which means governance rules can be enforced during generation rather than after the fact. When a buyer pushes content standards, apply them as constraints on your generation pipeline so unsuitable content is never produced. This gives brands a fundamentally stronger guarantee: suitability is built into the output, not bolted on as a check afterward. See the [Sponsored Intelligence guide](/docs/sponsored-intelligence/overview) for how content standards integrate with catalog-driven creative generation.
 
+## Storefront and inventory roles
+
+<Note>
+**Non-normative.** This section is a way to think about a sales agent. It adds no task, field, capability, or specialism, and changes nothing a 3.3 agent must do. Standardizing the two roles is proposed for AdCP 4.0 in [RFC #8993](https://github.com/adcontextprotocol/adcp/issues/8993).
+</Note>
+
+A sales agent does two different jobs: it faces buyers, and it faces the inventory. Most sellers have one of the first and several of the second. Display and video run on an ad server, a podcast on a hosting platform, creator deals and events somewhere else. Naming the two roles helps you decide what to build, even though today one agent usually plays both.
+
+| | Storefront | Inventory |
+|---|---|---|
+| Faces | Buyers | The systems that serve the inventory |
+| Does | Answers briefs, proposes, negotiates, and packages inventory that may come from several places | Holds the catalogue and avails, executes media buys, and reports delivery |
+| Speaks AdCP to | Buyer agents, as their seller, and inventory agents, as their buyer | Storefronts and other buyer agents, as their seller |
+| Usually run by | A publisher's sales team, an agency, or a marketplace | An ad server, hosting platform, or other system of record, and its ad ops team |
+
+**A storefront books through inventory agents over AdCP.** It calls each one with the same media buy tasks any buyer agent uses. It discovers their products, books with `create_media_buy` or the compact lifecycle, and reads delivery back with `get_media_buy_delivery`. To its own buyers it is an ordinary seller, so a buyer sees one sales agent and needs nothing new. Where it holds credentials on an inventory agent, it maps its buyers onto the accounts it has there; see [Mapping buyers to listed accounts](/docs/accounts/tasks/list_accounts#mapping-buyers-to-listed-accounts).
+
+**An inventory agent is an ordinary sales agent with a narrower job.** It implements the core seller tasks in this guide: products, media buys, creatives, and delivery reporting. It needn't interpret briefs or write proposals when a storefront does that, and it can serve `buying_mode: "wholesale"` on [`get_products`](/docs/media-buy/task-reference/get_products) so a storefront can read its whole catalogue.
+
+**Today's sales agent plays both roles.** An agent that answers briefs and books into its own ad server is a storefront and an inventory agent in one. That stays valid and unchanged, and it is still the common case. Splitting the roles is a deployment choice. One company can run both halves, or an ad server vendor can ship the inventory agent while a publisher, agency, or marketplace runs the storefront.
+
+**Proposals are storefront work, not a third kind of agent.** Answering a brief with proposals, refining them, and holding inventory for them are things a storefront does. It advertises them as any seller does, through the proposal tools in `media_buy.lifecycle_tools` on [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities), and AdCP defines no separate proposal-agent role. The `sales-proposal-mode` specialism has been deprecated since 3.1. If you run proposal work as its own internal service, see [Compose a proposal specialist behind the sales agent](/docs/media-buy/product-discovery/proposal-negotiation#compose-a-proposal-specialist-behind-the-sales-agent).
+
+**What 3.3 doesn't give you yet.** Nothing on the wire says which role an agent plays, names a storefront's inventory agents, or records which inventory agent placed a package. A storefront's buyer sees one seller, and the storefront's delivery report is its own. Authorization works as it does for any seller: the publisher's [`adagents.json`](/docs/governance/property/adagents) lists every agent that sells its properties, the inventory agents and the storefront alike. RFC #8993 proposes the role declaration, the list of inventory agents, and per-package placement for 4.0.
+
+**Try it.** The public test agent runs two [simulated inventory agents](/docs/building/verification/simulated-inventory-agents), an ad server and a content platform, that a storefront can book through as their buyer.
+
 ## How it connects to your existing stack
 
 AdCP sits alongside your existing APIs and dashboards. It doesn't replace your self-serve platform or your internal campaign management system. It adds a standard interface that AI agents can use.

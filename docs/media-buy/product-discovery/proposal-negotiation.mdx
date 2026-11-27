@@ -507,7 +507,7 @@ flowchart LR
 
 **Version gate.** The 3.2 `canonical-proposal.json` schema is closed. A seller MUST NOT send offers or `proposal.offered` notifications to callers pinned below AdCP 3.3, nor list them for such callers. A caller with no declared pin is treated as pinned below 3.3. Such a caller never sees an offer; the seller may act only where the accepted terms already allow it, as above.
 
-**What an offer is not.** An [indicator](/docs/media-buy/media-buys/indicators) stays advisory. A seller that wants the buyer's agreement sends an offer. A new buy that replaces an old one is lineage, not an offer: offers amend the same buy. Control-rejection alternatives (#7631) are planned for 3.4 on this same shape.
+**What an offer is not.** An [indicator](/docs/media-buy/media-buys/indicators) stays advisory. A seller that wants the buyer's agreement sends an offer. A new buy that replaces an old one is lineage, not an offer: offers amend the same buy. Control-rejection alternatives (#7631) are planned for 4.x on this same shape.
 
 ## Planned for 4.0: seller-held change terms
 
@@ -524,9 +524,11 @@ Until then, every seller-initiated change to a signed buy is a [seller offer](#s
 
 ### Compose a proposal specialist behind the sales agent
 
-3.2 does not require a new public "proposal agent" role. A sales agent can
-keep one endpoint and execution identity while delegating proposal work to an
-internal specialist service. That specialist can own brief interpretation,
+AdCP does not define a public "proposal agent" role. Proposal work belongs to
+the buyer-facing side of a sales agent, the storefront role described in
+[Storefront and inventory roles](/docs/building/operating/seller-integration#storefront-and-inventory-roles).
+A sales agent can keep one endpoint and execution identity while delegating
+proposal work to an internal specialist service. That specialist can own brief interpretation,
 constraint evaluation, alternative generation, immutable proposal storage,
 lineage, expiry, and terms-digest computation.
 
@@ -540,7 +542,7 @@ commitment.
 This split also supports incremental client adoption. A buyer can implement
 proposal discovery and refinement before it implements direct purchase or
 operational control, and a seller advertises only the lifecycle tools its
-public endpoint actually serves. What 3.2 does not define is portable transfer
+public endpoint actually serves. What AdCP does not define is portable transfer
 of a committed hold between unrelated public agents. A terms digest identifies
 the snapshot; it does not grant another agent the authority or inventory state
 needed to accept it.
