@@ -12,7 +12,7 @@
 import type { SeasonSeed } from '../types.js';
 
 export const CONTENT_SEASON: SeasonSeed = {
-  seed_id: 'content-2027',
+  seed_id: 'content-2027-lead-time',
   rng_seed: 'content-2027-v1',
   start_date: '2026-11-01',
   days: 730,
@@ -140,8 +140,20 @@ export const CONTENT_SEASON: SeasonSeed = {
       share_of_voice: 1,
     },
   ],
-  traffic: { weekday_shape: [1, 1, 1, 1, 1, 1, 1] },
-  forecast_error: { day_sigma: 0, cell_sigma: 0.04 },
+  traffic: { weekday_shape: [1, 1, 1, 1, 1, 1, 1], truth_daily_sigma: 0.03 },
+  // Assumed sizes, not measured: no same-day spread, 4% cell noise at the 100-impression floor, audience shocks of 12% for
+  // podcast, 5% for newsletter and 25% for creator video, no publisher bias. Change them in the season file; to be recalibrated
+  // from real publisher data.
+  forecast_error: {
+    channel_sigma: { podcast: 0, newsletter: 0, creator_video: 0 },
+    ar1_phi: 0.85,
+    lead_time_tau_days: 14,
+    lead_time_horizon_days: 60,
+    log_clip: 0.6931471805599453,
+    // 0.04 × √100: the median cell-day (89 impressions) sits under the 100-impression floor
+    cell_kappa: 0.4,
+    cell_min_impressions: 100,
+  },
   events: [
     {
       type: 'installment_cancelled',
