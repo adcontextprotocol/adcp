@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://adcontextprotocol.org/schemas/3.3.0-rc.4/core/reporting-dimension-systems.json",
+  "title": "Reporting Dimension Systems",
+  "x-status": "experimental",
+  "x-added-in": "3.3.0",
+  "description": "Experimental (media_buy.reporting_subscriptions). The classification system behind each geography breakdown that has more than one, so a metro or postal breakdown names which codes its rows carry. On an offering it states the systems the offering reports in; on a subscription selector it narrows which offerings match. Rows for these dimensions carry codes in exactly these systems, the same values geo-delivery-metrics.json uses for geo_code.",
+  "type": "object",
+  "properties": {
+    "metro": {
+      "$ref": "https://adcontextprotocol.org/schemas/3.3.0-rc.4/enums/metro-system.json",
+      "description": "Metro system of the metro breakdown, such as nielsen_dma. Required on an offering whose standard_dimensions include metro."
+    },
+    "postal_area": {
+      "type": "array",
+      "description": "Countries and their postal systems in the postal_area breakdown, each a valid country-local pairing from postal-country-system.json, the same pairing geo-delivery-metrics.json and postal targeting use. Required on an offering whose standard_dimensions include postal_area.",
+      "items": {
+        "$ref": "https://adcontextprotocol.org/schemas/3.3.0-rc.4/core/postal-country-system.json"
+      },
+      "minItems": 1,
+      "maxItems": 16,
+      "uniqueItems": true
+    }
+  },
+  "additionalProperties": true
+}
