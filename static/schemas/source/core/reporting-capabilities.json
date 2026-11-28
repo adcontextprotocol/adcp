@@ -97,7 +97,7 @@
     },
     "supports_creative_breakdown": {
       "type": "boolean",
-      "description": "Whether this product supports creative-level metric breakdowns in delivery reporting (by_creative within by_package)"
+      "description": "Whether this product supports creative-level metric breakdowns in delivery reporting (by_creative within by_package): delivery measured per creative, not a package total divided across creatives."
     },
     "supports_format_breakdown": {
       "type": "boolean",
