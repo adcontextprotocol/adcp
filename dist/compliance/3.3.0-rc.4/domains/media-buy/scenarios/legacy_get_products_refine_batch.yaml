@@ -1,0 +1,234 @@
+# Grades the over-limit refinement bullet of the encoding-equivalence list that
+# accompanies the field-specific obligations table:
+# specs/legacy-compact-lifecycle-compatibility.md#encoding-equivalences-and-narrowed-values
+#   "A legacy refinement batch exceeding compact limits, or containing
+#   repeated entries, MUST retain its order and transaction semantics. Do not
+#   truncate, deduplicate stateful operations, or split an atomic batch into
+#   separate compact commits. Use the retained operation or reject before
+#   mutation."
+# The compact limit is `maxItems: 25` on refine_proposals `refinements`. The
+# batch here has 26 distinct entries and no repeats, so the only property
+# under test is the size of the batch. Issue #7403.
+id: media_buy_seller/legacy_get_products_refine_batch
+version: "1.0.0"
+title: "Retained get_products applies a refine batch larger than the compact limit"
+category: media_buy_seller
+summary: "Checks that a 26-entry refine batch on retained get_products is applied whole, not truncated or split at the compact 25-entry limit, or is rejected before mutation."
+track: media_buy
+requires:
+  - controller
+
+requires_capability:
+  path: media_buy.buying_modes
+  contains: refine
+
+introduced_in: "3.2"
+required_tools: [get_products, comply_test_controller]
+
+narrative: |
+  Released 3.1 get_products puts no item limit on refine[]. The compact
+  refine_proposals task accepts at most 25 refinements. A facade that sends a
+  legacy batch through the compact task has to keep the whole batch: it must
+  not truncate it at 25 entries or split it into separate commits.
+
+  The controller seeds 26 products. The buyer refines with 26 product-scoped
+  include entries, one per product, in product order. Include means "return
+  this product", so a conformant answer contains every one of them. The
+  first and last entries are checked. A seller that keeps only the first 25
+  entries loses the last product. A seller that keeps only the last 25, or
+  answers from one half of a split batch, loses one end of the batch.
+
+  A seller that cannot apply the batch whole rejects refine before any side
+  effect, identifying it at its original path.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities: [sells_media]
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+prerequisites:
+  description: "Seed 26 non-guaranteed products with USD pricing."
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  accounts:
+    - account_id: "acct_acmeoutdoor_example_sandbox_1717d45e0a9e"
+      fixture:
+        brand:
+          domain: "acmeoutdoor.example"
+        operator: "pinnacle-agency.example"
+        operator_unit:
+          id: "compliance-media_buy_seller_legacy_get_products-4aa2aaf0"
+        billing: "operator"
+        status: "active"
+        sandbox: true
+  products:
+    - {product_id: refine_batch_01, delivery_type: non_guaranteed, channels: [display]}
+    - {product_id: refine_batch_02, delivery_type: non_guaranteed, channels: [display]}
+    - {product_id: refine_batch_03, delivery_type: non_guaranteed, channels: [display]}
+    - {product_id: refine_batch_04, delivery_type: non_guaranteed, channels: [display]}
+    - {product_id: refine_batch_05, delivery_type: non_guaranteed, channels: [display]}
+    - {product_id: refine_batch_06, delivery_type: non_guaranteed, channels: [display]}
+    - {product_id: refine_batch_07, delivery_type: non_guaranteed, channels: [display]}
+    - {product_id: refine_batch_08, delivery_type: non_guaranteed, channels: [display]}
+    - {product_id: refine_batch_09, delivery_type: non_guaranteed, channels: [display]}
+    - {product_id: refine_batch_10, delivery_type: non_guaranteed, channels: [display]}
+    - {product_id: refine_batch_11, delivery_type: non_guaranteed, channels: [display]}
+    - {product_id: refine_batch_12, delivery_type: non_guaranteed, channels: [display]}
+    - {product_id: refine_batch_13, delivery_type: non_guaranteed, channels: [display]}
+    - {product_id: refine_batch_14, delivery_type: non_guaranteed, channels: [display]}
+    - {product_id: refine_batch_15, delivery_type: non_guaranteed, channels: [display]}
+    - {product_id: refine_batch_16, delivery_type: non_guaranteed, channels: [display]}
+    - {product_id: refine_batch_17, delivery_type: non_guaranteed, channels: [display]}
+    - {product_id: refine_batch_18, delivery_type: non_guaranteed, channels: [display]}
+    - {product_id: refine_batch_19, delivery_type: non_guaranteed, channels: [display]}
+    - {product_id: refine_batch_20, delivery_type: non_guaranteed, channels: [display]}
+    - {product_id: refine_batch_21, delivery_type: non_guaranteed, channels: [display]}
+    - {product_id: refine_batch_22, delivery_type: non_guaranteed, channels: [display]}
+    - {product_id: refine_batch_23, delivery_type: non_guaranteed, channels: [display]}
+    - {product_id: refine_batch_24, delivery_type: non_guaranteed, channels: [display]}
+    - {product_id: refine_batch_25, delivery_type: non_guaranteed, channels: [display]}
+    - {product_id: refine_batch_26, delivery_type: non_guaranteed, channels: [display]}
+  pricing_options:
+    - {product_id: refine_batch_01, pricing_option_id: refine_batch_01_cpm, pricing_model: cpm, currency: USD, floor_price: 10}
+    - {product_id: refine_batch_02, pricing_option_id: refine_batch_02_cpm, pricing_model: cpm, currency: USD, floor_price: 10}
+    - {product_id: refine_batch_03, pricing_option_id: refine_batch_03_cpm, pricing_model: cpm, currency: USD, floor_price: 10}
+    - {product_id: refine_batch_04, pricing_option_id: refine_batch_04_cpm, pricing_model: cpm, currency: USD, floor_price: 10}
+    - {product_id: refine_batch_05, pricing_option_id: refine_batch_05_cpm, pricing_model: cpm, currency: USD, floor_price: 10}
+    - {product_id: refine_batch_06, pricing_option_id: refine_batch_06_cpm, pricing_model: cpm, currency: USD, floor_price: 10}
+    - {product_id: refine_batch_07, pricing_option_id: refine_batch_07_cpm, pricing_model: cpm, currency: USD, floor_price: 10}
+    - {product_id: refine_batch_08, pricing_option_id: refine_batch_08_cpm, pricing_model: cpm, currency: USD, floor_price: 10}
+    - {product_id: refine_batch_09, pricing_option_id: refine_batch_09_cpm, pricing_model: cpm, currency: USD, floor_price: 10}
+    - {product_id: refine_batch_10, pricing_option_id: refine_batch_10_cpm, pricing_model: cpm, currency: USD, floor_price: 10}
+    - {product_id: refine_batch_11, pricing_option_id: refine_batch_11_cpm, pricing_model: cpm, currency: USD, floor_price: 10}
+    - {product_id: refine_batch_12, pricing_option_id: refine_batch_12_cpm, pricing_model: cpm, currency: USD, floor_price: 10}
+    - {product_id: refine_batch_13, pricing_option_id: refine_batch_13_cpm, pricing_model: cpm, currency: USD, floor_price: 10}
+    - {product_id: refine_batch_14, pricing_option_id: refine_batch_14_cpm, pricing_model: cpm, currency: USD, floor_price: 10}
+    - {product_id: refine_batch_15, pricing_option_id: refine_batch_15_cpm, pricing_model: cpm, currency: USD, floor_price: 10}
+    - {product_id: refine_batch_16, pricing_option_id: refine_batch_16_cpm, pricing_model: cpm, currency: USD, floor_price: 10}
+    - {product_id: refine_batch_17, pricing_option_id: refine_batch_17_cpm, pricing_model: cpm, currency: USD, floor_price: 10}
+    - {product_id: refine_batch_18, pricing_option_id: refine_batch_18_cpm, pricing_model: cpm, currency: USD, floor_price: 10}
+    - {product_id: refine_batch_19, pricing_option_id: refine_batch_19_cpm, pricing_model: cpm, currency: USD, floor_price: 10}
+    - {product_id: refine_batch_20, pricing_option_id: refine_batch_20_cpm, pricing_model: cpm, currency: USD, floor_price: 10}
+    - {product_id: refine_batch_21, pricing_option_id: refine_batch_21_cpm, pricing_model: cpm, currency: USD, floor_price: 10}
+    - {product_id: refine_batch_22, pricing_option_id: refine_batch_22_cpm, pricing_model: cpm, currency: USD, floor_price: 10}
+    - {product_id: refine_batch_23, pricing_option_id: refine_batch_23_cpm, pricing_model: cpm, currency: USD, floor_price: 10}
+    - {product_id: refine_batch_24, pricing_option_id: refine_batch_24_cpm, pricing_model: cpm, currency: USD, floor_price: 10}
+    - {product_id: refine_batch_25, pricing_option_id: refine_batch_25_cpm, pricing_model: cpm, currency: USD, floor_price: 10}
+    - {product_id: refine_batch_26, pricing_option_id: refine_batch_26_cpm, pricing_model: cpm, currency: USD, floor_price: 10}
+
+phases:
+  - id: refine_batch_applied
+    title: "Apply the whole refine batch"
+    optional: true
+    branch_set:
+      id: legacy_refine_batch_handled
+      semantics: any_of
+    steps:
+      - id: legacy_refine_batch_applied
+        title: "Return the products named by the first and last entries"
+        task: get_products
+        schema_ref: media-buy/get-products-request.json
+        response_schema_ref: media-buy/get-products-response.json
+        doc_ref: /media-buy/task-reference/get_products
+        stateful: false
+        contributes_to: legacy_refine_batch_handled
+        expected: |
+          Apply all 26 include entries as one refinement and return every
+          named product on one page.
+        sample_request: &refine_batch_request
+          buying_mode: refine
+          pagination: {max_results: 100}
+          account:
+            brand: {domain: acmeoutdoor.example}
+            operator: pinnacle-agency.example
+            operator_unit:
+              id: "compliance-media_buy_seller_legacy_get_products-4aa2aaf0"
+            sandbox: true
+          refine:
+            - {scope: product, product_id: refine_batch_01, action: include}
+            - {scope: product, product_id: refine_batch_02, action: include}
+            - {scope: product, product_id: refine_batch_03, action: include}
+            - {scope: product, product_id: refine_batch_04, action: include}
+            - {scope: product, product_id: refine_batch_05, action: include}
+            - {scope: product, product_id: refine_batch_06, action: include}
+            - {scope: product, product_id: refine_batch_07, action: include}
+            - {scope: product, product_id: refine_batch_08, action: include}
+            - {scope: product, product_id: refine_batch_09, action: include}
+            - {scope: product, product_id: refine_batch_10, action: include}
+            - {scope: product, product_id: refine_batch_11, action: include}
+            - {scope: product, product_id: refine_batch_12, action: include}
+            - {scope: product, product_id: refine_batch_13, action: include}
+            - {scope: product, product_id: refine_batch_14, action: include}
+            - {scope: product, product_id: refine_batch_15, action: include}
+            - {scope: product, product_id: refine_batch_16, action: include}
+            - {scope: product, product_id: refine_batch_17, action: include}
+            - {scope: product, product_id: refine_batch_18, action: include}
+            - {scope: product, product_id: refine_batch_19, action: include}
+            - {scope: product, product_id: refine_batch_20, action: include}
+            - {scope: product, product_id: refine_batch_21, action: include}
+            - {scope: product, product_id: refine_batch_22, action: include}
+            - {scope: product, product_id: refine_batch_23, action: include}
+            - {scope: product, product_id: refine_batch_24, action: include}
+            - {scope: product, product_id: refine_batch_25, action: include}
+            - {scope: product, product_id: refine_batch_26, action: include}
+        validations:
+          - check: response_schema
+            description: "Response validates against the invoked tool's contract"
+          - check: field_contains
+            path: "products[*].product_id"
+            value: refine_batch_01
+            description: "The first entry of the batch was applied"
+          - check: field_contains
+            path: "products[*].product_id"
+            value: refine_batch_26
+            description: "The entry past the compact 25-entry limit was applied, not truncated"
+
+  - id: refine_batch_rejected
+    title: "Reject a batch the seller cannot apply whole"
+    optional: true
+    branch_set:
+      id: legacy_refine_batch_handled
+      semantics: any_of
+    steps:
+      - id: legacy_refine_batch_rejected
+        title: "Identify refine as unsupported before mutation"
+        task: get_products
+        schema_ref: media-buy/get-products-request.json
+        response_schema_ref: media-buy/get-products-response.json
+        doc_ref: /media-buy/task-reference/get_products
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        contributes_to: legacy_refine_batch_handled
+        expected: |
+          Reject before any side effect with a published error code, and
+          identify refine at its original path.
+        sample_request: *refine_batch_request
+        validations:
+          - check: field_absent
+            path: products
+            description: "The request is rejected rather than answered"
+          - check: error_code
+            description: "The seller rejects with an error code (the spec gives UNSUPPORTED_FEATURE as an example, not a requirement)"
+          - check: field_pattern
+            path: adcp_error.field
+            pattern: "^refine(\\[\\d+\\])?$"
+            description: "The error identifies the unsupported legacy input at its original path"
+
+  - id: refine_batch_assertion
+    title: "Require one conformant outcome"
+    steps:
+      - id: assert_legacy_refine_batch_handled
+        title: "Require the whole batch or rejection"
+        task: assert_contribution
+        stateful: false
+        expected: |
+          The seller either applied all 26 entries or rejected refine before
+          mutation.
+        validations:
+          - check: any_of
+            allowed_values: ["legacy_refine_batch_handled"]
+            description: "The seller did not truncate or split the legacy refine batch"

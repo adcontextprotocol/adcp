@@ -1,0 +1,107 @@
+id: notification_config_rejections
+version: "1.0.0"
+title: "Notification config semantic rejections"
+category: schema_validation
+summary: "Validates account-level notification_configs[] semantic rejection for duplicate subscriber keys."
+track: core
+required_tools:
+  - sync_accounts
+requires_scenarios:
+  - notification_config_event_scope
+
+narrative: |
+  JSON Schema validates the basic `notification_configs[]` item shape, but
+  some account-level rules are semantic: `subscriber_id` must be unique
+  within one submitted array, and account-level configs must reject
+  media-buy-anchored event types. This storyboard covers duplicate keys and
+  links the existing
+  `notification_config_event_scope` storyboard for the event-anchor rejection
+  vector. The 16-subscriber fan-out cap is enforced by the request schema's
+  `maxItems` contract rather than a schema-invalid runtime sample.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities: []
+  examples:
+    - "Any AdCP agent that accepts sync_accounts"
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness"
+
+prerequisites:
+  description: |
+    The agent under test exposes `sync_accounts`. Rejections are expected as
+    per-account failures inside a transport-level success response so callers
+    can correlate the failed account entry by index.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: false
+
+phases:
+  - id: reject_duplicate_subscriber_id
+    title: "Reject duplicate subscriber IDs in one request"
+    narrative: |
+      A buyer submits two notification configs with the same account-scoped
+      `subscriber_id`. The seller must reject the per-account entry instead of
+      silently last-write-wins merging or creating duplicate subscriptions.
+
+    steps:
+      - id: sync_accounts_rejects_duplicate_subscriber_id
+        title: "Submit duplicate subscriber_id values"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: false
+        expected: |
+          Reject the per-account entry with:
+          - accounts[0].action: "failed"
+          - accounts[0].status: "rejected"
+          - accounts[0].errors[0].code: INVALID_REQUEST or VALIDATION_ERROR
+          - accounts[0].errors[0].field pointing at the duplicate subscriber_id
+
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              sandbox: true
+              notification_configs:
+                - subscriber_id: "buyer-primary"
+                  url: "https://example.com/webhooks/adcp/account-a"
+                  event_types:
+                    - "creative.status_changed"
+                  active: false
+                - subscriber_id: "buyer-primary"
+                  url: "https://example.com/webhooks/adcp/account-b"
+                  event_types:
+                    - "creative.purged"
+                  active: false
+          idempotency_key: "$generate:uuid_v4#notification_config_rejections_duplicate_subscriber"
+          context:
+            correlation_id: "notification_config_rejections--duplicate_subscriber"
+
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema even on per-account failure"
+          - check: field_value
+            path: "accounts[0].action"
+            value: "failed"
+            description: "Per-account action is failed"
+          - check: field_value
+            path: "accounts[0].status"
+            value: "rejected"
+            description: "Per-account status is rejected"
+          - check: field_value
+            path: "accounts[0].errors[0].code"
+            allowed_values: ["INVALID_REQUEST", "VALIDATION_ERROR"]
+            description: "Duplicate subscriber_id is rejected as a correctable request validation error"
+          - check: field_value
+            path: "accounts[0].errors[0].field"
+            value: "notification_configs[1].subscriber_id"
+            description: "Error identifies the duplicate subscriber_id field"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "notification_config_rejections--duplicate_subscriber"
+            description: "Context correlation_id returned unchanged"
