@@ -15,13 +15,16 @@
  *   cutover        several versions changing duration, alignment, match,
  *                  purpose, or onto a billing feed (stub)
  *   regrant        revoke and re-grant chains around status_retention_days
- *   exceptions     excluded[] and gaps[] entries
+ *   exceptions     excluded[] and gaps[] entries, including package_ids entries
+ *                  that compose: several entries for one buy, staggered
  *   capacity       max_accounts capacity, account-wide and per offering
  *   cancellation   canceled_at, cancellation_effective_at, completed_at
  *   flight_history retroactive flight edits
  *   inactive       deactivation and reactivation
  *   availability   available_from / withdrawn_at on offerings
- *   tz_cutover     account timezone change (timezone_cutovers)
+ *   tz_cutover     account timezone change (timezone_cutovers), often on a billing
+ *                  account_timezone offering (a stub at effective_at), sometimes
+ *                  to a zone with the same offset (no stub)
  *   membership     in-place account_ids / exclude_account_ids edits (excluded_by_buyer)
  *   added_package  a package added after (or before) the buy's confirmed_at (added_at)
  *   invalid        an input an SDK must refuse (bad duration, zone, missing field)
@@ -77,6 +80,16 @@ const OTHER_ZONES = [
   'Australia/Sydney', 'Pacific/Auckland', 'Pacific/Chatham', 'Asia/Kolkata', 'America/Mexico_City',
 ];
 const ALL_ZONES = [...DST_ZONES, ...OTHER_ZONES];
+/** A zone with the same offset as each account zone, so a timezone change can land on an incoming boundary. */
+const SAME_OFFSET = {
+  'America/New_York': 'America/Toronto',
+  'America/Los_Angeles': 'America/Vancouver',
+  'Asia/Tokyo': 'Asia/Seoul',
+  'Asia/Singapore': 'Asia/Kuala_Lumpur',
+  'Australia/Sydney': 'Australia/Melbourne',
+  'Pacific/Auckland': 'Antarctica/McMurdo',
+  'Asia/Kolkata': 'Asia/Calcutta',
+};
 
 const FLAVORS = [
   ['dst', 6],
@@ -226,7 +239,8 @@ function generateScenario(seed) {
     offerings.push(offering);
     return offering;
   };
-  const billing = has('month_end') || (has('cutover') && r.bool(0.35));
+  // tz_cutover often puts a billing feed on account_timezone, where a timezone change owes a stub.
+  const billing = has('month_end') || (has('cutover') && r.bool(0.35)) || (has('tz_cutover') && r.bool(0.6));
   for (const duration of durations) {
     const calendarish = /^P\d+[MY]$/.test(duration);
     if (calendarish && billing) {
@@ -242,6 +256,8 @@ function generateScenario(seed) {
         purpose: 'billing',
         extra: { period_anchor_policy: 'fixed', period_anchor: iso(anchor), period_timezone: anchorZone },
       });
+      // A monthly billing feed in the account's timezone: a timezone change mid-month owes a stub.
+      if (has('tz_cutover') || r.bool(0.2)) addOffering({ duration, alignment: 'account_timezone', purpose: 'billing' });
     }
     const aligns = r.weighted([
       [['utc', 'account_timezone'], 5],
@@ -261,7 +277,7 @@ function generateScenario(seed) {
       }
     }
     if (r.bool(0.3)) addOffering({ duration, alignment: r.pick(['utc', 'account_timezone']), dims: ['package', 'creative'] });
-    if (billing && !calendarish && r.bool(0.7)) addOffering({ duration, alignment: r.pick(['utc', 'account_timezone']), purpose: 'billing' });
+    if (billing && !calendarish && (r.bool(0.7) || has('tz_cutover'))) addOffering({ duration, alignment: r.pick(['utc', 'account_timezone']), purpose: 'billing' });
   }
   if (has('availability')) {
     for (const offering of offerings) {
@@ -277,7 +293,7 @@ function generateScenario(seed) {
   const purposes = [...new Set(offerings.map(o => o.feed_purpose))];
   for (let n = 1; n <= versionCount; n += 1) {
     const duration = r.pick(durations);
-    const purpose = n > 1 && billing && r.bool(0.5) ? 'billing' : r.pick(purposes);
+    const purpose = (n > 1 || has('tz_cutover')) && billing && r.bool(0.5) ? 'billing' : r.pick(purposes);
     const selector = { feed_purpose: purpose, period_duration: duration, required_finality: 'official', dimensions: ['package'] };
     // Usually an alignment some offering for this purpose and duration publishes, so the selector matches.
     const published = offerings
@@ -349,7 +365,8 @@ function generateScenario(seed) {
     const start = at(-0.6, 0.2);
     const end = start + r.weighted([[r.int(2, 14) * DAY, 4], [Math.round(span * (0.3 + r.next())), 3], [r.int(1, 48) * HOUR, 1], [0, 0.2]]) + r.pick([0, 0, 1, 30 * MINUTE]);
     const packages = [];
-    for (let p = 0; p < r.weighted([[1, 4], [2, 1]]); p += 1) {
+    // exceptions favors two packages, so package_ids entries can compose.
+    for (let p = 0; p < r.weighted([[1, 4], [2, has('exceptions') ? 4 : 1]]); p += 1) {
       let ids = offerings.filter(() => r.bool(0.85)).map(o => o.offering_id);
       // A package with no offerings owes nothing; keep that rare.
       if (ids.length === 0 && r.bool(0.9)) ids = [r.pick(offerings).offering_id];
@@ -433,6 +450,25 @@ function generateScenario(seed) {
         excluded.push(entry);
       }
     }
+    if (has('exceptions') && r.bool(0.5)) {
+      // package_ids entries compose (coverage): a period is removed when the packages named by the entries in effect
+      // at its start together cover every package resolving the offering that is owed it. Staggered entries for one
+      // buy, each naming one or two of its packages, sometimes skipping one, sometimes closing.
+      const buy = r.pick(buys);
+      let from = at(-0.6, 0.2);
+      for (const pkg of buy.packages) {
+        if (r.bool(0.2)) continue;
+        const reason = r.pick(['offering_unsupported', 'overridden']);
+        const named = [pkg.package_id];
+        if (r.bool(0.15)) named.push(r.pick(buy.packages.map(other => other.package_id).filter(id => id !== pkg.package_id).concat(['pkg_9'])));
+        const entry = { reason, media_buy_id: buy.media_buy_id, package_ids: named, from: iso(from) };
+        if (reason === 'overridden') entry.overridden_by = { subscription_id: 'sub-other' };
+        if (r.bool(0.2)) entry.offering_id = r.pick(offerings).offering_id;
+        if (r.bool(0.3)) entry.until = iso(from + r.int(1, 6 * 24) * HOUR);
+        excluded.push(entry);
+        from += r.weighted([[0, 1], [r.int(1, 5 * 24) * HOUR, 3]]);
+      }
+    }
     if (has('regrant') || (has('exceptions') && r.bool(0.4))) {
       for (const grant of account.grants.slice(0, -1)) {
         if (r.bool(0.6)) {
@@ -449,7 +485,8 @@ function generateScenario(seed) {
   if (has('tz_cutover')) {
     // effective_at is "the end of the last old-timezone period that started before the change", so it is a
     // boundary of each offering's old schedule; offerings whose boundaries differ get one entry each.
-    const previous = r.pick(ALL_ZONES.filter(z => z !== zone));
+    // Sometimes a zone with the same offset, so effective_at is also a new-timezone boundary and no stub is owed.
+    const previous = SAME_OFFSET[zone] !== undefined && r.bool(0.25) ? SAME_OFFSET[zone] : r.pick(ALL_ZONES.filter(z => z !== zone));
     const change = at(-0.4, 0.5);
     const local = offerings.filter(o => o.schedule.alignment === 'account_timezone');
     const endAfter = duration => {
