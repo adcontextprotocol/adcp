@@ -1951,8 +1951,8 @@ export function createCertificationToolHandlers(
         const lp = mod.lesson_plan as certDb.LessonPlan | null;
         const objectives = lp?.objectives?.slice(0, 3).map(o => `- ${o}`).join('\n') || '';
         // Extract key concept topics so Sage knows what mechanisms to reference
-        const keyConcepts = (lp?.key_concepts as Array<{ topic: string; teaching_notes: string }> | undefined) || [];
-        const conceptSummary = keyConcepts.map(c => `- **${c.topic}**: ${c.teaching_notes.substring(0, 200)}`).join('\n');
+        const keyConcepts = lp?.key_concepts || [];
+        const conceptSummary = keyConcepts.map(c => `- **${c.topic}**: ${(c.teaching_notes || c.explanation || '').substring(0, 200)}`).join('\n');
         const missingIds = prereqs.missing.map(m => m.moduleId).join(', ');
         const inProgress = prereqs.missing.filter(m => m.status === 'in_progress').map(m => m.moduleId);
         // Branch the directive: if any prereq is mid-flight, point Sage at finishing
@@ -2477,8 +2477,8 @@ export function createCertificationToolHandlers(
       if (!prereqs.met) {
         const lp = mod.lesson_plan as certDb.LessonPlan | null;
         const objectives = lp?.objectives?.slice(0, 3).map(o => `- ${o}`).join('\n') || '';
-        const keyConcepts = (lp?.key_concepts as Array<{ topic: string; teaching_notes: string }> | undefined) || [];
-        const conceptSummary = keyConcepts.map(c => `- **${c.topic}**: ${c.teaching_notes.substring(0, 200)}`).join('\n');
+        const keyConcepts = lp?.key_concepts || [];
+        const conceptSummary = keyConcepts.map(c => `- **${c.topic}**: ${(c.teaching_notes || c.explanation || '').substring(0, 200)}`).join('\n');
         const missingIds = prereqs.missing.map(m => m.moduleId);
         const inProgress = prereqs.missing.filter(m => m.status === 'in_progress').map(m => m.moduleId);
         const inProgressTemplate = inProgress.length > 0 ? inProgressPrereqDirective(inProgress, mod.id) : null;
